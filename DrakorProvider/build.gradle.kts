@@ -6,7 +6,7 @@ cloudstream {
     language = "id"
     // All of these properties are optional, you can safely remove them
 
-    description = "CineMax21 — Streaming Movie and TV Series"
+    description = "Drakor — Streaming Drama Korean, Movie and TV Series"
     authors = listOf("BetbetMiro")
 
     /**
