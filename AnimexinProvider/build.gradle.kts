@@ -7,7 +7,7 @@ cloudstream {
 
     description = "Animexin — Streaming Donghua Subtitle Indonesia"
     language    = "id"
-    authors = listOf("Miku")
+    authors = listOf("BetbetMiro")
 
     /**
     * Status int as the following:
