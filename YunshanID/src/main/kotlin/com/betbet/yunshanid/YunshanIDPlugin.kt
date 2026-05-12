@@ -6,8 +6,8 @@ import com.lagradost.cloudstream3.plugins.Plugin
 
 @CloudstreamPlugin
 class YunshanIDPlugin : Plugin() {
+
     override fun load(context: Context) {
-        // Daftarkan provider utama
-        registerMainAPI(YunshanIDProvider())
+        addProvider(YunshanIDProvider())
     }
 }
