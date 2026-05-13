@@ -6,30 +6,26 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Element
+import java.util.Collections
 
 class YunshanidProvider : MainAPI() {
 
-    override var mainUrl =
-        "https://yunshanid.site"
+    override var mainUrl = "https://yunshanid.site"
+    override var name = "Yunshanid"
+    override val hasMainPage = true
+    override var lang = "id"
+    override val hasQuickSearch = true
+    override val supportedTypes = setOf(
+        TvType.Movie,
+        TvType.TvSeries,
+        TvType.Anime
+    )
 
-    override var name =
-        "Yunshanid"
-
-    override val hasMainPage =
-        true
-
-    override var lang =
-        "id"
-
-    override val hasQuickSearch =
-        true
-
-    override val supportedTypes =
-        setOf(
-            TvType.Movie,
-            TvType.TvSeries,
-            TvType.Anime
-        )
+    // Biar gak dianggap robot, kita pake User-Agent Chrome standar
+    private val headers = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Referer" to "$mainUrl/"
+    )
 
     override val mainPage = mainPageOf(
         "" to "Update Terbaru",
@@ -38,274 +34,87 @@ class YunshanidProvider : MainAPI() {
         "category/anime/page/%d/" to "Anime"
     )
 
-    // =========================
-    // MAIN PAGE
-    // =========================
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val path = if (page == 1) {
+            request.data.replace("/page/%d/", "/").replace("page/%d/", "")
+        } else {
+            request.data.format(page)
+        }
 
-    override suspend fun getMainPage(
-        page: Int,
-        request: MainPageRequest
-    ): HomePageResponse {
+        // Tambahkan headers di setiap app.get
+        val document = app.get("$mainUrl/$path", headers = headers).document
+        val homeList = document.select("article, .bs").mapNotNull {
+            it.toSearchResult()
+        }.distinctBy { it.url }
 
-        val path =
-            if (page == 1) {
-                request.data
-                    .replace("/page/%d/", "/")
-                    .replace("page/%d/", "")
-            } else {
-                request.data.format(page)
-            }
-
-        val document =
-            app.get("$mainUrl/$path").document
-
-        val homeList =
-            document.select("article, .bs")
-                .mapNotNull {
-                    it.toSearchResult()
-                }
-                .distinctBy {
-                    it.url
-                }
-
-        return newHomePageResponse(
-            listOf(
-                HomePageList(
-                    request.name,
-                    homeList
-                )
-            ),
-            hasNext = homeList.isNotEmpty()
-        )
+        return newHomePageResponse(listOf(HomePageList(request.name, homeList)), hasNext = homeList.isNotEmpty())
     }
-
-    // =========================
-    // SEARCH RESULT
-    // =========================
 
     private fun Element.toSearchResult(): SearchResponse? {
+        val title = selectFirst(".tt, h2")?.text()?.trim() ?: return null
+        val href = this@YunshanidProvider.fixUrl(selectFirst("a")?.attr("href") ?: return null)
+        val poster = selectFirst("img")?.attr("src")
+        val typeLabel = select(".type").text().lowercase()
 
-        val title =
-            selectFirst(".tt, h2")
-                ?.text()
-                ?.trim()
-                ?: return null
-
-        val href =
-            this@YunshanidProvider.fixUrl(
-                selectFirst("a")
-                    ?.attr("href")
-                    ?: return null
-            )
-
-        val poster =
-            selectFirst("img")
-                ?.attr("src")
-
-        val typeLabel =
-            select(".type")
-                .text()
-                .lowercase()
-
-        val type =
-            when {
-
-                typeLabel.contains("tv")
-                        || typeLabel.contains("series") -> {
-                    TvType.TvSeries
-                }
-
-                typeLabel.contains("anime")
-                        || typeLabel.contains("donghua") -> {
-                    TvType.Anime
-                }
-
-                else -> {
-                    TvType.Movie
-                }
-            }
+        val type = when {
+            typeLabel.contains("tv") || typeLabel.contains("series") -> TvType.TvSeries
+            typeLabel.contains("anime") || typeLabel.contains("donghua") -> TvType.Anime
+            else -> TvType.Movie
+        }
 
         return if (type == TvType.Movie) {
-
-            newMovieSearchResponse(
-                title,
-                href,
-                TvType.Movie
-            ) {
-
-                this.posterUrl =
-                    poster
-            }
-
+            newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = poster }
         } else {
-
-            newAnimeSearchResponse(
-                title,
-                href,
-                type
-            ) {
-
-                this.posterUrl =
-                    poster
-            }
+            newAnimeSearchResponse(title, href, type) { this.posterUrl = poster }
         }
     }
 
-    // =========================
-    // SEARCH
-    // =========================
-
-    override suspend fun search(
-        query: String
-    ): List<SearchResponse> {
-
-        return app.get(
-            "$mainUrl/?s=$query"
-        ).document
+    override suspend fun search(query: String): List<SearchResponse> {
+        return app.get("$mainUrl/?s=$query", headers = headers).document
             .select("article, .bs")
-            .mapNotNull {
-                it.toSearchResult()
-            }
-            .distinctBy {
-                it.url
-            }
+            .mapNotNull { it.toSearchResult() }
+            .distinctBy { it.url }
     }
 
-    // =========================
-    // CLEAN TITLE
-    // =========================
+    private fun cleanupTitle(rawTitle: String): String = rawTitle
+        .replace(Regex("^(Nonton\\s+|Download\\s+)", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("\\s+Sub\\s+Indo.*$", RegexOption.IGNORE_CASE), "")
+        .trim()
 
-    private fun cleanupTitle(
-        rawTitle: String
-    ): String {
+    override suspend fun load(url: String): LoadResponse {
+        // Pancing pake referer agar link episode keluar
+        val document = app.get(url, headers = headers).document
+        val rawTitle = document.selectFirst("h1.entry-title")?.text() ?: "No Title"
+        val title = cleanupTitle(rawTitle)
+        val poster = document.selectFirst(".poster img, .thumb img")?.attr("src")
+        val plot = document.selectFirst(".entry-content p, .synopsis p")?.text()
+        val tags = document.select(".genredesc a, .genre a").map { it.text().trim() }
 
-        return rawTitle
-            .replace(
-                Regex(
-                    "^(Nonton\\s+|Download\\s+)",
-                    RegexOption.IGNORE_CASE
-                ),
-                ""
-            )
-            .replace(
-                Regex(
-                    "\\s+Sub\\s+Indo.*$",
-                    RegexOption.IGNORE_CASE
-                ),
-                ""
-            )
-            .trim()
-    }
+        val episodes = document.select(".eplister li, .list-episode li").mapIndexedNotNull { index, it ->
+            val epHref = this@YunshanidProvider.fixUrl(it.selectFirst("a")?.attr("href") ?: return@mapIndexedNotNull null)
+            val epName = it.select(".ep-num, .epl-num").text().ifBlank { "Episode ${index + 1}" }
 
-    // =========================
-    // LOAD DETAIL
-    // =========================
-
-    override suspend fun load(
-        url: String
-    ): LoadResponse {
-
-        val document =
-            app.get(url).document
-
-        val rawTitle =
-            document.selectFirst(
-                "h1.entry-title"
-            )?.text()
-                ?: "No Title"
-
-        val title =
-            cleanupTitle(rawTitle)
-
-        val poster =
-            document.selectFirst(
-                ".poster img, .thumb img"
-            )?.attr("src")
-
-        val plot =
-            document.selectFirst(
-                ".entry-content p, .synopsis p"
-            )?.text()
-
-        val tags =
-            document.select(
-                ".genredesc a, .genre a"
-            ).map {
-                it.text().trim()
+            newEpisode(epHref) {
+                this.name = epName
+                this.episode = index + 1
             }
-
-        val episodes =
-            document.select(
-                ".eplister li, .list-episode li"
-            ).mapIndexedNotNull { index, it ->
-
-                val epHref =
-                    this@YunshanidProvider.fixUrl(
-                        it.selectFirst("a")
-                            ?.attr("href")
-                            ?: return@mapIndexedNotNull null
-                    )
-
-                val epName =
-                    it.select(
-                        ".ep-num, .epl-num"
-                    ).text().ifBlank {
-                        "Episode ${index + 1}"
-                    }
-
-                newEpisode(epHref) {
-
-                    this.name =
-                        epName
-
-                    this.episode =
-                        index + 1
-                }
-            }
+        }
 
         return if (episodes.isEmpty()) {
-
-            newMovieLoadResponse(
-                title,
-                url,
-                TvType.Movie,
-                url
-            ) {
-
-                this.posterUrl =
-                    poster
-
-                this.plot =
-                    plot
-
-                this.tags =
-                    tags
+            newMovieLoadResponse(title, url, TvType.Movie, url) {
+                this.posterUrl = poster
+                this.plot = plot
+                this.tags = tags
             }
-
         } else {
-
-            newTvSeriesLoadResponse(
-                title,
-                url,
-                TvType.TvSeries,
-                episodes.reversed()
-            ) {
-
-                this.posterUrl =
-                    poster
-
-                this.plot =
-                    plot
-
-                this.tags =
-                    tags
+            // Note: Cek apakah perlu .reversed() atau tidak, sesuaikan dengan urutan di web
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.reversed()) {
+                this.posterUrl = poster
+                this.plot = plot
+                this.tags = tags
             }
         }
     }
-
-    // =========================
-    // LOAD LINKS
-    // =========================
 
     override suspend fun loadLinks(
         data: String,
@@ -313,69 +122,34 @@ class YunshanidProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-
-        val document =
-            app.get(data).document
-
-        var found =
-            false
-
-        val seen =
-            hashSetOf<String>()
+        // Load link dengan header lengkap agar tidak kena block
+        val response = app.get(data, headers = headers)
+        val document = response.document
+        var found = false
+        val seen = Collections.synchronizedSet(hashSetOf<String>())
 
         coroutineScope {
-
-            val players =
-                document.select(
-                    "iframe, .mirror-option option, .nav-tabs li a"
-                )
-
+            val players = document.select("iframe, .mirror-option option, .nav-tabs li a")
             players.map { element ->
-
                 async {
+                    val src = when {
+                        element.tagName() == "iframe" -> element.attr("src")
+                        element.tagName() == "option" -> element.attr("value")
+                        else -> element.attr("data-embed")
+                    }
 
-                    val src =
-                        when {
-
-                            element.tagName() == "iframe" -> {
-                                element.attr("src")
-                            }
-
-                            element.tagName() == "option" -> {
-                                element.attr("value")
-                            }
-
-                            else -> {
-                                element.attr("data-embed")
-                            }
-                        }
-
-                    if (
-                        src.isNotBlank()
-                        && src.startsWith("http")
-                        && seen.add(src)
-                    ) {
-
+                    if (src.isNotBlank() && src.startsWith("http") && seen.add(src)) {
                         runCatching {
-
-                            loadExtractor(
-                                src,
-                                data,
-                                subtitleCallback
-                            ) { link ->
-
-                                found =
-                                    true
-
+                            // Kirim referer URL episode ke extractor
+                            loadExtractor(src, data, subtitleCallback) { link ->
+                                found = true
                                 callback.invoke(link)
                             }
                         }
                     }
                 }
-
             }.awaitAll()
         }
-
         return found
     }
 }
