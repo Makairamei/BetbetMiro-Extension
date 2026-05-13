@@ -33,9 +33,7 @@ class CinemaCity : MainAPI() {
 
     override val mainPage = mainPageOf(
         "$mainUrl/movies/" to "Movies",
-        "$mainUrl/tv-series/" to "Series",
-        "$mainUrl/xfsearch/genre/animation/" to "Animation",
-        "$mainUrl/xfsearch/genre/documentary/" to "Documentary"
+        "$mainUrl/tv-series/" to "Series"
     )
 
     private suspend fun doRequest(url: String): NiceResponse {
