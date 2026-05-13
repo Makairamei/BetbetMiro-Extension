@@ -2,13 +2,11 @@ package Yunshanid
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Element
 import java.util.Collections
 
 class YunshanidProvider : MainAPI() {
+
     override var mainUrl = "https://yunshanid.site"
     override var name = "Yunshanid"
     override val hasMainPage = true
@@ -17,9 +15,8 @@ class YunshanidProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
     private val commonHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
-        "Referer" to "$mainUrl/",
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 10)",
+        "Referer" to "$mainUrl/"
     )
 
     override val mainPage = mainPageOf(
@@ -30,75 +27,109 @@ class YunshanidProvider : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val path = if (page == 1) request.data.replace("/page/%d/", "/").replace("page/%d/", "") else request.data.format(page)
+        val path = if (page == 1)
+            request.data.replace("/page/%d/", "/")
+        else
+            request.data.format(page)
+
         val document = app.get("$mainUrl/$path", headers = commonHeaders).document
-        val homeList = document.select("article, .bs").mapNotNull { it.toSearchResult() }.distinctBy { it.url }
-        return newHomePageResponse(listOf(HomePageList(request.name, homeList)), hasNext = homeList.isNotEmpty())
+
+        val home = document.select("article, .bs")
+            .mapNotNull { it.toSearchResult() }
+            .distinctBy { it.url }
+
+        return newHomePageResponse(
+            listOf(HomePageList(request.name, home)),
+            hasNext = home.isNotEmpty()
+        )
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val title = selectFirst(".tt, h2")?.text()?.trim() ?: return null
-        val href = this@YunshanidProvider.fixUrl(selectFirst("a")?.attr("href") ?: return null)
+        val title = selectFirst(".tt, h2, .title")?.text()?.trim() ?: return null
+        val href = fixUrl(selectFirst("a")?.attr("href") ?: return null)
         val poster = selectFirst("img")?.attr("src") ?: selectFirst("img")?.attr("data-src")
-        val typeLabel = select(".type").text().lowercase()
-        val type = when {
-            typeLabel.contains("tv") || typeLabel.contains("series") -> TvType.TvSeries
-            typeLabel.contains("anime") || typeLabel.contains("donghua") -> TvType.Anime
-            else -> TvType.Movie
+
+        return newMovieSearchResponse(title, href, TvType.Movie) {
+            this.posterUrl = poster
         }
-        return if (type == TvType.Movie) newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = poster }
-        else newAnimeSearchResponse(title, href, type) { this.posterUrl = poster }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        return app.get("$mainUrl/?s=$query", headers = commonHeaders).document
-            .select("article, .bs").mapNotNull { it.toSearchResult() }.distinctBy { it.url }
+        return app.get("$mainUrl/?s=$query", headers = commonHeaders)
+            .document
+            .select("article, .bs")
+            .mapNotNull { it.toSearchResult() }
+            .distinctBy { it.url }
     }
-
-    private fun cleanupTitle(rawTitle: String): String = rawTitle
-        .replace(Regex("^(Nonton\\s+|Download\\s+)", RegexOption.IGNORE_CASE), "")
-        .replace(Regex("\\s+Sub\\s+Indo.*$", RegexOption.IGNORE_CASE), "").trim()
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, headers = commonHeaders).document
-        val title = cleanupTitle(document.selectFirst("h1.entry-title, .entry-title")?.text() ?: "No Title")
+
+        val title = document.selectFirst("h1")?.text() ?: "No Title"
         val poster = document.selectFirst(".poster img, .thumb img")?.attr("src")
         val plot = document.selectFirst(".entry-content p, .synopsis p")?.text()
-        val tags = document.select(".genredesc a, .genre a").map { it.text().trim() }
-        val episodes = document.select(".eplister li, .list-episode li, .num-ep a").mapIndexedNotNull { index, it ->
-            val epHref = this@YunshanidProvider.fixUrl(it.selectFirst("a")?.attr("href") ?: it.attr("href") ?: return@mapIndexedNotNull null)
-            val epName = it.select(".ep-num, .epl-num").text().ifBlank { "Episode ${index + 1}" }
-            newEpisode(epHref) { this.name = epName; this.episode = index + 1 }
+
+        val episodes = document.select(".eplister li a, .list-episode li a")
+            .mapIndexedNotNull { index, it ->
+                val epUrl = fixUrl(it.attr("href"))
+                val epName = it.text().ifBlank { "Episode ${index + 1}" }
+
+                newEpisode(epUrl) {
+                    this.name = epName
+                    this.episode = index + 1
+                }
+            }
+
+        return if (episodes.isEmpty()) {
+            newMovieLoadResponse(title, url, TvType.Movie, url) {
+                this.posterUrl = poster
+                this.plot = plot
+            }
+        } else {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.plot = plot
+            }
         }
-        return if (episodes.isEmpty()) newMovieLoadResponse(title, url, TvType.Movie, url) { this.posterUrl = poster; this.plot = plot; this.tags = tags }
-        else newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.reversed()) { this.posterUrl = poster; this.plot = plot; this.tags = tags }
     }
 
-    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+
         val document = app.get(data, headers = commonHeaders).document
+        val seen = hashSetOf<String>()
         var found = false
-        val seen = Collections.synchronizedSet(hashSetOf<String>())
-        
-        coroutineScope {
-            // Kita scan semua elemen yang berpotensi mengandung link video
-            document.select("iframe, .mirror-option option, .nav-tabs li a, #embed_holder iframe, .player-embed iframe").map { element ->
-                async {
-                    val src = when {
-                        element.tagName() == "iframe" -> element.attr("src") ?: element.attr("data-src") ?: element.attr("data-litespeed-src")
-                        element.tagName() == "option" -> element.attr("value")
-                        else -> element.attr("data-embed") ?: element.attr("data-src") ?: element.attr("href")
-                    }
-                    
-                    if (!src.isNullOrBlank() && src.startsWith("http") && seen.add(src)) {
-                        runCatching { 
-                            loadExtractor(src, data, subtitleCallback) { link -> 
-                                found = true; callback.invoke(link) 
-                            } 
-                        }
-                    }
+
+        val elements = document.select("iframe[src], iframe[data-src], option[value], a[href]")
+
+        for (el in elements) {
+            val src = when {
+                el.tagName() == "iframe" ->
+                    el.attr("src").ifBlank { el.attr("data-src") }
+
+                el.tagName() == "option" ->
+                    el.attr("value")
+
+                else ->
+                    el.attr("href")
+            }
+
+            if (src.isNullOrBlank()) continue
+            if (!src.startsWith("http")) continue
+            if (!seen.add(src)) continue
+
+            runCatching {
+                loadExtractor(src, data, subtitleCallback) { link ->
+                    found = true
+                    callback(link)
                 }
-            }.awaitAll()
+            }
         }
+
         return found
     }
 }
