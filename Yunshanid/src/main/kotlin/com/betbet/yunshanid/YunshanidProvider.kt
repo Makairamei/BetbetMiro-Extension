@@ -1,7 +1,9 @@
 package com.betbet.yunshanid
 
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.utils.*
+import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
 class YunshanidProvider : MainAPI() {
@@ -10,6 +12,8 @@ class YunshanidProvider : MainAPI() {
     override var name = "Yunshanid"
     override val hasMainPage = true
     override var lang = "id"
+
+    override val sequentialMainPage = true
 
     override val supportedTypes = setOf(
         TvType.Anime,
@@ -25,6 +29,95 @@ class YunshanidProvider : MainAPI() {
     )
 
     // =========================
+    // SAFE SELECTOR
+    // =========================
+
+    private fun Element.safeText(
+        vararg queries: String
+    ): String? {
+
+        queries.forEach {
+
+            val text =
+                selectFirst(it)
+                    ?.text()
+                    ?.trim()
+
+            if (!text.isNullOrBlank())
+                return text
+        }
+
+        return null
+    }
+
+    private fun Element.safeAttr(
+        attr: String,
+        vararg queries: String
+    ): String? {
+
+        queries.forEach {
+
+            val value =
+                selectFirst(it)
+                    ?.attr(attr)
+
+            if (!value.isNullOrBlank())
+                return value
+        }
+
+        return null
+    }
+
+    // =========================
+    // SEARCH RESULT
+    // =========================
+
+    private fun Element.toSearchResult(): SearchResponse? {
+
+        val title = safeText(
+            "h2",
+            ".tt",
+            ".entry-title"
+        ) ?: return null
+
+        val href = safeAttr(
+            "href",
+            "a"
+        ) ?: return null
+
+        val poster = safeAttr(
+            "data-src",
+            "img"
+        ) ?: safeAttr(
+            "src",
+            "img"
+        )
+
+        val type = when {
+
+            title.contains("movie", true)
+                    -> TvType.Movie
+
+            title.contains("ova", true)
+                    -> TvType.OVA
+
+            title.contains("special", true)
+                    -> TvType.OVA
+
+            else -> TvType.Anime
+        }
+
+        return newAnimeSearchResponse(
+            title,
+            href,
+            type
+        ) {
+
+            this.posterUrl = poster
+        }
+    }
+
+    // =========================
     // MAIN PAGE
     // =========================
 
@@ -34,10 +127,13 @@ class YunshanidProvider : MainAPI() {
     ): HomePageResponse {
 
         val url =
-            if (page == 1) request.data
-            else "${request.data}page/$page/"
+            if (page == 1)
+                request.data
+            else
+                "${request.data}page/$page/"
 
-        val document = app.get(url).document
+        val document =
+            app.get(url).document
 
         val home = mutableListOf<SearchResponse>()
 
@@ -49,14 +145,18 @@ class YunshanidProvider : MainAPI() {
         )
 
         selectors.forEach { selector ->
-            document.select(selector).mapNotNullTo(home) {
-                it.toSearchResult()
-            }
+
+            document.select(selector)
+                .mapNotNullTo(home) {
+                    it.toSearchResult()
+                }
         }
 
         return newHomePageResponse(
             request.name,
-            home.distinctBy { it.url }
+            home.distinctBy {
+                it.url
+            }
         )
     }
 
@@ -64,49 +164,48 @@ class YunshanidProvider : MainAPI() {
     // SEARCH
     // =========================
 
-    override suspend fun search(query: String): List<SearchResponse> {
+    override suspend fun search(
+        query: String
+    ): List<SearchResponse> {
 
-        val document =
-            app.get("$mainUrl/?s=$query").document
+        return try {
 
-        return document.select(
-            "article, .bs, .bsx"
-        ).mapNotNull {
-            it.toSearchResult()
-        }
-    }
+            // REST API FAST SEARCH
+            val response = app.get(
+                "$mainUrl/wp-json/wp/v2/search?search=$query"
+            ).parsedSafe<List<Map<String, Any>>>()
 
-    // =========================
-    // SEARCH RESULT
-    // =========================
+            response?.mapNotNull {
 
-    private fun Element.toSearchResult(): SearchResponse? {
+                val title =
+                    it["title"]?.toString()
+                        ?: return@mapNotNull null
 
-        val title = this.selectFirst(
-            "h2, .tt, .entry-title"
-        )?.text()?.trim()
-            ?: return null
+                val url =
+                    it["url"]?.toString()
+                        ?: return@mapNotNull null
 
-        val href = this.selectFirst("a")
-            ?.attr("href")
-            ?: return null
+                newAnimeSearchResponse(
+                    title,
+                    url,
+                    TvType.Anime
+                )
 
-        val poster = this.selectFirst("img")
-            ?.attr("data-src")
-            ?: this.selectFirst("img")
-                ?.attr("src")
+            } ?: emptyList()
 
-        val type = when {
-            title.contains("movie", true) -> TvType.Movie
-            else -> TvType.Anime
-        }
+        } catch (_: Exception) {
 
-        return newAnimeSearchResponse(
-            title,
-            href,
-            type
-        ) {
-            posterUrl = poster
+            // FALLBACK SEARCH
+            val document =
+                app.get(
+                    "$mainUrl/?s=$query"
+                ).document
+
+            document.select(
+                "article, .bs, .bsx"
+            ).mapNotNull {
+                it.toSearchResult()
+            }
         }
     }
 
@@ -114,81 +213,242 @@ class YunshanidProvider : MainAPI() {
     // LOAD DETAIL
     // =========================
 
-    override suspend fun load(url: String): LoadResponse {
+    override suspend fun load(
+        url: String
+    ): LoadResponse {
 
-        val document = app.get(url).document
+        val document =
+            app.get(
+                url,
+                referer = mainUrl
+            ).document
 
-        val title =
-            document.selectFirst(
-                "h1.entry-title, .entry-title"
-            )?.text()?.trim()
-                ?: "No Title"
+        val title = document.safeText(
+            "h1.entry-title",
+            ".entry-title",
+            "h1"
+        ) ?: "No Title"
 
-        val poster =
-            document.selectFirst(
-                ".thumb img, .infox img, img"
-            )?.attr("src")
+        val poster = document.safeAttr(
+            "src",
+            ".thumb img",
+            ".infox img",
+            "img"
+        )
 
-        val description =
-            document.selectFirst(
-                ".entry-content p, .desc, .synp"
-            )?.text()
+        val description = document.safeText(
+            ".entry-content p",
+            ".desc",
+            ".synp"
+        )
 
-        // Genres
         val tags = document.select(
             ".genxed a, .mgen a, .info-content a"
         ).map {
             it.text()
         }
 
-        // Episodes
-        var episodes = document.select(
-            ".eplister li, #chapterlist li, .episodelist li"
-        ).mapIndexed { index, ep ->
-
-            val epName =
-                ep.selectFirst("a")
-                    ?.text()
-                    ?.trim()
-
-            val epUrl =
-                ep.selectFirst("a")
-                    ?.attr("href")
-                    ?: ""
-
-            Episode(
-                epUrl,
-                epName
-            ).apply {
-                episode = index + 1
+        val recommendations =
+            document.select(
+                ".bs, .bsx, article"
+            ).mapNotNull {
+                it.toSearchResult()
             }
-        }
 
-        // fallback movie / batch
-        if (episodes.isEmpty()) {
+        // =========================
+        // NORMAL EPISODE
+        // =========================
 
-            episodes = listOf(
+        val normalEpisodes =
+            document.select(
+                ".eplister li, #chapterlist li, .episodelist li"
+            ).mapIndexed { index, ep ->
+
+                val epName =
+                    ep.selectFirst("a")
+                        ?.text()
+                        ?.trim()
+
+                val epUrl =
+                    ep.selectFirst("a")
+                        ?.attr("href")
+                        ?: ""
+
                 Episode(
-                    url,
-                    "Full Movie"
+                    epUrl,
+                    epName
+                ).apply {
+                    episode = index + 1
+                }
+            }
+
+        // =========================
+        // AJAX EPISODE
+        // =========================
+
+        val ajaxEpisodes =
+            mutableListOf<Episode>()
+
+        document.select("script")
+            .forEach { script ->
+
+                val data = script.html()
+
+                Regex(
+                    """postid.?[:=].?['"](\d+)"""
+                ).find(data)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?.let { postId ->
+
+                        try {
+
+                            val ajax =
+                                app.post(
+                                    "$mainUrl/wp-admin/admin-ajax.php",
+                                    data = mapOf(
+                                        "action" to "action_select_episode",
+                                        "postid" to postId
+                                    ),
+                                    referer = url
+                                ).document
+
+                            ajax.select("option")
+                                .forEachIndexed { index, ep ->
+
+                                    val epUrl =
+                                        ep.attr("value")
+
+                                    if (epUrl.isNotBlank()) {
+
+                                        ajaxEpisodes.add(
+                                            Episode(
+                                                epUrl,
+                                                ep.text()
+                                            ).apply {
+                                                episode = index + 1
+                                            }
+                                        )
+                                    }
+                                }
+
+                        } catch (_: Exception) {
+                        }
+                    }
+            }
+
+        val finalEpisodes =
+            when {
+
+                ajaxEpisodes.isNotEmpty()
+                        -> ajaxEpisodes
+
+                normalEpisodes.isNotEmpty()
+                        -> normalEpisodes
+
+                else -> listOf(
+                    Episode(
+                        url,
+                        "Full Movie"
+                    )
                 )
-            )
+            }
+
+        val type = when {
+
+            title.contains("movie", true)
+                    -> TvType.Movie
+
+            title.contains("ova", true)
+                    -> TvType.OVA
+
+            title.contains("special", true)
+                    -> TvType.OVA
+
+            else -> TvType.Anime
         }
 
         return newAnimeLoadResponse(
             title,
             url,
-            TvType.Anime
+            type
         ) {
 
             posterUrl = poster
+
             plot = description
-            tags = tags
+
+            this.tags = tags
+
+            this.recommendations =
+                recommendations
+
+            year = Regex("""\d{4}""")
+                .find(document.text())
+                ?.value
+                ?.toIntOrNull()
 
             addEpisodes(
                 DubStatus.Subbed,
-                episodes.reversed()
+                finalEpisodes.reversed()
             )
+        }
+    }
+
+    // =========================
+    // SAFE EXTRACTOR
+    // =========================
+
+    private suspend fun extractSafe(
+        url: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+
+        try {
+
+            loadExtractor(
+                url,
+                referer,
+                subtitleCallback,
+                callback
+            )
+
+        } catch (_: Exception) {
+        }
+
+        try {
+
+            val document: Document =
+                app.get(
+                    url,
+                    referer = referer
+                ).document
+
+            document.select("iframe")
+                .forEach {
+
+                    val iframe =
+                        it.attr("src")
+
+                    if (iframe.isNotBlank()) {
+
+                        try {
+
+                            loadExtractor(
+                                iframe,
+                                url,
+                                subtitleCallback,
+                                callback
+                            )
+
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
+
+        } catch (_: Exception) {
         }
     }
 
@@ -203,51 +463,95 @@ class YunshanidProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
 
-        val document = app.get(
-            data,
-            referer = mainUrl
-        ).document
+        val document =
+            app.get(
+                data,
+                referer = mainUrl
+            ).document
 
-        val servers = mutableListOf<String>()
+        val servers =
+            mutableListOf<String>()
 
-        // iframe biasa
-        document.select("iframe").forEach {
-            val src = it.attr("src")
-            if (src.isNotBlank())
-                servers.add(src)
-        }
+        // iframe
+        document.select("iframe")
+            .forEach {
 
-        // tombol server
+                val src =
+                    it.attr("src")
+
+                if (src.isNotBlank())
+                    servers.add(src)
+            }
+
+        // href button
         document.select(
-            "a[href], .mobius option"
+            "a[href], option"
         ).forEach {
 
-            val href = it.attr("href")
+            val href =
+                it.attr("href")
+                    .ifBlank {
+                        it.attr("value")
+                    }
 
             if (
-                href.contains("dood", true) ||
-                href.contains("mp4upload", true) ||
-                href.contains("stream", true)
+                href.contains("http")
             ) {
                 servers.add(href)
             }
         }
 
-        // ambil unique
-        servers.distinct().forEach { server ->
+        // packed script
+        document.select("script")
+            .forEach {
 
-            try {
+                val script =
+                    it.html()
 
-                loadExtractor(
-                    server,
+                Regex(
+                    """https?:\/\/[^"']+"""
+                ).findAll(script)
+                    .forEach { match ->
+
+                        val urlFound =
+                            match.value
+
+                        if (
+                            urlFound.contains(
+                                "mp4upload",
+                                true
+                            ) ||
+                            urlFound.contains(
+                                "dood",
+                                true
+                            ) ||
+                            urlFound.contains(
+                                "stream",
+                                true
+                            ) ||
+                            urlFound.contains(
+                                "filemoon",
+                                true
+                            )
+                        ) {
+
+                            servers.add(
+                                urlFound
+                            )
+                        }
+                    }
+            }
+
+        servers.distinct()
+            .forEach {
+
+                extractSafe(
+                    it,
                     data,
                     subtitleCallback,
                     callback
                 )
-
-            } catch (_: Exception) {
             }
-        }
 
         return true
     }
