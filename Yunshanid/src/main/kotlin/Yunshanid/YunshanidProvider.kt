@@ -9,23 +9,17 @@ import org.jsoup.nodes.Element
 import java.util.Collections
 
 class YunshanidProvider : MainAPI() {
-
     override var mainUrl = "https://yunshanid.site"
     override var name = "Yunshanid"
     override val hasMainPage = true
     override var lang = "id"
     override val hasQuickSearch = true
-    override val supportedTypes = setOf(
-        TvType.Movie,
-        TvType.TvSeries,
-        TvType.Anime
-    )
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
-    // KUNCI: Headers agar tidak dianggap robot oleh Cloudflare/Server
+    // Headers agar tidak diblokir saat nonton
     private val commonHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Referer" to "$mainUrl/",
-        "Accept" to "*/*"
+        "Referer" to "$mainUrl/"
     )
 
     override val mainPage = mainPageOf(
@@ -41,12 +35,8 @@ class YunshanidProvider : MainAPI() {
         } else {
             request.data.format(page)
         }
-
         val document = app.get("$mainUrl/$path", headers = commonHeaders).document
-        val homeList = document.select("article, .bs").mapNotNull {
-            it.toSearchResult()
-        }.distinctBy { it.url }
-
+        val homeList = document.select("article, .bs").mapNotNull { it.toSearchResult() }.distinctBy { it.url }
         return newHomePageResponse(listOf(HomePageList(request.name, homeList)), hasNext = homeList.isNotEmpty())
     }
 
@@ -55,13 +45,11 @@ class YunshanidProvider : MainAPI() {
         val href = this@YunshanidProvider.fixUrl(selectFirst("a")?.attr("href") ?: return null)
         val poster = selectFirst("img")?.attr("src")
         val typeLabel = select(".type").text().lowercase()
-
         val type = when {
             typeLabel.contains("tv") || typeLabel.contains("series") -> TvType.TvSeries
             typeLabel.contains("anime") || typeLabel.contains("donghua") -> TvType.Anime
             else -> TvType.Movie
         }
-
         return if (type == TvType.Movie) {
             newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = poster }
         } else {
@@ -71,85 +59,49 @@ class YunshanidProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         return app.get("$mainUrl/?s=$query", headers = commonHeaders).document
-            .select("article, .bs")
-            .mapNotNull { it.toSearchResult() }
-            .distinctBy { it.url }
+            .select("article, .bs").mapNotNull { it.toSearchResult() }.distinctBy { it.url }
     }
 
     private fun cleanupTitle(rawTitle: String): String = rawTitle
         .replace(Regex("^(Nonton\\s+|Download\\s+)", RegexOption.IGNORE_CASE), "")
-        .replace(Regex("\\s+Sub\\s+Indo.*$", RegexOption.IGNORE_CASE), "")
-        .trim()
+        .replace(Regex("\\s+Sub\\s+Indo.*$", RegexOption.IGNORE_CASE), "").trim()
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, headers = commonHeaders).document
-        val rawTitle = document.selectFirst("h1.entry-title")?.text() ?: "No Title"
-        val title = cleanupTitle(rawTitle)
+        val title = cleanupTitle(document.selectFirst("h1.entry-title")?.text() ?: "No Title")
         val poster = document.selectFirst(".poster img, .thumb img")?.attr("src")
         val plot = document.selectFirst(".entry-content p, .synopsis p")?.text()
         val tags = document.select(".genredesc a, .genre a").map { it.text().trim() }
-
         val episodes = document.select(".eplister li, .list-episode li").mapIndexedNotNull { index, it ->
             val epHref = this@YunshanidProvider.fixUrl(it.selectFirst("a")?.attr("href") ?: return@mapIndexedNotNull null)
             val epName = it.select(".ep-num, .epl-num").text().ifBlank { "Episode ${index + 1}" }
-
-            newEpisode(epHref) {
-                this.name = epName
-                this.episode = index + 1
-            }
+            newEpisode(epHref) { this.name = epName; this.episode = index + 1 }
         }
-
         return if (episodes.isEmpty()) {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = poster
-                this.plot = plot
-                this.tags = tags
-            }
+            newMovieLoadResponse(title, url, TvType.Movie, url) { this.posterUrl = poster; this.plot = plot; this.tags = tags }
         } else {
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.reversed()) {
-                this.posterUrl = poster
-                this.plot = plot
-                this.tags = tags
-            }
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.reversed()) { this.posterUrl = poster; this.plot = plot; this.tags = tags }
         }
     }
 
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        // Gunakan headers di sini agar link episode bisa dibuka
+    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data, headers = commonHeaders).document
         var found = false
         val seen = Collections.synchronizedSet(hashSetOf<String>())
-
         coroutineScope {
-            // Kita cari di semua tempat: Iframe, Mirror Option, dan tab Player
-            val players = document.select("iframe, .mirror-option option, .nav-tabs li a")
-            
-            players.map { element ->
+            document.select("iframe, .mirror-option option, .nav-tabs li a").map { element ->
                 async {
                     val src = when {
                         element.tagName() == "iframe" -> element.attr("src") ?: element.attr("data-src")
                         element.tagName() == "option" -> element.attr("value")
                         else -> element.attr("data-embed")
                     }
-
                     if (!src.isNullOrBlank() && src.startsWith("http") && seen.add(src)) {
-                        runCatching {
-                            // Pancing extractor dengan referer URL episode
-                            loadExtractor(src, data, subtitleCallback) { link ->
-                                found = true
-                                callback.invoke(link)
-                            }
-                        }
+                        runCatching { loadExtractor(src, data, subtitleCallback) { link -> found = true; callback.invoke(link) } }
                     }
                 }
             }.awaitAll()
         }
-
         return found
     }
 }
