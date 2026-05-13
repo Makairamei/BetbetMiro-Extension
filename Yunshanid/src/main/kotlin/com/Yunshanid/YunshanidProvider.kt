@@ -3,7 +3,9 @@ package Yunshanid
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
-import org.jsoup.Jsoup
+// IMPORT WAJIB agar .document atau .documentLarge tidak error
+import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.app
 import org.jsoup.nodes.Element
 import java.util.Collections
 import kotlinx.coroutines.async
@@ -19,12 +21,12 @@ class YunshanidProvider : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
+    // Sesuai format Winbu yang kamu suka
     override val mainPage = mainPageOf(
         "" to "Update Terbaru",
-        "category/movie/page/%d/" to "Bioskop",
+        "category/movie/page/%d/" to "Movie",
         "category/tv-series/page/%d/" to "TV Series",
         "category/anime/page/%d/" to "Anime",
-        "category/donghua/page/%d/" to "Donghua",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -34,10 +36,8 @@ class YunshanidProvider : MainAPI() {
             request.data.format(page)
         }
 
-        // Pakai Jsoup.parse manual biar gak ada drama "Unresolved reference: document"
-        val response = app.get("$mainUrl/$path").text
-        val document = Jsoup.parse(response)
-        
+        // Pakai documentLarge seperti Winbu
+        val document = app.get("$mainUrl/$path").documentLarge
         val homeList = document.select("article, .bs")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
@@ -48,9 +48,10 @@ class YunshanidProvider : MainAPI() {
         )
     }
 
+    // Gunakan fungsi pembantu yang dipanggil di dalam scope Provider
     private fun Element.toSearchResult(): SearchResponse? {
         val title = this.selectFirst(".tt, h2")?.text()?.trim() ?: return null
-        // Panggil fixUrl dari instance Provider secara eksplisit
+        // FIX: Panggil fixUrl lewat instance provider (this@YunshanidProvider)
         val href = this@YunshanidProvider.fixUrl(this.selectFirst("a")?.attr("href") ?: return null)
         val poster = this.selectFirst("img")?.attr("src")
         
@@ -69,10 +70,8 @@ class YunshanidProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val response = app.get("$mainUrl/?s=$query").text
-        val document = Jsoup.parse(response)
-        
-        return document.select("article, .bs")
+        return app.get("$mainUrl/?s=$query").documentLarge
+            .select("article, .bs")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
     }
@@ -85,8 +84,7 @@ class YunshanidProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val response = app.get(url).text
-        val document = Jsoup.parse(response)
+        val document = app.get(url).documentLarge
         
         val rawTitle = document.selectFirst("h1.entry-title")?.text() ?: "No Title"
         val title = cleanupTitle(rawTitle)
@@ -95,10 +93,6 @@ class YunshanidProvider : MainAPI() {
         
         val rating = document.selectFirst(".rating strong, .imdb-rating")?.text()?.toDoubleOrNull()
         val tags = document.select(".genredesc a, .genre a").map { it.text().trim() }
-
-        val recommendations = document.select("article, .bs")
-            .mapNotNull { it.toSearchResult() }
-            .filterNot { it.url == url }
 
         val episodes = document.select(".eplister li, .list-episode li").mapNotNull {
             val epName = it.select(".ep-num, .epl-num").text() ?: "Episode"
@@ -113,7 +107,6 @@ class YunshanidProvider : MainAPI() {
                 this.plot = plot
                 this.tags = tags
                 this.score = rating?.let { Score.from10(it) }
-                this.recommendations = recommendations
             }
         } else {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.reversed()) {
@@ -121,7 +114,6 @@ class YunshanidProvider : MainAPI() {
                 this.plot = plot
                 this.tags = tags
                 this.score = rating?.let { Score.from10(it) }
-                this.recommendations = recommendations
             }
         }
     }
@@ -132,8 +124,7 @@ class YunshanidProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val response = app.get(data).text
-        val document = Jsoup.parse(response)
+        val document = app.get(data).documentLarge
         var found = false
         val seen = Collections.synchronizedSet(hashSetOf<String>())
 
