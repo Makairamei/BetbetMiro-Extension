@@ -26,15 +26,23 @@ class ShortMax : MainAPI() {
         const val ENDPOINT_DETAIL = "$BASE_API_URL/gapi/v1/movie/detail"
         const val ENDPOINT_VIDEO = "$BASE_API_URL/gapi/v1/movie/episodePlayInfo"
 
-        // Headers resmi untuk menyamar menjadi aplikasi Android ShortMax tulen
-        val APP_HEADERS = mapOf(
-            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
-            "Accept" to "application/json, text/plain, */*",
-            "Content-Type" to "application/json",
-            "X-Requested-With" to "com.shorttv.live",
-            "Origin" to "https://www.shorttv.live",
-            "Referer" to "https://www.shorttv.live/"
-        )
+        // 🛡️ DYNAMIC WEB GATEWAY HEADERS (Hasil Sadapan Mode Web Kamu!)
+        fun getWebHeaders(): Map<String, String> {
+            val currentTime = System.currentTimeMillis().toString()
+            return mapOf(
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+                "Accept" to "application/json, text/plain, */*",
+                "Content-Type" to "application/json",
+                "s-platform" to "3",       // Platform H5 / Web resmi
+                "s-language" to "id",      // Mengunci Cluster DB Bahasa Indonesia 🇮🇩
+                "s-version" to "1.0.0",
+                "s-channel" to "web",
+                "s-uuid" to "c99da9f1-5636-4bc0-9e9a-11992a82b2ca", // Sidik jari browser tiruan
+                "s-timestamp" to currentTime,                       // Ketukan milidetik dinamis
+                "Origin" to "https://www.shorttv.live",
+                "Referer" to "https://www.shorttv.live/"
+            )
+        }
     }
 
     override val mainPage = mainPageOf(
@@ -42,10 +50,10 @@ class ShortMax : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // FIX: Menggunakan POST dengan JSON Body Payload sesuai hasil sadapan jaringan
+        // Eksekusi POST Engine dengan menyuntikkan dokumen perizinan Web Mode
         val responseText = app.post(
             request.data, 
-            headers = APP_HEADERS,
+            headers = getWebHeaders(),
             json = mapOf(
                 "page" to page,
                 "pageSize" to 20
@@ -70,10 +78,9 @@ class ShortMax : MainAPI() {
         val cleanQuery = query.trim()
         if (cleanQuery.isBlank()) return emptyList()
 
-        // FIX: Pencarian menggunakan POST dengan muatan keyword terenkripsi
         val responseText = app.post(
             ENDPOINT_SEARCH,
-            headers = APP_HEADERS,
+            headers = getWebHeaders(),
             json = mapOf(
                 "keyword" to cleanQuery,
                 "page" to 1,
@@ -96,10 +103,9 @@ class ShortMax : MainAPI() {
         val playId = url.trim()
         val playIdInt = playId.toIntOrNull() ?: throw ErrorLoadingException("ID Drama Malformed")
 
-        // FIX: Detail drama dipanggil via POST dengan ID berformat Integer (Angka)
         val responseText = app.post(
             ENDPOINT_DETAIL,
-            headers = APP_HEADERS,
+            headers = getWebHeaders(),
             json = mapOf("shortPlayId" to playIdInt)
         ).text
         
@@ -136,10 +142,9 @@ class ShortMax : MainAPI() {
         val playId = payload.playId ?: return false
         val epNum = payload.episodeNum ?: return false
 
-        // FIX: Pengambilan link video dikunci menggunakan POST Stream Engine
         val responseText = app.post(
             ENDPOINT_VIDEO,
-            headers = APP_HEADERS,
+            headers = getWebHeaders(),
             json = mapOf(
                 "shortPlayId" to playId,
                 "episodeNum" to epNum
@@ -176,7 +181,7 @@ class ShortMax : MainAPI() {
         return true
     }
 
-    // --- STRUKTUR DATA PARSER (JACKSON TARGET OBJECTS) ---
+    // --- STRUKTUR MODEL DATA KELAS ---
     data class ShortPlayListResponse(
         @JsonProperty("status") val status: String? = null,
         @JsonProperty("page") val page: Int? = null,
