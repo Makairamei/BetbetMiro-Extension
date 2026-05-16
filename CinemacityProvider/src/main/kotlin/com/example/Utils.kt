@@ -1,4 +1,4 @@
-package com.Cinemacity
+package com.example
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.google.gson.annotations.SerializedName
@@ -11,13 +11,13 @@ data class ResponseData(
         val id: String? = null,
         val type: String? = null,
         val name: String? = null,
-        @param:JsonProperty("imdb_id")
+        @JsonProperty("imdb_id")
         val imdbId: String? = null,
 
         val slug: String? = null,
 
-        val director: List<String>? = null,
-        val writer: List<String>? = null,
+        val director: String? = null,
+        val writer: String? = null,
 
         val description: String? = null,
         val year: String? = null,
@@ -29,7 +29,7 @@ data class ResponseData(
         val imdbRating: String? = null,
         val genres: List<String>? = null,
         val poster: String? = null,
-        @param:JsonProperty("_rawPosterUrl")
+        @JsonProperty("_rawPosterUrl")
         val rawPosterUrl: String? = null,
 
         val background: String? = null,
@@ -68,7 +68,7 @@ data class ResponseData(
 
         data class EpisodeDetails(
             val id: String? = null,
-            val name: String? = null,
+            val title: String? = null,
             val season: Int? = null,
             val episode: Int? = null,
             val thumbnail: String? = null,
@@ -80,6 +80,7 @@ data class ResponseData(
 
         data class AppExtras(
             val cast: List<Cast>? = null,
+            val directors: List<Any?>? = null,
             val writers: List<Any?>? = null,
             val seasonPosters: List<String?>? = null,
             val certification: String? = null
