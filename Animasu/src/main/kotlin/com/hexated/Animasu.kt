@@ -52,11 +52,10 @@ class Animasu : MainAPI() {
         "status=&tipe=&urutan=populer" to "Terpopuler",
         "status=&tipe=&urutan=rating" to "Rating Tertinggi",
         "status=&tipe=Movie&urutan=update" to "Movie Terbaru",
-        "status=&tipe=Movie&urutan=populer" to "Movie Terpopuler",
+        "status=&tipe=Movie&uruler=populer" to "Movie Terpopuler",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        context?.let { StarPopupHelper.showStarPopupIfNeeded(it) }
         val document = app.get("$mainUrl/pencarian/?${request.data}&halaman=$page").document
         val home = document.select("div.listupd div.bs").map {
             it.toSearchResult()
@@ -144,9 +143,9 @@ class Animasu : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
         document.select(".mobius > .mirror > option").mapNotNull {
-            val rawValue = it.attr("value")
-            if (rawValue.isBlank()) return@mapNotNull null
-            val decoded = base64Decode(rawValue) ?: return@mapNotNull null
+            val value = it.attr("value")
+            if (value.isBlank()) return@mapNotNull null
+            val decoded = base64Decode(value) ?: return@mapNotNull null
             val iframeSrc = Jsoup.parse(decoded).select("iframe").attr("src")
             if (iframeSrc.isBlank()) return@mapNotNull null
             fixUrl(iframeSrc) to it.text()
