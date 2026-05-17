@@ -1,22 +1,10 @@
 package recloudstream
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.lagradost.cloudstream3.HomePageResponse
-import com.lagradost.cloudstream3.LoadResponse
-import com.lagradost.cloudstream3.MainAPI
-import com.lagradost.cloudstream3.MainPageRequest
-import com.lagradost.cloudstream3.SearchResponse
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.mainPageOf
-import com.lagradost.cloudstream3.newHomePageResponse
-import com.lagradost.cloudstream3.newMovieLoadResponse
-import com.lagradost.cloudstream3.newMovieSearchResponse
+import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.StringUtils.encodeUri
-import com.lagradost.cloudstream3.utils.loadExtractor
+import java.net.URLEncoder
 
 class DailymotionProvider : MainAPI() {
 
@@ -47,7 +35,8 @@ class DailymotionProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "https://api.dailymotion.com/videos?fields=id,title,thumbnail_360_url&limit=20&search=${encodeUri(query)}"
+        val encodedQuery = try { URLEncoder.encode(query, "UTF-8") } catch (_: Exception) { query }
+        val url = "https://api.dailymotion.com/videos?fields=id,title,thumbnail_360_url&limit=20&search=$encodedQuery"
         val response = app.get(url).text
         val json = tryParseJson<VideoSearchResponse>(response)
         
@@ -75,7 +64,7 @@ class DailymotionProvider : MainAPI() {
         }
     }
 
-    private fun VideoDetailResponse.toLoadResponse(provider: DailymotionProvider): LoadResponse {
+    private suspend fun VideoDetailResponse.toLoadResponse(provider: DailymotionProvider): LoadResponse {
         val watchUrl = "https://www.dailymotion.com/video/${this.id}"
         return provider.newMovieLoadResponse(
             this.title ?: "Dailymotion Video",
@@ -95,9 +84,8 @@ class DailymotionProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Memanggil extractor internal/bawaan Cloudstream untuk mengurai m3u8 dari Dailymotion
-        loadExtractor(data, subtitleCallback, callback)
-        return true
+        // Menyertakan referer resmi agar bypass m3u8 token berjalan mulus tanpa hambatan
+        return loadExtractor(data, "$mainUrl/", subtitleCallback, callback)
     }
 
     // Model data yang aman dari warning target anotasi masa depan
