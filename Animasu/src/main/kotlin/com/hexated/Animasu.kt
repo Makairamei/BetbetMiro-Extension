@@ -9,9 +9,9 @@ import com.lagradost.cloudstream3.utils.*
 import kotlinx.coroutines.runBlocking
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
-import android.content.Context
 
 class Animasu : MainAPI() {
+
     override var mainUrl = "https://v0.animasu.app"
     override var name = "Animasu😸"
     override val hasMainPage = true
@@ -25,10 +25,10 @@ class Animasu : MainAPI() {
     )
 
     companion object {
-        var context: android.content.Context? = null
 
         fun getType(t: String?): TvType {
             if (t == null) return TvType.Anime
+
             return when {
                 t.contains("Tv", true) -> TvType.Anime
                 t.contains("Movie", true) -> TvType.AnimeMovie
@@ -39,6 +39,7 @@ class Animasu : MainAPI() {
 
         fun getStatus(t: String?): ShowStatus {
             if (t == null) return ShowStatus.Completed
+
             return when {
                 t.contains("Sedang Tayang", true) -> ShowStatus.Ongoing
                 else -> ShowStatus.Completed
@@ -52,14 +53,21 @@ class Animasu : MainAPI() {
         "status=&tipe=&urutan=populer" to "Terpopuler",
         "status=&tipe=&urutan=rating" to "Rating Tertinggi",
         "status=&tipe=Movie&urutan=update" to "Movie Terbaru",
-        "status=&tipe=Movie&uruler=populer" to "Movie Terpopuler",
+        "status=&tipe=Movie&urutan=populer" to "Movie Terpopuler",
     )
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("$mainUrl/pencarian/?${request.data}&halaman=$page").document
+    override suspend fun getMainPage(
+        page: Int,
+        request: MainPageRequest
+    ): HomePageResponse {
+
+        val document =
+            app.get("$mainUrl/pencarian/?${request.data}&halaman=$page").document
+
         val home = document.select("div.listupd div.bs").map {
             it.toSearchResult()
         }
+
         return newHomePageResponse(request.name, home)
     }
 
@@ -67,71 +75,170 @@ class Animasu : MainAPI() {
         return if (uri.contains("/anime/")) {
             uri
         } else {
+
             var title = uri.substringAfter("$mainUrl/")
+
             title = when {
-                (title.contains("-episode")) && !(title.contains("-movie")) -> title.substringBefore(
-                    "-episode"
-                )
-                (title.contains("-movie")) -> title.substringBefore("-movie")
+                (title.contains("-episode")) && !(title.contains("-movie")) -> {
+                    title.substringBefore("-episode")
+                }
+
+                (title.contains("-movie")) -> {
+                    title.substringBefore("-movie")
+                }
+
                 else -> title
             }
+
             "$mainUrl/anime/$title"
         }
     }
 
     private fun Element.toSearchResult(): AnimeSearchResponse {
-        val href = getProperAnimeLink(fixUrlNull(this.selectFirst("a")?.attr("href")).toString())
+
+        val href =
+            getProperAnimeLink(
+                fixUrlNull(
+                    this.selectFirst("a")?.attr("href")
+                ).toString()
+            )
+
         val title = this.select("div.tt").text().trim()
-        val posterUrl = fixUrlNull(this.selectFirst("img")?.getImageAttr())
-        val epNum = this.selectFirst("span.epx")?.text()?.filter { it.isDigit() }?.toIntOrNull()
-        return newAnimeSearchResponse(title, href, TvType.Anime) {
+
+        val posterUrl =
+            fixUrlNull(this.selectFirst("img")?.getImageAttr())
+
+        val epNum =
+            this.selectFirst("span.epx")
+                ?.text()
+                ?.filter { it.isDigit() }
+                ?.toIntOrNull()
+
+        return newAnimeSearchResponse(
+            title,
+            href,
+            TvType.Anime
+        ) {
             this.posterUrl = posterUrl
             addSub(epNum)
         }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        return app.get("$mainUrl/?s=$query").document.select("div.listupd div.bs").map {
-            it.toSearchResult()
-        }
+
+        return app.get("$mainUrl/?s=$query")
+            .document
+            .select("div.listupd div.bs")
+            .map {
+                it.toSearchResult()
+            }
     }
 
     override suspend fun load(url: String): LoadResponse {
+
         val document = app.get(url).document
 
         val title =
-            document.selectFirst("div.infox h1")?.text().toString().replace("Sub Indo", "").trim()
-        val poster = document.selectFirst("div.bigcontent img")?.getImageAttr()
+            document.selectFirst("div.infox h1")
+                ?.text()
+                .toString()
+                .replace("Sub Indo", "")
+                .trim()
 
-        val table = document.selectFirst("div.infox div.spe")
-        val type = getType(table?.selectFirst("span:contains(Jenis:)")?.ownText())
+        val poster =
+            document.selectFirst("div.bigcontent img")
+                ?.getImageAttr()
+
+        val table =
+            document.selectFirst("div.infox div.spe")
+
+        val type =
+            getType(
+                table?.selectFirst("span:contains(Jenis:)")
+                    ?.ownText()
+            )
+
         val year =
-            table?.selectFirst("span:contains(Rilis:)")?.ownText()?.substringAfterLast(",")?.trim()
+            table?.selectFirst("span:contains(Rilis:)")
+                ?.ownText()
+                ?.substringAfterLast(",")
+                ?.trim()
                 ?.toIntOrNull()
-        val status = table?.selectFirst("span:contains(Status:) font")?.text()
-        val trailer = document.selectFirst("div.trailer iframe")?.attr("src")
-        
-        val episodes = document.select("ul#daftarepisode > li").mapNotNull {
-            val aTag = it.selectFirst("a") ?: return@mapNotNull null
-            val link = fixUrl(aTag.attr("href"))
-            val name = aTag.text()
-            val episode = Regex("Episode\\s?(\\d+)").find(name)?.groupValues?.getOrNull(1)?.toIntOrNull()
-            newEpisode(link) { this.episode = episode }
-        }.reversed()
 
-        val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
+        val status =
+            table?.selectFirst("span:contains(Status:) font")
+                ?.text()
 
-        return newAnimeLoadResponse(title, url, type) {
+        val trailer =
+            document.selectFirst("div.trailer iframe")
+                ?.attr("src")
+
+        val episodes =
+            document.select("ul#daftarepisode > li").mapNotNull {
+
+                val aTag = it.selectFirst("a")
+                    ?: return@mapNotNull null
+
+                val link = fixUrl(aTag.attr("href"))
+
+                val name = aTag.text()
+
+                val episode =
+                    Regex("Episode\\s?(\\d+)")
+                        .find(name)
+                        ?.groupValues
+                        ?.getOrNull(1)
+                        ?.toIntOrNull()
+
+                newEpisode(link) {
+                    this.episode = episode
+                }
+            }.reversed()
+
+        val tracker = try {
+            APIHolder.getTracker(
+                title,
+                TrackerType.getTypes(type),
+                year,
+                true
+            )
+        } catch (_: Exception) {
+            null
+        }
+
+        return newAnimeLoadResponse(
+            title,
+            url,
+            type
+        ) {
+
             posterUrl = tracker?.image ?: poster
             backgroundPosterUrl = tracker?.cover
+
             this.year = year
-            addEpisodes(DubStatus.Subbed, episodes)
+
+            addEpisodes(
+                DubStatus.Subbed,
+                episodes
+            )
+
             showStatus = getStatus(status)
-            plot = document.select("div.sinopsis p").text()
-            this.tags = table?.select("span:contains(Genre:) a")?.map { it.text() }
+
+            plot =
+                document.select("div.sinopsis p")
+                    .text()
+
+            this.tags =
+                table?.select("span:contains(Genre:) a")
+                    ?.map { it.text() }
+
             addTrailer(trailer)
+
             addMalId(tracker?.malId)
-            addAniListId(tracker?.aniId?.toIntOrNull())
+
+            addAniListId(
+                tracker?.aniId?.toIntOrNull()
+            )
         }
     }
 
@@ -141,17 +248,44 @@ class Animasu : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+
         val document = app.get(data).document
-        document.select(".mobius > .mirror > option").mapNotNull {
-            val value = it.attr("value")
-            if (value.isBlank()) return@mapNotNull null
-            val decoded = base64Decode(value) ?: return@mapNotNull null
-            val iframeSrc = Jsoup.parse(decoded).select("iframe").attr("src")
-            if (iframeSrc.isBlank()) return@mapNotNull null
-            fixUrl(iframeSrc) to it.text()
-        }.amap { (iframe, quality) ->
-            loadFixedExtractor(iframe, quality, "$mainUrl/", subtitleCallback, callback)
-        }
+
+        document.select(".mobius > .mirror > option")
+            .mapNotNull {
+
+                val value = it.attr("value")
+
+                if (value.isBlank()) {
+                    return@mapNotNull null
+                }
+
+                val decoded =
+                    base64Decode(value)
+                        ?: return@mapNotNull null
+
+                val iframeSrc =
+                    Jsoup.parse(decoded)
+                        .select("iframe")
+                        .attr("src")
+
+                if (iframeSrc.isBlank()) {
+                    return@mapNotNull null
+                }
+
+                fixUrl(iframeSrc) to it.text()
+            }
+            .amap { (iframe, quality) ->
+
+                loadFixedExtractor(
+                    iframe,
+                    quality,
+                    "$mainUrl/",
+                    subtitleCallback,
+                    callback
+                )
+            }
+
         return true
     }
 
@@ -162,8 +296,15 @@ class Animasu : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        loadExtractor(url, referer, subtitleCallback) { link ->
+
+        loadExtractor(
+            url,
+            referer,
+            subtitleCallback
+        ) { link ->
+
             runBlocking {
+
                 callback.invoke(
                     newExtractorLink(
                         link.name,
@@ -171,10 +312,19 @@ class Animasu : MainAPI() {
                         link.url,
                         link.type
                     ) {
+
                         this.referer = link.referer
-                        this.quality = if (link.type == ExtractorLinkType.M3U8 || link.name == "Uservideo") link.quality else getIndexQuality(
-                                quality
-                            )
+
+                        this.quality =
+                            if (
+                                link.type == ExtractorLinkType.M3U8 ||
+                                link.name == "Uservideo"
+                            ) {
+                                link.quality
+                            } else {
+                                getIndexQuality(quality)
+                            }
+
                         this.headers = link.headers
                         this.extractorData = link.extractorData
                     }
@@ -184,16 +334,35 @@ class Animasu : MainAPI() {
     }
 
     private fun getIndexQuality(str: String?): Int {
-        return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+        return Regex("(\\d{3,4})[pP]")
+            .find(str ?: "")
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
             ?: Qualities.Unknown.value
     }
 
     private fun Element.getImageAttr(): String? {
+
         return when {
-            this.hasAttr("data-src") -> this.attr("abs:data-src")
-            this.hasAttr("data-lazy-src") -> this.attr("abs:data-lazy-src")
-            this.hasAttr("srcset") -> this.attr("abs:srcset").substringBefore(" ")
-            else -> this.attr("abs:src")
+
+            this.hasAttr("data-src") -> {
+                this.attr("abs:data-src")
+            }
+
+            this.hasAttr("data-lazy-src") -> {
+                this.attr("abs:data-lazy-src")
+            }
+
+            this.hasAttr("srcset") -> {
+                this.attr("abs:srcset")
+                    .substringBefore(" ")
+            }
+
+            else -> {
+                this.attr("abs:src")
+            }
         }
     }
 }
