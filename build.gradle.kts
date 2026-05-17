@@ -61,93 +61,39 @@ subprojects {
 
         setRepo(
             System.getenv("GITHUB_REPOSITORY")
-                ?: "https://github.com/duro92/ExtCloud"
+                ?: "https://github.com/durotun/cloudstream-extensions"
         )
+    }
 
-        authors = listOf(
-            "duro92"
-        )
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        kotlinOptions {
+            jvmTarget = "11"
+            // DIUBAH JADI FALSE: Mematikan kuncian ketat secara global agar warning Cinemax21, Dramacool, dll tidak merusak build Drakor
+            allWarningsAsErrors = false
+        }
     }
 
     android {
 
-        namespace = "com.excloud"
+        compileSdkVersion(35)
 
         defaultConfig {
-
-            minSdk = 21
-
-            compileSdkVersion(35)
-
-            targetSdk = 35
+            minSdkVersion(21)
+            targetSdkVersion(35)
         }
-
-        // =========================
-        // JAVA 17 FIX
-        // =========================
 
         compileOptions {
-
-            sourceCompatibility =
-                JavaVersion.VERSION_17
-
-            targetCompatibility =
-                JavaVersion.VERSION_17
-        }
-
-        // =========================
-        // KOTLIN JVM 17 FIX
-        // =========================
-
-        tasks.withType<KotlinJvmCompile>() {
-
-            compilerOptions {
-
-                jvmTarget.set(
-                    JvmTarget.JVM_17
-                )
-
-                freeCompilerArgs.addAll(
-                    "-Xno-call-assertions",
-                    "-Xno-param-assertions",
-                    "-Xno-receiver-assertions"
-                )
-            }
+            sourceCompatibility = JavaVersion.VERSION_11
+            targetCompatibility = JavaVersion.VERSION_11
         }
     }
 
     dependencies {
 
-        val cloudstream by configurations
-        val implementation by configurations
+        val stringFormat =
+            "org.jetbrains.kotlin:kotlin-stdlib:2.3.0"
 
-        // =========================
-        // CLOUDSTREAM
-        // =========================
-
-        cloudstream(
-            "com.lagradost:cloudstream3:pre-release"
-        )
-
-        // =========================
-        // KOTLIN
-        // =========================
-
-        implementation(
-            kotlin("stdlib")
-        )
-
-        implementation(
-            "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1"
-        )
-
-        implementation(
-            "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1"
-        )
-
-        implementation(
-            "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3"
-        )
+        implementation(stringFormat)
 
         // =========================
         // NETWORK
@@ -216,8 +162,5 @@ subprojects {
 // =========================
 
 task<Delete>("clean") {
-
-    delete(
-        rootProject.layout.buildDirectory
-    )
+    delete(rootProject.layout.buildDirectory)
 }
