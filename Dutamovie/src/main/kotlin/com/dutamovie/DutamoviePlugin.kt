@@ -7,8 +7,13 @@ import com.lagradost.cloudstream3.plugins.Plugin
 @CloudstreamPlugin
 class DutaMoviePlugin : Plugin() {
     override fun load(context: Context) {
+        // Mengamankan inisialisasi context untuk objek DutaMovie
         DutaMovie.context = context
+        
+        // Mendaftarkan core API DutaMovie yang sudah kita perbarui mainPage-nya
         registerMainAPI(DutaMovie())
+        
+        // Mempertahankan semua extractor bawaan Anda agar link video tidak broken
         registerExtractorAPI(Dingtezuni())
         registerExtractorAPI(Bingezove())
         registerExtractorAPI(Mivalyo())
