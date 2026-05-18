@@ -7,8 +7,6 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.net.URI
-import java.text.SimpleDateFormat
-import java.util.Locale
 
 class Gomunime : MainAPI() {
     override var mainUrl = "https://gomunime.top"
@@ -34,21 +32,26 @@ class Gomunime : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = request.data.format(page)
+        // FIX #1: JURUS ANTI ANTI-404. Buang folder "page/%d/" khusus di halaman pertama!
+        val url = if (page == 1) {
+            request.data.replace("page/%d/", "").replace("//?", "/?")
+        } else {
+            request.data.format(page)
+        }
+        
         val document = app.get(url).document
         
-        // Mengambil susunan elemen kartu anime sesuai penyeleksian bawaanmu
-        val home = document.select("div.listupd div.bs, div.mangaip div.bs, .listupd .bsx, div.animposx").mapNotNull { 
+        // Selector diperluas melimpah biar kebal badai update tema website
+        val home = document.select("div.listupd div.bs, div.mangaip div.bs, .listupd .bsx, div.animposx, article.bs").mapNotNull { 
             it.toSearchResult() 
         }
         
-        // JURUS ANTI-ZONK: Dibungkus ke HomePageList agar baris kategori muncul di aplikasi!
         return newHomePageResponse(
             list = listOf(
                 HomePageList(
                     name = request.name,
                     list = home,
-                    isHorizontalImages = false // Kartu vertikal tegak khas poster anime
+                    isHorizontalImages = false
                 )
             ),
             hasNext = home.isNotEmpty()
@@ -56,9 +59,20 @@ class Gomunime : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val title = this.selectFirst("div.tt h2, .tt h2, .tt, h2, title, .entry-title")?.text()?.trim() ?: return null
+        val title = this.selectFirst("div.tt h2, .tt h2, .tt, h2, title, .entry-title, .limit h2")?.text()?.trim() ?: return null
         val href = fixUrl(this.selectFirst("a")?.attr("href") ?: return null)
-        val poster = fixUrlNull(this.selectFirst("img")?.attr("src") ?: this.selectFirst("img")?.attr("data-src")) ?: ""
+        
+        // FIX #2: Amankan poster dari cengkraman lazy-load gambar hemat kuota
+        val poster = fixUrlNull(
+            this.selectFirst("img")?.let { img ->
+                when {
+                    img.hasAttr("data-lazy-src") -> img.attr("data-lazy-src")
+                    img.hasAttr("data-src") -> img.attr("data-src")
+                    img.hasAttr("src") -> img.attr("src")
+                    else -> ""
+                }
+            }
+        ) ?: ""
         
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = poster
@@ -68,16 +82,27 @@ class Gomunime : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/?s=$query"
         val document = app.get(url).document
-        return document.select("div.listupd div.bs, div.mangaip div.bs, .listupd .bsx, div.animposx").mapNotNull { 
+        return document.select("div.listupd div.bs, div.mangaip div.bs, .listupd .bsx, div.animposx, article.bs").mapNotNull { 
             it.toSearchResult() 
         }
     }
 
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
-        val title = document.selectFirst("h1.entry-title, .entry-title")?.text()?.replace("Subtitle Indonesia", "")?.trim() ?: ""
-        val poster = document.selectFirst("div.thumb img, .thumb img")?.attr("src") ?: ""
-        val type = getType(document.selectFirst(".spe span:contains(Type), .spe span:contains(Jenis)")?.text() ?: "")
+        val title = document.selectFirst("h1.entry-title, .entry-title, h1")?.text()?.replace("Subtitle Indonesia", "")?.trim() ?: ""
+        
+        val poster = fixUrlNull(
+            document.selectFirst("div.thumb img, .thumb img, .poster img")?.let { img ->
+                when {
+                    img.hasAttr("data-lazy-src") -> img.attr("data-lazy-src")
+                    img.hasAttr("data-src") -> img.attr("data-src")
+                    img.hasAttr("src") -> img.attr("src")
+                    else -> ""
+                }
+            }
+        ) ?: ""
+        
+        val type = getType(document.selectFirst(".spe span:contains(Type), .spe span:contains(Jenis), .info-content span:contains(Type)")?.text() ?: "")
         
         val episodes = document.getEpisodes(url)
 
@@ -88,7 +113,7 @@ class Gomunime : MainAPI() {
         } else {
             newTvSeriesLoadResponse(title, url, TvType.Anime, episodes) {
                 this.posterUrl = poster
-                this.showStatus = getStatus(document.selectFirst(".spe span:contains(Status)")?.text() ?: "")
+                this.showStatus = getStatus(document.selectFirst(".spe span:contains(Status), .info-content span:contains(Status)")?.text() ?: "")
             }
         }
     }
@@ -99,7 +124,6 @@ class Gomunime : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Terkoneksi mulus dengan sistem pembongkar link di GomunimeExtractors.kt bawaanmu
         return loadGomunimeLinks(data, subtitleCallback, callback)
     }
 
@@ -108,7 +132,7 @@ class Gomunime : MainAPI() {
             URI(url).path.trim('/').substringAfter("anime/")
         }.getOrNull()?.takeIf { it.isNotBlank() } ?: return emptyList()
 
-        return this.select("a[href*=\"$slug-episode-\"], ul.episodios li a")
+        return this.select("a[href*=\"$slug-episode-\"], ul.episodios li a, div.eplister ul li a")
             .mapNotNull { a ->
                 val href = fixUrlNull(a.attr("href")) ?: return@mapNotNull null
                 val epNum = Regex("""episode-(\d+)""", RegexOption.IGNORE_CASE)
@@ -122,7 +146,7 @@ class Gomunime : MainAPI() {
             }
             .distinctBy { "${it.name}-${it.episode}" }
             .sortedBy { it.episode ?: Int.MAX_VALUE }
-    }
+        }
 
     private fun getType(text: String): TvType = when {
         text.contains("movie", true) -> TvType.AnimeMovie
