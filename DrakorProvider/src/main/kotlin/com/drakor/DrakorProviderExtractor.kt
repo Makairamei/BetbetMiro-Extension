@@ -19,7 +19,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.net.URLEncoder
-import org.json.JSONObject 
+import org.json.JSONObject
 import java.net.URLDecoder
 import com.drakor.DrakorProvider.Companion.cinemaOSApi
 import com.drakor.DrakorProvider.Companion.Player4uApi
@@ -134,20 +134,20 @@ object DrakorProviderExtractor : DrakorProvider() {
         callback: (ExtractorLink) -> Unit
     ) {
         val baseUrl = "https://dramafull.cc"
-        
+
         val cleanQuery = DrakorHelper.normalizeQuery(title)
         val encodedQuery = URLEncoder.encode(cleanQuery, "UTF-8").replace("+", "%20")
         val searchUrl = "$baseUrl/api/live-search/$encodedQuery"
 
         try {
             val searchRes = app.get(searchUrl, headers = DrakorHelper.headers).parsedSafe<DrakorSearchResponse>()
-            
+
             val matchedItem = searchRes?.data?.find { item ->
                 val itemTitle = item.title ?: item.name ?: ""
                 DrakorHelper.isFuzzyMatch(title, itemTitle)
             } ?: searchRes?.data?.firstOrNull()
 
-            if (matchedItem == null) return 
+            if (matchedItem == null) return
 
             val slug = matchedItem.slug ?: return
             var targetUrl = "$baseUrl/film/$slug"
@@ -155,7 +155,7 @@ object DrakorProviderExtractor : DrakorProvider() {
             val doc = app.get(targetUrl, headers = DrakorHelper.headers).document
 
             if (season != null && episode != null) {
-                val episodeHref = doc.select("div.episode-item a, .episode-list a").find { 
+                val episodeHref = doc.select("div.episode-item a, .episode-list a").find {
                     val text = it.text().trim()
                     val epNum = Regex("""(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull()
                     epNum == episode
@@ -165,13 +165,13 @@ object DrakorProviderExtractor : DrakorProvider() {
                 targetUrl = fixUrl(episodeHref, baseUrl)
             } else {
                 val selectors = listOf(
-                    "a.btn-watch", 
-                    "a.watch-now", 
-                    ".watch-button a", 
+                    "a.btn-watch",
+                    "a.watch-now",
+                    ".watch-button a",
                     "div.last-episode a",
                     ".film-buttons a.btn-primary"
                 )
-                
+
                 var foundUrl: String? = null
                 for (selector in selectors) {
                     val el = doc.selectFirst(selector)
@@ -188,40 +188,40 @@ object DrakorProviderExtractor : DrakorProvider() {
 
             val docPage = app.get(targetUrl, headers = DrakorHelper.headers).document
             val allScripts = docPage.select("script").joinToString(" ") { it.data() }
-            
-            val signedUrl = Regex("""signedUrl\s*=\s*["']([^"']+)["']""").find(allScripts)?.groupValues?.get(1)?.replace("\\/", "/") 
+
+            val signedUrl = Regex("""signedUrl\s*=\s*["']([^"']+)["']""").find(allScripts)?.groupValues?.get(1)?.replace("\\/", "/")
                 ?: return
-            
+
             val jsonResponseText = app.get(signedUrl, referer = targetUrl, headers = DrakorHelper.headers).text
             val jsonObject = tryParseJson<Map<String, Any>>(jsonResponseText) ?: return
             val videoSource = jsonObject["video_source"] as? Map<String, String> ?: return
-            
+
             videoSource.forEach { (quality, url) ->
-                 if (url.isNotEmpty()) {
+                if (url.isNotEmpty()) {
                     callback.invoke(
                         newExtractorLink(
                             "Drakor",
                             "Drakor ($quality)",
                             url,
-                            INFER_TYPE 
+                            INFER_TYPE
                         )
                     )
                 }
             }
-             
-             val bestQualityKey = videoSource.keys.maxByOrNull { it.toIntOrNull() ?: 0 } ?: return
-             val subJson = jsonObject["sub"] as? Map<String, Any>
-             val subs = subJson?.get(bestQualityKey) as? List<String>
-             subs?.forEach { subPath ->
-                 val subUrl = fixUrl(subPath, baseUrl)
-                 subtitleCallback.invoke(
-                     newSubtitleFile(
-                         "English",
-                         subUrl
-                     )
-                 )
-             }
-             
+
+            val bestQualityKey = videoSource.keys.maxByOrNull { it.toIntOrNull() ?: 0 } ?: return
+            val subJson = jsonObject["sub"] as? Map<String, Any>
+            val subs = subJson?.get(bestQualityKey) as? List<String>
+            subs?.forEach { subPath ->
+                val subUrl = fixUrl(subPath, baseUrl)
+                subtitleCallback.invoke(
+                    newSubtitleFile(
+                        "English",
+                        subUrl
+                    )
+                )
+            }
+
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -242,8 +242,8 @@ object DrakorProviderExtractor : DrakorProvider() {
         try {
             val searchRes = app.get("$mainUrl/api/DramaList/Search?q=$title&type=0").text
             val searchList = tryParseJson<ArrayList<KisskhMedia>>(searchRes) ?: return
-            val matched = searchList.find { 
-                it.title.equals(title, true) 
+            val matched = searchList.find {
+                it.title.equals(title, true)
             } ?: searchList.firstOrNull { it.title?.contains(title, true) == true } ?: return
             val dramaId = matched.id ?: return
             val detailRes = app.get("$mainUrl/api/DramaList/Drama/$dramaId?isq=false").parsedSafe<KisskhDetail>() ?: return
@@ -305,6 +305,7 @@ object DrakorProviderExtractor : DrakorProvider() {
     private data class KisskhKey(@JsonProperty("key") val key: String?)
     private data class KisskhSources(@JsonProperty("Video") val video: String?, @JsonProperty("ThirdParty") val thirdParty: String?)
     private data class KisskhSubtitle(@JsonProperty("src") val src: String?, @JsonProperty("label") val label: String?)
+
     suspend fun invokeMoviebox(
         title: String,
         year: Int?,
@@ -315,7 +316,7 @@ object DrakorProviderExtractor : DrakorProvider() {
     ) {
         val apiUrl = "https://filmboom.top"
         val searchUrl = "$apiUrl/wefeed-h5-bff/web/subject/search"
-        
+
         val searchBody = mapOf(
             "keyword" to title,
             "page" to "1",
@@ -325,10 +326,10 @@ object DrakorProviderExtractor : DrakorProvider() {
 
         val searchRes = app.post(searchUrl, requestBody = searchBody).text
         val items = tryParseJson<MovieboxResponse>(searchRes)?.data?.items ?: return
-        
+
         val matchedMedia = items.find { item ->
             val itemYear = item.releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
-            (item.title.equals(title, true)) || 
+            (item.title.equals(title, true)) ||
             (item.title?.contains(title, true) == true && itemYear == year)
         } ?: return
 
@@ -336,7 +337,7 @@ object DrakorProviderExtractor : DrakorProvider() {
         val detailPath = matchedMedia.detailPath
         val se = if (season == null) 0 else season
         val ep = if (episode == null) 0 else episode
-        
+
         val playUrl = "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=$subjectId&se=$se&ep=$ep"
         val validReferer = "$apiUrl/spa/videoPlayPage/movies/$detailPath?id=$subjectId&type=/movie/detail&lang=en"
 
@@ -344,12 +345,12 @@ object DrakorProviderExtractor : DrakorProvider() {
         val streams = tryParseJson<MovieboxResponse>(playRes)?.data?.streams ?: return
 
         streams.reversed().distinctBy { it.url }.forEach { source ->
-             callback.invoke(
+            callback.invoke(
                 newExtractorLink(
                     "Moviebox",
                     "Moviebox",
                     source.url ?: return@forEach,
-                    INFER_TYPE 
+                    INFER_TYPE
                 ) {
                     this.referer = "$apiUrl/"
                     this.quality = getQualityFromName(source.resolutions)
@@ -496,7 +497,6 @@ object DrakorProviderExtractor : DrakorProvider() {
                 }
             }
         }
-
     }
 
     suspend fun invokeVidsrccc(
@@ -507,7 +507,6 @@ object DrakorProviderExtractor : DrakorProvider() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
-
         val url = if (season == null) {
             "${DrakorProvider.vidsrcccAPI}/v2/embed/movie/$tmdbId"
         } else {
@@ -528,14 +527,13 @@ object DrakorProviderExtractor : DrakorProvider() {
             "${DrakorProvider.vidsrcccAPI}/api/$tmdbId/servers?id=$tmdbId&type=tv&v=$v&vrf=$vrf&imdbId=$imdbId&season=$season&episode=$episode"
         }
 
-        app.get(serverUrl).parsedSafe<VidsrcccResponse>()?.data?.amap {
+        app.get(serverUrl).parsedSafe<VidsrcccResponse>()?.data?.amap { server ->
             val sources =
-                app.get("${DrakorProvider.vidsrcccAPI}/api/source/${it.hash}").parsedSafe<VidsrcccResult>()?.data
+                app.get("${DrakorProvider.vidsrcccAPI}/api/source/${server.hash}").parsedSafe<VidsrcccResult>()?.data
                     ?: return@amap
 
             when {
-                it.name.equals("VidPlay") -> {
-
+                server.name.equals("VidPlay") -> {
                     callback.invoke(
                         newExtractorLink(
                             "VidPlay",
@@ -547,17 +545,17 @@ object DrakorProviderExtractor : DrakorProvider() {
                         }
                     )
 
-                    sources.subtitles?.map {
+                    sources.subtitles?.forEach { sub ->
                         subtitleCallback.invoke(
                             newSubtitleFile(
-                                it.label ?: return@map,
-                                it.file ?: return@map
+                                sub.label ?: return@forEach,
+                                sub.file ?: return@forEach
                             )
                         )
                     }
                 }
 
-                it.name.equals("UpCloud") -> {
+                server.name.equals("UpCloud") -> {
                     val scriptData = app.get(
                         sources.source ?: return@amap,
                         referer = "${DrakorProvider.vidsrcccAPI}/"
@@ -590,16 +588,13 @@ object DrakorProviderExtractor : DrakorProvider() {
                             }
                         )
                     }
-
                 }
 
-                else -> {
-                    return@amap
-                }
+                else -> return@amap
             }
         }
-
     }
+
     suspend fun invokeVidsrc(
         imdbId: String?,
         season: Int?,
@@ -705,6 +700,7 @@ object DrakorProviderExtractor : DrakorProvider() {
         )
     }
 
+    // FIX #8: Changed map{} with null returns to mapNotNull{} for cleaner null handling
     suspend fun invokeWatchsomuch(
         imdbId: String? = null,
         season: Int? = null,
@@ -736,12 +732,11 @@ object DrakorProviderExtractor : DrakorProvider() {
             "${DrakorProvider.watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part=S${seasonSlug}E${episodeSlug}"
         }
 
-        app.get(subUrl).parsedSafe<WatchsomuchSubResponses>()?.subtitles?.map { sub ->
+        app.get(subUrl).parsedSafe<WatchsomuchSubResponses>()?.subtitles?.mapNotNull { sub ->
+            val label = sub.label?.substringBefore("&nbsp")?.trim() ?: return@mapNotNull null
+            val url = sub.url ?: return@mapNotNull null
             subtitleCallback.invoke(
-                newSubtitleFile(
-                    sub.label?.substringBefore("&nbsp")?.trim() ?: "",
-                    fixUrl(sub.url ?: return@map null, DrakorProvider.watchSomuchAPI)
-                )
+                newSubtitleFile(label, fixUrl(url, DrakorProvider.watchSomuchAPI))
             )
         }
     }
@@ -792,8 +787,9 @@ object DrakorProviderExtractor : DrakorProvider() {
             }
         )
 
+        // FIX #4: Use actual season/episode values instead of hardcoded "1"
         val subRes = app.get(
-            "${DrakorProvider.mappleAPI}/api/subtitles?id=$tmdbId&mediaType=$mediaType${if (season == null) "" else "&season=1&episode=1"}",
+            "${DrakorProvider.mappleAPI}/api/subtitles?id=$tmdbId&mediaType=$mediaType${if (season == null) "" else "&season=$season&episode=$episode"}",
             referer = "${DrakorProvider.mappleAPI}/"
         ).text
         tryParseJson<ArrayList<MappleSubtitle>>(subRes)?.map { subtitle ->
@@ -805,7 +801,8 @@ object DrakorProviderExtractor : DrakorProvider() {
             )
         }
     }
-    
+
+    // FIX #5: Fixed regex pattern — A{32} is literal "A" repeated 32 times, not alphanumeric wildcard
     suspend fun invokeVidlink(
         tmdbId: Int?,
         season: Int?,
@@ -821,7 +818,7 @@ object DrakorProviderExtractor : DrakorProvider() {
 
         val videoLink = app.get(
             url, interceptor = WebViewResolver(
-                Regex("""${DrakorProvider.vidlinkAPI}/api/b/$type/A{32}"""), timeout = 15_000L
+                Regex("""${DrakorProvider.vidlinkAPI}/api/b/$type/[A-Za-z0-9_-]{32}"""), timeout = 15_000L
             )
         ).parsedSafe<VidlinkSources>()?.stream?.playlist
 
@@ -1077,6 +1074,7 @@ object DrakorProviderExtractor : DrakorProvider() {
         }
     }
 
+    // FIX #7: Added error logging instead of silently swallowing exceptions
     suspend fun invokeCinemaOS(
         imdbId: String? = null,
         tmdbId: Int? = null,
@@ -1101,13 +1099,13 @@ object DrakorProviderExtractor : DrakorProvider() {
 
         val fixTitle = title?.replace(" ", "+")
         val cinemaOsSecretKeyRequest = CinemaOsSecretKeyRequest(
-            tmdbId = tmdbId.toString(), 
-            seasonId = season?.toString() ?: "", 
+            tmdbId = tmdbId.toString(),
+            seasonId = season?.toString() ?: "",
             episodeId = episode?.toString() ?: ""
         )
         val secretHash = cinemaOSGenerateHash(cinemaOsSecretKeyRequest, season != null)
         val type = if (season == null) "movie" else "tv"
-        
+
         val sourceUrl = if (season == null) {
             "$cinemaOSApi/api/fuckit?type=$type&tmdbId=$tmdbId&imdbId=$imdbId&t=$fixTitle&ry=$year&secret=$secretHash"
         } else {
@@ -1118,12 +1116,12 @@ object DrakorProviderExtractor : DrakorProvider() {
             val sourceResponse = app.get(sourceUrl, headers = sourceHeaders, timeout = 60).parsedSafe<CinemaOSReponse>()
             val decryptedJson = cinemaOSDecryptResponse(sourceResponse?.data)
             val json = parseCinemaOSSources(decryptedJson.toString())
-            
+
             val blockedServers = listOf(
-                "Maphisto", "Noah", "Bolt", "Zeus", "Nexus", 
-                "Apollo", "Kratos", "Flick", "Hollywood", 
-                "Flash", "Ophim", "Bollywood", "Apex", "Universe", 
-                "Hindi", "Bengali", "Tamil", "Telugu" 
+                "Maphisto", "Noah", "Bolt", "Zeus", "Nexus",
+                "Apollo", "Kratos", "Flick", "Hollywood",
+                "Flash", "Ophim", "Bollywood", "Apex", "Universe",
+                "Hindi", "Bengali", "Tamil", "Telugu"
             )
             val finalBlocked = blockedServers.filter { !it.equals("Rizz", ignoreCase = true) }
 
@@ -1131,7 +1129,7 @@ object DrakorProviderExtractor : DrakorProvider() {
                 val serverName = it["server"] ?: ""
                 val isBlocked = finalBlocked.any { blocked -> serverName.contains(blocked, ignoreCase = true) }
                 !isBlocked
-            }.sortedByDescending { 
+            }.sortedByDescending {
                 (it["server"] ?: "").contains("Rizz", ignoreCase = true)
             }
 
@@ -1142,7 +1140,7 @@ object DrakorProviderExtractor : DrakorProvider() {
                     it["type"]?.contains("mp4", true) == true -> ExtractorLinkType.VIDEO
                     else -> INFER_TYPE
                 }
-                
+
                 val quality = if (it["quality"]?.isNotEmpty() == true && it["quality"]?.toIntOrNull() != null) {
                     getQualityFromName(it["quality"])
                 } else {
@@ -1162,6 +1160,7 @@ object DrakorProviderExtractor : DrakorProvider() {
                 )
             }
         } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -1230,7 +1229,7 @@ object DrakorProviderExtractor : DrakorProvider() {
         }.awaitAll()
     }
 
-    private fun extractPlayer4uLinks(document: Document, season:Int?, episode:Int?, title:String, year:Int?): List<Player4uLinkData> {
+    private fun extractPlayer4uLinks(document: Document, season: Int?, episode: Int?, title: String, year: Int?): List<Player4uLinkData> {
         return document.select(".playbtnx").mapNotNull { element ->
             val titleText = element.text()?.split(" | ")?.lastOrNull() ?: return@mapNotNull null
             if (season == null && episode == null) {
@@ -1309,7 +1308,11 @@ object DrakorProviderExtractor : DrakorProvider() {
 
                     for (i in 0 until sourcesArray.length()) {
                         val src = sourcesArray.getJSONObject(i)
-                        val label = if(src.optString("source").contains("AsiaCloud",ignoreCase = true)) "RiveStream ${src.optString("source")}[${src.optString("quality")}]" else "RiveStream ${src.optString("source")}"
+                        val label = if (src.optString("source").contains("AsiaCloud", ignoreCase = true)) {
+                            "RiveStream ${src.optString("source")}[${src.optString("quality")}]"
+                        } else {
+                            "RiveStream ${src.optString("source")}"
+                        }
                         val quality = Qualities.P1080.value
                         val url = src.optString("url")
 
@@ -1320,10 +1323,7 @@ object DrakorProviderExtractor : DrakorProvider() {
 
                                     val encodedUrl = fullyDecoded.substringAfter("proxy?url=")
                                         .substringBefore("&headers=")
-                                    val decodedUrl = URLDecoder.decode(
-                                        encodedUrl,
-                                        "UTF-8"
-                                    ) 
+                                    val decodedUrl = URLDecoder.decode(encodedUrl, "UTF-8")
 
                                     val encodedHeaders = fullyDecoded.substringAfter("&headers=")
                                     val headersMap = try {
@@ -1338,8 +1338,7 @@ object DrakorProviderExtractor : DrakorProvider() {
 
                                     val referer = headersMap["Referer"] ?: ""
                                     val origin = headersMap["Origin"] ?: ""
-                                    val videoHeaders =
-                                        mapOf("Referer" to referer, "Origin" to origin)
+                                    val videoHeaders = mapOf("Referer" to referer, "Origin" to origin)
 
                                     val type = if (decodedUrl.contains(".m3u8", ignoreCase = true))
                                         ExtractorLinkType.M3U8 else INFER_TYPE
@@ -1350,6 +1349,7 @@ object DrakorProviderExtractor : DrakorProvider() {
                                         this.headers = videoHeaders
                                     })
                                 } catch (e: Exception) {
+                                    e.printStackTrace()
                                 }
                             } else {
                                 val type = if (url.contains(".m3u8", ignoreCase = true))
@@ -1367,11 +1367,14 @@ object DrakorProviderExtractor : DrakorProvider() {
                                     })
                             }
                         } catch (e: Exception) {
+                            e.printStackTrace()
                         }
                     }
                 } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -1385,12 +1388,12 @@ object DrakorProviderExtractor : DrakorProvider() {
         callback: (ExtractorLink) -> Unit
     ) {
         val apiUrl = "https://api.inmoviebox.com"
-        
+
         val searchUrl = "$apiUrl/wefeed-mobile-bff/subject-api/search/v2"
         val jsonBody = """{"page": 1, "perPage": 10, "keyword": "$title"}"""
-        
+
         val headersSearch = Moviebox2Helper.getHeaders(searchUrl, jsonBody)
-        
+
         val searchRes = app.post(
             searchUrl,
             headers = headersSearch,
@@ -1402,7 +1405,7 @@ object DrakorProviderExtractor : DrakorProvider() {
             val isTitleMatch = subject.title?.contains(title, true) == true
             val isYearMatch = year == null || subjectYear == year
             val isTypeMatch = if (season != null) subject.subjectType == 2 else subject.subjectType == 1
-            
+
             isTitleMatch && isYearMatch && isTypeMatch
         } ?: return
 
@@ -1419,7 +1422,7 @@ object DrakorProviderExtractor : DrakorProvider() {
         streams.forEach { stream ->
             val streamUrl = stream.url ?: return@forEach
             val quality = getQualityFromName(stream.resolutions)
-            
+
             callback.invoke(
                 newExtractorLink(
                     "Moviebox2",
@@ -1434,7 +1437,7 @@ object DrakorProviderExtractor : DrakorProvider() {
             if (stream.id != null) {
                 val subUrl = "$apiUrl/wefeed-mobile-bff/subject-api/get-stream-captions?subjectId=$subjectId&streamId=${stream.id}"
                 val headersSub = Moviebox2Helper.getHeaders(subUrl, null, "GET")
-                
+
                 app.get(subUrl, headers = headersSub).parsedSafe<Moviebox2SubtitleResponse>()?.data?.extCaptions?.forEach { cap ->
                     val lang = cap.language ?: cap.lanName ?: cap.lan ?: "Unknown"
                     val capUrl = cap.url ?: return@forEach
@@ -1448,11 +1451,11 @@ object DrakorProviderExtractor : DrakorProvider() {
 
     private object Moviebox2Helper {
         private val secretKeyDefault = base64Decode("NzZpUmwwN3MweFNOOWpxbUVXQXQ3OUVCSlp1bElRSXNWNjRGWnIyTw==")
-        
+
         fun getHeaders(url: String, body: String? = null, method: String = "POST"): Map<String, String> {
             val timestamp = System.currentTimeMillis()
             val xClientToken = generateXClientToken(timestamp)
-            val xTrSignature = generateXTrSignature(method, "application/json", if(method=="POST") "application/json; charset=utf-8" else "application/json", url, body, timestamp)
+            val xTrSignature = generateXTrSignature(method, "application/json", if (method == "POST") "application/json; charset=utf-8" else "application/json", url, body, timestamp)
 
             return mapOf(
                 "user-agent" to "com.community.mbox.in/50020042 (Linux; U; Android 16; en_IN; sdk_gphone64_x86_64; Build/BP22.250325.006; Cronet/133.0.6876.3)",
@@ -1487,14 +1490,14 @@ object DrakorProviderExtractor : DrakorProvider() {
                     parsed.getQueryParameters(key).joinToString("&") { "$key=$it" }
                 }
             } else ""
-            
+
             val canonicalUrl = if (query.isNotEmpty()) "$path?$query" else path
             val bodyBytes = body?.toByteArray(Charsets.UTF_8)
             val bodyHash = if (bodyBytes != null) md5(if (bodyBytes.size > 102400) bodyBytes.copyOfRange(0, 102400) else bodyBytes) else ""
             val bodyLength = bodyBytes?.size?.toString() ?: ""
-            
+
             val canonical = "${method.uppercase()}\n${accept ?: ""}\n${contentType ?: ""}\n$bodyLength\n$timestamp\n$bodyHash\n$canonicalUrl"
-            
+
             val secretBytes = base64DecodeArray(secretKeyDefault)
             val mac = Mac.getInstance("HmacMD5")
             mac.init(SecretKeySpec(secretBytes, "HmacMD5"))
@@ -1502,9 +1505,9 @@ object DrakorProviderExtractor : DrakorProvider() {
 
             return "$timestamp|2|$signature"
         }
-        
+
         private fun base64DecodeArray(str: String): ByteArray {
-             return android.util.Base64.decode(str, android.util.Base64.DEFAULT)
+            return android.util.Base64.decode(str, android.util.Base64.DEFAULT)
         }
     }
 }
