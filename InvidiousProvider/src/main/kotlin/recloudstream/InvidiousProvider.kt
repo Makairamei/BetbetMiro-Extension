@@ -23,14 +23,16 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.StringUtils.encodeUri
 import com.lagradost.cloudstream3.utils.loadExtractor
 
-class InvidiousProvider : MainAPI() { 
+class InvidiousProvider : MainAPI() { // all providers must be an instance of MainAPI
     override var mainUrl = "https://inv.nadeko.net"
-    override var name = "Invidious" 
+    override var name = "Invidious" // name of provider
     override val supportedTypes = setOf(TvType.Movie, TvType.Others)
+
     override var lang = "en"
+
+    // Mengaktifkan halaman utama dengan mendaftarkan menu tab beranda
     override val hasMainPage = true
 
-    // Menambahkan inisialisasi menu beranda agar kompatibel dengan SDK terbaru
     override val mainPage = listOf(
         MainPageData("Popular & Trending", "home")
     )
@@ -59,6 +61,7 @@ class InvidiousProvider : MainAPI() {
         )
     }
 
+    // this function gets called when you search for something
     override suspend fun search(query: String, page: Int): SearchResponseList? {
         val res = tryParseJson<List<SearchEntry>>(
             app.get("$mainUrl/api/v1/search?q=${query.encodeUri()}&page=$page&type=video&fields=videoId,title").text
@@ -69,7 +72,7 @@ class InvidiousProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val videoId = Regex("watch\\?v=([a-zA-Z0-9_-]+)").find(url)?.groupValues?.get(1)
+        val videoId = Regex("watch\\?v=([a-zA-Z0-9_-]+)").find(url)?.groups?.get(1)?.value
         val res = tryParseJson<VideoEntry>(
             app.get("$mainUrl/api/v1/videos/$videoId?fields=videoId,title,description,recommendedVideos,author,authorThumbnails,formatStreams").text
         )
@@ -135,7 +138,7 @@ class InvidiousProvider : MainAPI() {
             callback
         )
         
-        // Memperbaiki pembuatan link DASH menggunakan kelas objek ExtractorLink murni
+        // Memperbaiki instansiasi link video tanpa menggunakan objek ExtractorLinkType lama
         callback(
             ExtractorLink(
                 source = this.name,
