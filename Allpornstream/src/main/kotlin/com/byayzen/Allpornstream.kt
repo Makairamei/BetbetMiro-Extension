@@ -131,10 +131,10 @@ class Allpornstream : MainAPI() {
         val title = Regex("""<h1>(.*?)</h1>""").find(res)?.groupValues?.get(1) ?: ""
         val poster = Regex("""poster="(.*?)"""").find(res)?.groupValues?.get(1) ?: ""
         val plot = Regex("""<p>(.*?)</p>""").find(res)?.groupValues?.get(1) ?: ""
-        val duration = Regex("""duration="(.*?)"""").find(res)?.groupValues?.get(1) ?: ""
         
-        // Perbaikan: Pastikan tahun dikonversi dengan aman ke Int?
+        // Memastikan year dan duration secara aman dikonversi menjadi Int?
         val yearString = Regex("""year="(.*?)"""").find(res)?.groupValues?.get(1)
+        val durationString = Regex("""duration="(.*?)"""").find(res)?.groupValues?.get(1)
 
         val tags = Regex("""categories":\[(.*?)]""").find(res)?.groupValues?.get(1)
             ?.split(",")?.map { it.trim().removeSurrounding("\"") }
@@ -151,9 +151,9 @@ class Allpornstream : MainAPI() {
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot = plot
-            this.year = yearString?.toIntOrNull() // Perbaikan Type Mismatch
+            this.year = yearString?.toIntOrNull()
+            this.duration = durationString?.toIntOrNull() // Perbaikan Type Mismatch (String -> Int?)
             this.tags = tags
-            this.duration = duration
             this.recommendations = recs
         }
     }
@@ -170,14 +170,24 @@ class Allpornstream : MainAPI() {
             .toList()
 
         links.forEach { link ->
-            // Perbaikan: Menggunakan newExtractorLink yang benar
+            // Menentukan tipe link (M3U8 atau VIDEO)
+            val linkType = if (link.contains(".m3u8", ignoreCase = true)) {
+                ExtractorLinkType.M3U8
+            } else {
+                ExtractorLinkType.VIDEO
+            }
+            
+            // Perbaikan API: Memisahkan parameter utama dengan builder block untuk referer & quality
             callback.invoke(
                 newExtractorLink(
-                    this.name,
-                    link,
-                    this.mainUrl,
-                    Qualities.Unknown.value
-                )
+                    source = this.name,
+                    name = this.name,
+                    url = link,
+                    type = linkType
+                ) {
+                    this.referer = mainUrl
+                    this.quality = Qualities.Unknown.value
+                }
             )
         }
         return true
