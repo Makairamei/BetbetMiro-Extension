@@ -35,7 +35,7 @@ class NetMirrorProvider : MainAPI() {
     private val streamUrl = "https://net52.cc"
     private val tmdbApi = "https://api.themoviedb.org/3"
     private val tmdbApiKey = "b030404650f279792a8d3287232358e3"
-    override var name = "NetMirror"
+    override var name = "NetMirro😅r"
     override var lang = "id"
     override val hasMainPage = true
     override val hasQuickSearch = true
