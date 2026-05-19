@@ -26,7 +26,7 @@ import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType // Import ini yang diminta sistem baru!
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -133,12 +133,13 @@ class NetMirrorProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-
-        val payload = app.get(
+        val jsonString = app.get(
             "$mainUrl/search.php?s=${query.urlEncoded()}&t=$unixTime",
             headers = ajaxHeaders,
             referer = "$mainUrl/home"
-        ).parsedSafe<SearchData>() ?: return emptyList()
+        ).text
+
+        val payload = tryParseJson<SearchData>(jsonString) ?: return emptyList()
 
         return payload.searchResult.map { item ->
             newMovieSearchResponse(
@@ -216,7 +217,6 @@ class NetMirrorProvider : MainAPI() {
 
             this.contentRating = modalData?.ua
             this.year = tmdb?.yearOrNull() ?: payload.year
-            // Score dimatikan demi lolos kompilasi SDK terbaru
         }
     }
 
@@ -279,7 +279,7 @@ class NetMirrorProvider : MainAPI() {
                         name = source.label ?: "Stream",
                         source = name,
                         url = path.toAbsoluteStreamUrl(),
-                        type = ExtractorLinkType.M3U8 // M3U8 tipe baru
+                        type = ExtractorLinkType.M3U8
                     ) {
 
                         this.referer = "$streamUrl/"
@@ -331,7 +331,6 @@ class NetMirrorProvider : MainAPI() {
                 this.actors = cast
                 this.contentRating = contentRating
                 this.duration = duration
-                // Score dimatikan demi kelancaran compile
             }
         }
 
@@ -368,16 +367,17 @@ class NetMirrorProvider : MainAPI() {
             this.actors = cast
             this.contentRating = contentRating
             this.duration = duration
-            // Score dimatikan demi kelancaran compile
         }
     }
 
     private suspend fun fetchTopSearches(): List<SearchResponse> {
-        val payload = app.get(
+        val jsonString = app.get(
             "$mainUrl/search.php?t=$unixTime",
             headers = ajaxHeaders,
             referer = "$mainUrl/home"
-        ).parsedSafe<SearchData>() ?: emptyList()
+        ).text
+
+        val payload = tryParseJson<SearchData>(jsonString) ?: return emptyList()
 
         return payload.searchResult
             .take(12)
@@ -395,23 +395,26 @@ class NetMirrorProvider : MainAPI() {
     }
 
     private suspend fun fetchPostData(id: String): PostData? {
-        return app.get(
+        val jsonString = app.get(
             "$mainUrl/post.php?id=$id&t=$unixTime",
             headers = ajaxHeaders,
             referer = "$mainUrl/home"
-        ).parsedSafe<PostData>()
+        ).text
+        return tryParseJson<PostData>(jsonString)
     }
 
     private suspend fun fetchMiniModal(id: String): MiniModalInfo? {
-        return app.get(
+        val jsonString = app.get(
             "$mainUrl/mini-modal-info.php?pid=$id&t=$unixTime",
             headers = ajaxHeaders,
             referer = "$mainUrl/home"
-        ).parsedSafe<MiniModalInfo>()
+        ).text
+        return tryParseJson<MiniModalInfo>(jsonString)
     }
 
     private suspend fun fetchTmdbSection(path: String, type: TvType): List<SearchResponse> {
-        val response = app.get("$tmdbApi/$path?api_key=$tmdbApiKey").parsedSafe<TmdbListResponse>() ?: return emptyList()
+        val jsonString = app.get("$tmdbApi/$path?api_key=$tmdbApiKey").text
+        val response = tryParseJson<TmdbListResponse>(jsonString) ?: return emptyList()
         return response.results.orEmpty()
             .take(12)
             .mapNotNull { item ->
@@ -443,12 +446,12 @@ class NetMirrorProvider : MainAPI() {
         val episodes = mutableListOf<Episode>()
         var page = startPage
         while (true) {
-            val response = app.get(
+            val jsonString = app.get(
                 "$mainUrl/episodes.php?s=$seasonId&series=$seriesId&t=$unixTime&page=$page",
                 headers = ajaxHeaders,
                 referer = "$mainUrl/home"
-            ).parsedSafe<EpisodesPage>()
-                ?: break
+            ).text
+            val response = tryParseJson<EpisodesPage>(jsonString) ?: break
 
             response.episodes.orEmpty().forEach { episode ->
                 val episodeId = episode.id ?: return@forEach
@@ -468,27 +471,30 @@ class NetMirrorProvider : MainAPI() {
     }
 
     private suspend fun fetchPlaylist(id: String, title: String): List<PlaylistItem>? {
-        val postToken = app.post(
+        val postTokenJson = app.post(
             "$mainUrl/play.php",
             headers = ajaxHeaders,
             referer = "$mainUrl/",
             data = mapOf("id" to id)
-        ).parsedSafe<PlayToken>()?.h
+        ).text
+        val postToken = tryParseJson<PlayToken>(postTokenJson)?.h
         val stageTwoToken = postToken?.let { fetchStageTwoToken(id, it) }
         if (stageTwoToken != null) {
-            val validated = app.get(
+            val validatedJson = app.get(
                 "$streamUrl/playlist.php?id=$id&t=${title.urlEncoded()}&h=${stageTwoToken.urlEncoded()}&tm=$unixTime",
                 headers = ajaxHeaders,
                 referer = "$mainUrl/"
-            ).parsedSafe<Array<PlaylistItem>>()?.toList()
+            ).text
+            val validated = tryParseJson<Array<PlaylistItem>>(validatedJson)?.toList()
             if (!validated.isNullOrEmpty()) return validated
         }
 
-        val direct = app.get(
+        val directJson = app.get(
             "$streamUrl/playlist.php?id=$id&t=${title.urlEncoded()}&h=x&tm=$unixTime",
             headers = ajaxHeaders,
             referer = "$mainUrl/"
-        ).parsedSafe<Array<PlaylistItem>>()?.toList()
+        ).text
+        val direct = tryParseJson<Array<PlaylistItem>>(directJson)?.toList()
 
         return direct?.takeIf { it.isNotEmpty() }
     }
@@ -503,19 +509,21 @@ class NetMirrorProvider : MainAPI() {
     }
 
     private suspend fun resolveTitleFromPlaylist(id: String): String? {
-        return app.get(
+        val jsonString = app.get(
             "$streamUrl/playlist.php?id=$id&t=NetMirror&h=x&tm=$unixTime",
             headers = ajaxHeaders,
             referer = "$mainUrl/"
-        ).parsedSafe<Array<PlaylistItem>>()?.firstOrNull()?.title?.takeIf { it.isNotBlank() }
+        ).text
+        return tryParseJson<Array<PlaylistItem>>(jsonString)?.firstOrNull()?.title?.takeIf { it.isNotBlank() }
     }
 
     private suspend fun resolveNetMirrorId(title: String): String? {
-        return app.get(
+        val jsonString = app.get(
             "$mainUrl/search.php?s=${title.urlEncoded()}&t=$unixTime",
             headers = ajaxHeaders,
             referer = "$mainUrl/home"
-        ).parsedSafe<SearchData>()?.searchResult?.firstOrNull()?.id
+        ).text
+        return tryParseJson<SearchData>(jsonString)?.searchResult?.firstOrNull()?.id
     }
 
     private suspend fun fetchTmdbMetadata(title: String, hintType: String?, year: Int?): TmdbItem? {
@@ -536,9 +544,10 @@ class NetMirrorProvider : MainAPI() {
                 "search/tv" -> year?.let { "&first_air_date_year=$it" }.orEmpty()
                 else -> ""
             }
-            val result = app.get(
+            val jsonString = app.get(
                 "$tmdbApi/$path?api_key=$tmdbApiKey&query=${title.urlEncoded()}$yearPart"
-            ).parsedSafe<TmdbListResponse>()?.results?.firstOrNull()
+            ).text
+            val result = tryParseJson<TmdbListResponse>(jsonString)?.results?.firstOrNull()
             if (result != null) return result
         }
         return null
