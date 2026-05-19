@@ -133,9 +133,8 @@ class Allpornstream : MainAPI() {
         val plot = Regex("""<p>(.*?)</p>""").find(res)?.groupValues?.get(1) ?: ""
         val duration = Regex("""duration="(.*?)"""").find(res)?.groupValues?.get(1) ?: ""
         
-        // Perbaikan: Pastikan tahun dikonversi dengan aman ke Int
+        // Perbaikan: Pastikan tahun dikonversi dengan aman ke Int?
         val yearString = Regex("""year="(.*?)"""").find(res)?.groupValues?.get(1)
-        val year: Int = yearString?.toIntOrNull() ?: 0
 
         val tags = Regex("""categories":\[(.*?)]""").find(res)?.groupValues?.get(1)
             ?.split(",")?.map { it.trim().removeSurrounding("\"") }
@@ -152,7 +151,7 @@ class Allpornstream : MainAPI() {
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot = plot
-            this.year = year
+            this.year = yearString?.toIntOrNull() // Perbaikan Type Mismatch
             this.tags = tags
             this.duration = duration
             this.recommendations = recs
@@ -171,15 +170,13 @@ class Allpornstream : MainAPI() {
             .toList()
 
         links.forEach { link ->
-            // Perbaikan: Menggunakan constructor ExtractorLink standar
+            // Perbaikan: Menggunakan newExtractorLink yang benar
             callback.invoke(
-                ExtractorLink(
-                    this.name,
+                newExtractorLink(
                     this.name,
                     link,
                     this.mainUrl,
-                    Qualities.Unknown.value,
-                    false
+                    Qualities.Unknown.value
                 )
             )
         }
