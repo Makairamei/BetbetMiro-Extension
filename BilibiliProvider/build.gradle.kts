@@ -1,5 +1,5 @@
 // use an integer for version numbers
-version = 6
+version = 7
 
 android {
     buildFeatures {
@@ -10,8 +10,8 @@ android {
 cloudstream {
     language = "id"
     // All of these properties are optional, you can safely remove them
-    description = "Bilibili TV - International streaming platform for anime, movies, and variety shows (bilibili.tv)"
-    authors = listOf("BetbetMiror")
+    description = "Bilibili TV - Anime, film, serial, dan konten Asia dari bilibili.tv"
+    authors = listOf("BetbetMiro")
     /**
      * Status int as the following:
      * 0: Down
@@ -22,9 +22,8 @@ cloudstream {
     status = 3 // Beta only
     tvTypes = listOf(
         "Anime",
-        "Movies",
+        "Movie",
         "TvSeries",
-        "Documentary",
     )
 
     iconUrl = "https://play-lh.googleusercontent.com/G9s84Cm1TDnKDX2P8nipS_s60cuCnYtjBRRLespF8nivjXmbV9tF1fY37clZhXMLaA"

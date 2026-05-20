@@ -18,8 +18,9 @@ import java.net.URLEncoder
 
 class BilibiliProvider : MainAPI() {
     override var mainUrl = "https://www.bilibili.tv"
-    override var name = "BilibiliTV(Requires CS Prerelease)"
+    override var name = "Bilibili TV"
     override val hasMainPage = true
+    override val hasQuickSearch = true
     override var lang = "id"
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(
@@ -56,6 +57,29 @@ class BilibiliProvider : MainAPI() {
         NONE, GEO_LOCKED, PREMIUM_REQUIRED
     }
 
+    private fun translateGenre(raw: String): String {
+        return when (raw.trim().lowercase()) {
+            "action" -> "Aksi"
+            "adventure" -> "Petualangan"
+            "comedy" -> "Komedi"
+            "romance" -> "Romantis"
+            "drama" -> "Drama"
+            "fantasy" -> "Fantasi"
+            "thriller" -> "Thriller"
+            "horror" -> "Horor"
+            "mystery" -> "Misteri"
+            "sci-fi", "science fiction" -> "Fiksi Ilmiah"
+            "slice of life" -> "Slice of Life"
+            "school" -> "Sekolah"
+            "sports" -> "Olahraga"
+            "music" -> "Musik"
+            "supernatural" -> "Supernatural"
+            "historical" -> "Sejarah"
+            "kids" -> "Anak-anak"
+            else -> raw.trim()
+        }
+    }
+
     // Helper function to check content access restrictions
     private suspend fun checkContentAccess(epId: String?, aid: String?): ContentAccessError {
         try {
@@ -90,21 +114,41 @@ class BilibiliProvider : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "foryou" to "For You",
-        "timeline" to "Latest Updates",
-        "search:movie" to "Movies",
+        "foryou" to "Rekomendasi",
+        "timeline" to "Update Terbaru",
+
+        // Kategori umum
         "search:anime" to "Anime",
+        "search:movie" to "Film",
         "search:drama" to "Drama",
-        "search:action" to "Action",
-        "search:comedy" to "Comedy",
-        "search:romance" to "Romance",
-        "search:thriller" to "Thriller",
-        "search:horror" to "Horror",
-        "search:fantasy" to "Fantasy",
-        "search:adventure" to "Adventure",
-        "search:isekai" to "Isekai",
-        "search:hindi" to "Hindi Dubbed",
-        "search:tagalog" to "Tagalog Dubbed",
+        "search:series" to "Serial",
+        "search:documentary" to "Dokumenter",
+        "search:short film" to "Film Pendek",
+
+        // Genre
+        "search:action anime" to "Aksi",
+        "search:adventure anime" to "Petualangan",
+        "search:comedy anime" to "Komedi",
+        "search:romance anime" to "Romantis",
+        "search:drama anime" to "Drama Anime",
+        "search:fantasy anime" to "Fantasi",
+        "search:isekai anime" to "Isekai",
+        "search:sci-fi anime" to "Fiksi Ilmiah",
+        "search:thriller anime" to "Thriller",
+        "search:horror anime" to "Horor",
+        "search:mystery anime" to "Misteri",
+        "search:slice of life anime" to "Slice of Life",
+        "search:school anime" to "Sekolah",
+        "search:sports anime" to "Olahraga",
+        "search:music anime" to "Musik",
+        "search:supernatural anime" to "Supernatural",
+
+        // Dub / bahasa populer di Bilibili TV
+        "search:indonesian dub" to "Dub Indonesia",
+        "search:english dub" to "Dub Inggris",
+        "search:hindi dub" to "Dub Hindi",
+        "search:tagalog dub" to "Dub Tagalog",
+        "search:thai dub" to "Dub Thailand",
     )
 
     override suspend fun getMainPage(
@@ -227,6 +271,8 @@ class BilibiliProvider : MainAPI() {
 
         return newHomePageResponse(arrayListOf(HomePageList(request.name, home, isHorizontalImages = true)), hasNext = home.size >= 15)
     }
+
+    override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
         val results = mutableListOf<SearchResponse>()
@@ -352,7 +398,7 @@ class BilibiliProvider : MainAPI() {
             val year = season.playerDate?.substring(0, 4)?.toIntOrNull()
             
             // Get styles/genres
-            val tags = season.styles?.mapNotNull { it.title }
+            val tags = season.styles?.mapNotNull { it.title }?.map { translateGenre(it) }
             
             return newTvSeriesLoadResponse(title, url, TvType.Anime, episodes) {
                 this.posterUrl = poster
@@ -851,7 +897,7 @@ class BilibiliProvider : MainAPI() {
                                     url = videoUrl,
                                     type = INFER_TYPE
                                 ) {
-                                    this.quality = quality.ordinal
+                                    this.quality = quality.value
                                     this.referer = mainUrl
                                     this.headers = mapOf(
                                         "User-Agent" to USER_AGENT,
