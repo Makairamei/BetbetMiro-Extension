@@ -4,23 +4,16 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import java.net.URLEncoder
-import java.util.Base64
-import com.lagradost.nicehttp.RequestBodyTypes
-import kotlinx.coroutines.runBlocking
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.Locale
 
 class AutoEmbedProvider : MainAPI() {
     override var mainUrl = "https://www.themoviedb.org"
-    override var name = "AutoEmbed😒"
+    override var name = "AutoEmbed"
     override var lang = "id"
     override val hasMainPage = true
     override val hasQuickSearch = true
@@ -28,28 +21,65 @@ class AutoEmbedProvider : MainAPI() {
 
     private val tmdbApi = "https://api.themoviedb.org/3"
     private val tmdbApiKey = "b030404650f279792a8d3287232358e3"
+    private val tmdbLocale = "language=id-ID&include_adult=false"
 
     override val mainPage = mainPageOf(
-        "$tmdbApi/trending/movie/day?api_key=$tmdbApiKey" to "Trending Movies",
-        "$tmdbApi/movie/popular?api_key=$tmdbApiKey" to "Popular Movies",
-        "$tmdbApi/movie/now_playing?api_key=$tmdbApiKey" to "Now Playing Movies",
-        "$tmdbApi/movie/top_rated?api_key=$tmdbApiKey" to "Top Rated Movies",
-        "$tmdbApi/movie/upcoming?api_key=$tmdbApiKey" to "Upcoming Movies",
-        "$tmdbApi/trending/tv/day?api_key=$tmdbApiKey" to "Trending TV",
-        "$tmdbApi/tv/popular?api_key=$tmdbApiKey" to "Popular TV",
-        "$tmdbApi/tv/airing_today?api_key=$tmdbApiKey" to "Airing Today TV",
-        "$tmdbApi/tv/top_rated?api_key=$tmdbApiKey" to "Top Rated TV",
+        "$tmdbApi/trending/movie/day?api_key=$tmdbApiKey&$tmdbLocale" to "Film Trending",
+        "$tmdbApi/movie/popular?api_key=$tmdbApiKey&$tmdbLocale&region=ID" to "Film Populer",
+        "$tmdbApi/movie/now_playing?api_key=$tmdbApiKey&$tmdbLocale&region=ID" to "Sedang Tayang",
+        "$tmdbApi/movie/top_rated?api_key=$tmdbApiKey&$tmdbLocale" to "Film Rating Tertinggi",
+        "$tmdbApi/movie/upcoming?api_key=$tmdbApiKey&$tmdbLocale&region=ID" to "Film Akan Datang",
+
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=28" to "Film Aksi",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=12" to "Film Petualangan",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=16" to "Film Animasi",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=35" to "Film Komedi",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=80" to "Film Kriminal",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=99" to "Film Dokumenter",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=18" to "Film Drama",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=10751" to "Film Keluarga",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=14" to "Film Fantasi",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=27" to "Film Horor",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=9648" to "Film Misteri",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=10749" to "Film Romantis",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=878" to "Film Sci-Fi",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=53" to "Film Thriller",
+        "$tmdbApi/discover/movie?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=10752" to "Film Perang",
+
+        "$tmdbApi/trending/tv/day?api_key=$tmdbApiKey&$tmdbLocale" to "Serial Trending",
+        "$tmdbApi/tv/popular?api_key=$tmdbApiKey&$tmdbLocale" to "Serial Populer",
+        "$tmdbApi/tv/airing_today?api_key=$tmdbApiKey&$tmdbLocale" to "Tayang Hari Ini",
+        "$tmdbApi/tv/on_the_air?api_key=$tmdbApiKey&$tmdbLocale" to "Sedang Berjalan",
+        "$tmdbApi/tv/top_rated?api_key=$tmdbApiKey&$tmdbLocale" to "Serial Rating Tertinggi",
+
+        "$tmdbApi/discover/tv?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=10759" to "Serial Aksi & Petualangan",
+        "$tmdbApi/discover/tv?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=16" to "Serial Animasi",
+        "$tmdbApi/discover/tv?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=35" to "Serial Komedi",
+        "$tmdbApi/discover/tv?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=80" to "Serial Kriminal",
+        "$tmdbApi/discover/tv?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=99" to "Serial Dokumenter",
+        "$tmdbApi/discover/tv?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=18" to "Serial Drama",
+        "$tmdbApi/discover/tv?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=10751" to "Serial Keluarga",
+        "$tmdbApi/discover/tv?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=9648" to "Serial Misteri",
+        "$tmdbApi/discover/tv?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=10765" to "Serial Sci-Fi & Fantasi",
+        "$tmdbApi/discover/tv?api_key=$tmdbApiKey&$tmdbLocale&sort_by=popularity.desc&with_genres=10768" to "Serial Perang & Politik"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val response = app.get(buildPagedUrl(request.data, page)).parsedSafe<TmdbResults>()
-            ?: throw ErrorLoadingException("Invalid TMDB response")
-        val items = response.results.orEmpty().mapNotNull { media ->
-            media.toSearchResponse(inferMediaType(request.name))
-        }
-        val hasNext = response.page != null && response.totalPages != null && response.page < response.totalPages
+            ?: throw ErrorLoadingException("Respons TMDB tidak valid")
+
+        val typeFromUrl = inferMediaTypeFromUrl(request.data)
+        val items = response.results.orEmpty()
+            .mapNotNull { media -> media.toSearchResponse(typeFromUrl) }
+            .distinctBy { it.url }
+
+        val hasNext = response.page != null &&
+            response.totalPages != null &&
+            response.page < response.totalPages &&
+            page < 500
+
         return newHomePageResponse(
-            HomePageList(request.name, items),
+            HomePageList(request.name, items, isHorizontalImages = true),
             hasNext = hasNext
         )
     }
@@ -57,25 +87,31 @@ class AutoEmbedProvider : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$tmdbApi/search/multi?api_key=$tmdbApiKey&query=${query.urlEncoded()}&page=1"
+        val url = "$tmdbApi/search/multi?api_key=$tmdbApiKey&$tmdbLocale&query=${query.urlEncoded()}&page=1"
         return app.get(url).parsedSafe<TmdbResults>()?.results.orEmpty()
             .mapNotNull { media -> media.toSearchResponse() }
+            .filter { it.type == TvType.Movie || it.type == TvType.TvSeries }
+            .distinctBy { it.url }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val media = parseSiteMediaUrl(url)
         val detailUrl = when (media.type) {
-            "movie" -> "$tmdbApi/movie/${media.id}?api_key=$tmdbApiKey&append_to_response=external_ids,credits,recommendations,videos"
-            else -> "$tmdbApi/tv/${media.id}?api_key=$tmdbApiKey&append_to_response=external_ids,credits,recommendations,videos"
+            "movie" -> "$tmdbApi/movie/${media.id}?api_key=$tmdbApiKey&$tmdbLocale&append_to_response=external_ids,credits,recommendations,videos"
+            else -> "$tmdbApi/tv/${media.id}?api_key=$tmdbApiKey&$tmdbLocale&append_to_response=external_ids,credits,recommendations,videos"
         }
-        val detail = app.get(detailUrl).parsedSafe<TmdbDetail>()
-            ?: throw ErrorLoadingException("Invalid TMDB response")
 
-        val title = detail.title ?: detail.name ?: throw ErrorLoadingException("Missing title")
+        val detail = app.get(detailUrl).parsedSafe<TmdbDetail>()
+            ?: throw ErrorLoadingException("Respons detail TMDB tidak valid")
+
+        val title = detail.title ?: detail.name ?: throw ErrorLoadingException("Judul tidak ditemukan")
         val poster = detail.posterPath.toPosterUrl()
         val background = detail.backdropPath.toBackdropUrl()
         val year = (detail.releaseDate ?: detail.firstAirDate)?.substringBefore("-")?.toIntOrNull()
-        val tags = detail.genres.orEmpty().mapNotNull { it.name }.takeIf { it.isNotEmpty() }
+        val tags = detail.genres.orEmpty()
+            .mapNotNull { it.name?.translateGenre() }
+            .takeIf { it.isNotEmpty() }
+
         val actors = detail.credits?.cast.orEmpty().mapNotNull { cast ->
             val actorName = cast.name ?: cast.originalName ?: return@mapNotNull null
             ActorData(
@@ -83,8 +119,11 @@ class AutoEmbedProvider : MainAPI() {
                 roleString = cast.character
             )
         }.takeIf { it.isNotEmpty() }
-        val recommendations = detail.recommendations?.results.orEmpty().mapNotNull { it.toRecommendation() }
+
+        val recommendations = detail.recommendations?.results.orEmpty()
+            .mapNotNull { it.toRecommendation(media.type) }
             .takeIf { it.isNotEmpty() }
+
         val trailers = detail.videos?.results.orEmpty()
             .mapNotNull { video ->
                 if (video.site.equals("YouTube", true) && !video.key.isNullOrBlank()) {
@@ -102,7 +141,7 @@ class AutoEmbedProvider : MainAPI() {
                 LinkData(
                     tmdbId = media.id,
                     imdbId = detail.externalIds?.imdbId,
-                    type = media.type
+                    type = "movie"
                 ).toJson()
             ) {
                 posterUrl = poster
@@ -146,30 +185,29 @@ class AutoEmbedProvider : MainAPI() {
     ): Boolean {
         val linkData = parseJson<LinkData>(data)
         val emitted = mutableSetOf<String>()
-        val wrappedCallback: (ExtractorLink) -> Unit = { link ->
-            val key = "${link.name}|${link.url}"
-            if (emitted.add(key)) callback(link)
-        }
 
         invokeWebsiteExtractors(
             linkData = linkData,
-            subtitleCallback = subtitleCallback,
-            callback = wrappedCallback
-        )
+            subtitleCallback = subtitleCallback
+        ) { link ->
+            val key = "${link.name}|${link.url}"
+            if (emitted.add(key)) callback(link)
+        }
 
         return emitted.isNotEmpty()
     }
 
     private suspend fun buildEpisodes(tmdbId: Int, imdbId: String?): List<Episode> {
-        val detail = app.get("$tmdbApi/tv/$tmdbId?api_key=$tmdbApiKey").parsedSafe<TmdbDetail>()
+        val detail = app.get("$tmdbApi/tv/$tmdbId?api_key=$tmdbApiKey&$tmdbLocale").parsedSafe<TmdbDetail>()
             ?: return emptyList()
+
         val allEpisodes = mutableListOf<Episode>()
         detail.seasons.orEmpty()
             .filter { it.seasonNumber != null }
             .forEach { season ->
                 val seasonNumber = season.seasonNumber ?: return@forEach
                 val seasonData = app.get(
-                    "$tmdbApi/tv/$tmdbId/season/$seasonNumber?api_key=$tmdbApiKey"
+                    "$tmdbApi/tv/$tmdbId/season/$seasonNumber?api_key=$tmdbApiKey&$tmdbLocale"
                 ).parsedSafe<TmdbSeasonDetail>() ?: return@forEach
 
                 seasonData.episodes.orEmpty().forEach { episode ->
@@ -194,6 +232,7 @@ class AutoEmbedProvider : MainAPI() {
                     }
                 }
             }
+
         return allEpisodes
     }
 
@@ -203,28 +242,26 @@ class AutoEmbedProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit,
     ) {
         for (server in buildWebsiteServers(linkData)) {
-            try {
+            runCatching {
                 loadExtractor(server.url, server.referer ?: server.url, subtitleCallback) { link ->
-                    runBlocking {
-                        callback.invoke(
-                            newExtractorLink(
-                                source = server.name,
-                                name = if (link.name.equals(server.name, ignoreCase = true)) {
-                                    server.name
-                                } else {
-                                    "${server.name} - ${link.name}"
-                                },
-                                url = link.url,
-                                type = link.type
-                            ) {
-                                quality = link.quality
-                                headers = link.headers
-                                extractorData = link.extractorData
-                            }
-                        )
-                    }
+                    callback.invoke(
+                        newExtractorLink(
+                            source = server.name,
+                            name = if (link.name.equals(server.name, ignoreCase = true)) {
+                                server.name
+                            } else {
+                                "${server.name} - ${link.name}"
+                            },
+                            url = link.url,
+                            type = link.type
+                        ) {
+                            quality = link.quality
+                            headers = link.headers
+                            extractorData = link.extractorData
+                            referer = link.referer
+                        }
+                    )
                 }
-            } catch (_: Throwable) {
             }
         }
     }
@@ -237,60 +274,72 @@ class AutoEmbedProvider : MainAPI() {
 
         return if (season == null || episode == null) {
             buildList {
+                add(WebsiteServer("AutoEmbed", "https://player.autoembed.cc/embed/movie/$tmdbId"))
+                add(WebsiteServer("AutoEmbed Net", "https://autoembed.net/embed/movie/$tmdbId"))
                 add(WebsiteServer("VidSrc XYZ", "https://vidsrc.xyz/embed/movie/$tmdbId"))
                 add(WebsiteServer("VidSrc TO", "https://vidsrc.to/embed/movie/$tmdbId"))
                 add(WebsiteServer("VidSrc ME", "https://vidsrc.me/embed/movie?tmdb=$tmdbId"))
+                add(WebsiteServer("VidSrc CC", "https://vidsrc.cc/v2/embed/movie/$tmdbId"))
+                add(WebsiteServer("VidSrc RIP", "https://vidsrc.rip/embed/movie/$tmdbId"))
                 add(WebsiteServer("Embed SU", "https://embed.su/embed/movie/$tmdbId"))
-                add(WebsiteServer("Vidsrc CC", "https://vidsrc.cc/v2/embed/movie/$tmdbId"))
                 add(WebsiteServer("2Embed", "https://www.2embed.cc/embed/$tmdbId"))
                 add(WebsiteServer("Vidlink", "https://vidlink.pro/movie/$tmdbId"))
                 add(WebsiteServer("RiveStream", "https://rivestream.net/embed?type=movie&id=$tmdbId"))
                 add(WebsiteServer("Flicky", "https://flicky.host/embed/movie/?id=$tmdbId"))
-                add(WebsiteServer("Vidsrc RIP", "https://vidsrc.rip/embed/movie/$tmdbId"))
                 add(WebsiteServer("Cinemaos", "https://cinemaos.tech/player/$tmdbId"))
                 add(WebsiteServer("Vidnest", "https://vidnest.fun/movie/$tmdbId"))
                 add(WebsiteServer("Bravo", "https://moviesapi.club/movie/$tmdbId"))
                 imdbId?.let {
+                    add(WebsiteServer("VidSrc IMDB", "https://vidsrc.to/embed/movie/$it"))
                     add(WebsiteServer("DrivePlayer", "https://godriveplayer.com/player.php?imdb=$it"))
+                    add(WebsiteServer("SuperEmbed", "https://multiembed.mov/?video_id=$it"))
                 }
             }
         } else {
             buildList {
+                add(WebsiteServer("AutoEmbed", "https://player.autoembed.cc/embed/tv/$tmdbId/$season/$episode"))
+                add(WebsiteServer("AutoEmbed Net", "https://autoembed.net/embed/tv/$tmdbId/$season/$episode"))
                 add(WebsiteServer("VidSrc XYZ", "https://vidsrc.xyz/embed/tv/$tmdbId/$season/$episode"))
                 add(WebsiteServer("VidSrc TO", "https://vidsrc.to/embed/tv/$tmdbId/$season/$episode"))
                 add(WebsiteServer("VidSrc ME", "https://vidsrc.me/embed/tv?tmdb=$tmdbId&season=$season&episode=$episode"))
+                add(WebsiteServer("VidSrc CC", "https://vidsrc.cc/v2/embed/tv/$tmdbId/$season/$episode"))
+                add(WebsiteServer("VidSrc RIP", "https://vidsrc.rip/embed/tv/$tmdbId/$season/$episode"))
                 add(WebsiteServer("Embed SU", "https://embed.su/embed/tv/$tmdbId/$season/$episode"))
-                add(WebsiteServer("Vidsrc CC", "https://vidsrc.cc/v2/embed/tv/$tmdbId/$season/$episode"))
                 add(WebsiteServer("2Embed", "https://www.2embed.cc/embedtv/$tmdbId/$season/$episode"))
                 add(WebsiteServer("Vidlink", "https://vidlink.pro/tv/$tmdbId/$season/$episode"))
                 add(WebsiteServer("RiveStream", "https://rivestream.net/embed?type=tv&id=$tmdbId&season=$season&episode=$episode"))
                 add(WebsiteServer("Flicky", "https://flicky.host/embed/tv/?id=$tmdbId/$season/$episode"))
-                add(WebsiteServer("Vidsrc RIP", "https://vidsrc.rip/embed/tv/$tmdbId/$season/$episode"))
                 add(WebsiteServer("Cinemaos", "https://cinemaos.tech/player/$tmdbId/$season/$episode"))
                 add(WebsiteServer("Vidnest", "https://vidnest.fun/tv/$tmdbId/$season/$episode"))
                 add(WebsiteServer("Bravo", "https://moviesapi.club/tv/$tmdbId/$season/$episode"))
+                imdbId?.let {
+                    add(WebsiteServer("SuperEmbed", "https://multiembed.mov/?video_id=$it&s=$season&e=$episode"))
+                }
             }
         }
     }
 
     private fun buildPagedUrl(url: String, page: Int): String {
         if (page <= 1) return url
-        val joiner = if (url.contains("?")) "&" else "?"
-        return "$url${joiner}page=$page"
+        val cleanUrl = url.replace(Regex("([?&])page=\\d+"), "\$1").trimEnd('?', '&')
+        val joiner = if (cleanUrl.contains("?")) "&" else "?"
+        return "$cleanUrl${joiner}page=$page"
     }
 
     private fun parseSiteMediaUrl(url: String): SiteMedia {
         val clean = url.substringBefore("?")
         val parts = clean.trimEnd('/').split("/")
-        val type = parts.getOrNull(parts.lastIndex - 1) ?: throw ErrorLoadingException("Invalid type")
-        val id = parts.lastOrNull()?.toIntOrNull() ?: throw ErrorLoadingException("Invalid ID")
+        val type = parts.getOrNull(parts.lastIndex - 1) ?: throw ErrorLoadingException("Tipe media tidak valid")
+        val id = parts.lastOrNull()?.toIntOrNull() ?: throw ErrorLoadingException("ID media tidak valid")
         return SiteMedia(type = type, id = id)
     }
 
-    private fun inferMediaType(name: String): String? {
+    private fun inferMediaTypeFromUrl(url: String): String? {
         return when {
-            name.contains("movie", ignoreCase = true) -> "movie"
-            name.contains("tv", ignoreCase = true) -> "tv"
+            url.contains("/movie/", ignoreCase = true) || url.contains("/discover/movie", ignoreCase = true) -> "movie"
+            url.contains("/tv/", ignoreCase = true) || url.contains("/discover/tv", ignoreCase = true) -> "tv"
+            url.contains("/trending/movie", ignoreCase = true) -> "movie"
+            url.contains("/trending/tv", ignoreCase = true) -> "tv"
             else -> null
         }
     }
@@ -301,6 +350,9 @@ class AutoEmbedProvider : MainAPI() {
             !name.isNullOrBlank() -> "tv"
             else -> null
         } ?: return null
+
+        if (resolvedMediaType != "movie" && resolvedMediaType != "tv") return null
+
         val resolvedTitle = title ?: name ?: return null
         val resolvedId = id ?: return null
         val year = (releaseDate ?: firstAirDate)?.substringBefore("-")?.toIntOrNull()
@@ -311,40 +363,28 @@ class AutoEmbedProvider : MainAPI() {
                 this.year = year
                 voteAverage?.let { score = Score.from10(it) }
             }
-        } else if (resolvedMediaType == "tv") {
+        } else {
             newTvSeriesSearchResponse(resolvedTitle, "$mainUrl/tv/$resolvedId", TvType.TvSeries) {
                 posterUrl = posterPath.toPosterUrl()
                 this.year = year
                 voteAverage?.let { score = Score.from10(it) }
             }
-        } else {
-            null
         }
     }
 
-    private fun TmdbMedia.toRecommendation(): SearchResponse? {
-        val title = this.title ?: this.name ?: return null
-        return if ((this.mediaType ?: "movie") == "movie") {
-            newMovieSearchResponse(title, "$mainUrl/movie/${id ?: return null}", TvType.Movie) {
-                posterUrl = posterPath.toPosterUrl()
-                voteAverage?.let { score = Score.from10(it) }
-            }
-        } else {
-            newTvSeriesSearchResponse(title, "$mainUrl/tv/${id ?: return null}", TvType.TvSeries) {
-                posterUrl = posterPath.toPosterUrl()
-                voteAverage?.let { score = Score.from10(it) }
-            }
-        }
+    private fun TmdbMedia.toRecommendation(defaultMediaType: String? = null): SearchResponse? {
+        val mediaType = this.mediaType ?: defaultMediaType ?: if (!title.isNullOrBlank()) "movie" else "tv"
+        return toSearchResponse(mediaType)
     }
 
     private fun String?.toPosterUrl(): String? {
         if (this.isNullOrBlank()) return null
-        return if (startsWith("/")) "https://image.tmdb.org/t/p/w500/$this" else this
+        return if (startsWith("/")) "https://image.tmdb.org/t/p/w500$this" else this
     }
 
     private fun String?.toBackdropUrl(): String? {
         if (this.isNullOrBlank()) return null
-        return if (startsWith("/")) "https://image.tmdb.org/t/p/original/$this" else this
+        return if (startsWith("/")) "https://image.tmdb.org/t/p/original$this" else this
     }
 
     private fun String?.toShowStatus(): ShowStatus? {
@@ -352,6 +392,39 @@ class AutoEmbedProvider : MainAPI() {
             "Returning Series", "In Production", "Planned" -> ShowStatus.Ongoing
             "Ended", "Canceled" -> ShowStatus.Completed
             else -> null
+        }
+    }
+
+    private fun String.translateGenre(): String {
+        return when (trim().lowercase(Locale.ROOT)) {
+            "action" -> "Aksi"
+            "action & adventure" -> "Aksi & Petualangan"
+            "adventure" -> "Petualangan"
+            "animation" -> "Animasi"
+            "comedy" -> "Komedi"
+            "crime" -> "Kriminal"
+            "documentary" -> "Dokumenter"
+            "drama" -> "Drama"
+            "family" -> "Keluarga"
+            "fantasy" -> "Fantasi"
+            "history" -> "Sejarah"
+            "horror" -> "Horor"
+            "kids" -> "Anak-anak"
+            "music" -> "Musik"
+            "mystery" -> "Misteri"
+            "news" -> "Berita"
+            "reality" -> "Reality"
+            "romance" -> "Romantis"
+            "science fiction" -> "Sci-Fi"
+            "sci-fi & fantasy" -> "Sci-Fi & Fantasi"
+            "soap" -> "Sinetron"
+            "talk" -> "Talk Show"
+            "thriller" -> "Thriller"
+            "tv movie" -> "Film TV"
+            "war" -> "Perang"
+            "war & politics" -> "Perang & Politik"
+            "western" -> "Western"
+            else -> trim()
         }
     }
 

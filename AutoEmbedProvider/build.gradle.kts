@@ -1,9 +1,9 @@
-version = 1
+version = 2
 
 cloudstream {
     language = "id"
     authors = listOf("BetbetMiro")
-    description = "AutoEmbed TMDB-backed movie and TV catalog provider"
+    description = "AutoEmbed provider berbasis TMDB dengan kategori film, serial, dan genre Indonesia"
     status = 1
     tvTypes = listOf(
         "Movie",
