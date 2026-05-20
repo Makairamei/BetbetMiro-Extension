@@ -97,11 +97,19 @@ class Alqanime : MainAPI() {
     private fun Element.toSearchResult(): AnimeSearchResponse? {
         val href = fixUrlNull(this.selectFirst("a")?.attr("href")) ?: return null
         val title = this.selectFirst(".ntitle")?.text()?.trim() ?: return null
-        val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("src"))
+        
+        // Perbaikan: coba multiple selector untuk poster
+        val posterUrl = fixUrlNull(
+            this.selectFirst("img")?.attr("src") 
+                ?: this.selectFirst("img")?.attr("data-src")
+                ?: this.selectFirst("img")?.attr("data-lazy-src")
+        )
+        
         val typeText = this.selectFirst(".typez")?.text()?.trim() ?: ""
         val epNum = this.selectFirst("a")?.attr("title")
             ?.let { Regex("Episode\\s*\\((\\d+)\\)", RegexOption.IGNORE_CASE).find(it)?.groupValues?.getOrNull(1)?.toIntOrNull() }
         val rating = this.selectFirst("div.numscore")?.text()?.trim()
+        
         return newAnimeSearchResponse(title, href, getType(typeText)) {
             this.posterUrl = posterUrl
             addDubStatus("Sub Indo", epNum)
@@ -125,8 +133,14 @@ class Alqanime : MainAPI() {
             .replace(Regex("\\s*BD Batch.*", RegexOption.IGNORE_CASE), "")
             .trim()
 
-        val poster = document.selectFirst("div.thumb img")?.attr("src")
-        val coverBg = document.selectFirst("div.ime img")?.attr("src")
+        val poster = fixUrlNull(
+            document.selectFirst("div.thumb img")?.attr("src")
+                ?: document.selectFirst("div.thumb img")?.attr("data-src")
+        )
+        val coverBg = fixUrlNull(
+            document.selectFirst("div.ime img")?.attr("src")
+                ?: document.selectFirst("div.ime img")?.attr("data-src")
+        )
         val trailerRaw = document.selectFirst("a.trailerbutton")?.attr("href")
         val trailer = trailerRaw?.let { url ->
             val videoId = Regex("[?&]v=([^&]+)").find(url)?.groupValues?.getOrNull(1)
