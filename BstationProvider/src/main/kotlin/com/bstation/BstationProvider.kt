@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 class BstationProvider : MainAPI() {
@@ -74,7 +75,7 @@ class BstationProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         if (page != 1) {
-            return newHomePageResponse(HomePageList(request.name, emptyList()), hasNext = false)
+            return newHomePageResponse(HomePageList(request.name, emptyList(), isHorizontalImages = true), hasNext = false)
         }
 
         val items = when {
@@ -90,7 +91,7 @@ class BstationProvider : MainAPI() {
         }.distinctBy { it.url }
 
         return newHomePageResponse(
-            HomePageList(request.name, items),
+            HomePageList(request.name, items, isHorizontalImages = true),
             hasNext = false
         )
     }
@@ -105,10 +106,10 @@ class BstationProvider : MainAPI() {
             val href = card.selectFirst("a[href*=/play/]")?.attr("href")?.toAbsoluteBstationUrl() ?: return@mapNotNull null
             val title = card.selectFirst(".ogv__content-title p")?.text()?.trim().orEmpty()
             if (title.isBlank()) return@mapNotNull null
-            val poster = card.selectFirst("img")?.attr("src")
+            val poster = card.findPosterUrl()
             val label = card.selectFirst(".cover-mask-text")?.text().orEmpty()
             newAnimeSearchResponse(title, href, inferType(label, singleEpisode = false)) {
-                this.posterUrl = poster?.normalizeUrl()
+                this.posterUrl = poster
             }
         }.distinctBy { it.url }
 
@@ -360,19 +361,35 @@ class BstationProvider : MainAPI() {
             headers = requestHeaders(),
             cookies = requestCookies(),
             referer = "$regionBase/search-result?q=${query.urlEncoded()}"
-        ).parsedSafe<SearchApiRoot>() ?: return emptyList()
+        ).parsedSafe<SearchApiRoot>() ?: return fetchSearchHtml(query, limit)
 
-        return response.data?.modules.orEmpty()
-            .flatMap { it.data?.items.orEmpty() }
-            .mapNotNull { item ->
-                val seasonId = item.seasonId ?: return@mapNotNull null
-                val title = item.title?.trim().orEmpty()
-                if (title.isBlank()) return@mapNotNull null
-                newAnimeSearchResponse(title, "$regionBase/play/$seasonId", TvType.Anime) {
-                    posterUrl = (item.cover ?: item.poster ?: item.horizontalCover)?.normalizeUrl()
-                }
+        val results = mutableListOf<SearchResponse>()
+
+        for (item in response.data?.modules.orEmpty().flatMap { it.data?.items.orEmpty() }) {
+            val seasonId = item.seasonId ?: item.seasonIdString ?: continue
+            val title = item.title?.trim().orEmpty()
+                .ifBlank { item.name?.trim().orEmpty() }
+            if (title.isBlank()) continue
+
+            val apiPoster = item.bestPoster()
+            val fallbackSeason = if (apiPoster.isNullOrBlank()) {
+                fetchSeasonInfo(seasonId)?.data?.season
+            } else {
+                null
             }
-            .distinctBy { it.url }
+
+            val poster = apiPoster
+                ?: fallbackSeason?.verticalCover?.normalizeUrl()
+                ?: fallbackSeason?.horizontalCover?.normalizeUrl()
+
+            results += newAnimeSearchResponse(title, "$regionBase/play/$seasonId", TvType.Anime) {
+                posterUrl = poster
+            }
+
+            if (results.size >= limit) break
+        }
+
+        return results.distinctBy { it.url }.ifEmpty { fetchSearchHtml(query, limit) }
     }
 
     private suspend fun fetchTimelineApi(limit: Int): List<SearchResponse> {
@@ -383,18 +400,33 @@ class BstationProvider : MainAPI() {
             referer = "$regionBase/anime"
         ).parsedSafe<TimelineRoot>() ?: return emptyList()
 
-        return response.data?.items.orEmpty()
-            .flatMap { it.cards.orEmpty() }
-            .mapNotNull { card ->
-                val seasonId = card.seasonId ?: return@mapNotNull null
-                val title = card.title?.trim().orEmpty()
-                if (title.isBlank()) return@mapNotNull null
-                newAnimeSearchResponse(title, "$regionBase/play/$seasonId", TvType.Anime) {
-                    posterUrl = card.cover?.normalizeUrl()
-                }
+        val results = mutableListOf<SearchResponse>()
+
+        for (card in response.data?.items.orEmpty().flatMap { it.cards.orEmpty() }) {
+            val seasonId = card.seasonId ?: card.seasonIdString ?: continue
+            val title = card.title?.trim().orEmpty()
+                .ifBlank { card.name?.trim().orEmpty() }
+            if (title.isBlank()) continue
+
+            val apiPoster = card.bestPoster()
+            val fallbackSeason = if (apiPoster.isNullOrBlank()) {
+                fetchSeasonInfo(seasonId)?.data?.season
+            } else {
+                null
             }
-            .distinctBy { it.url }
-            .take(limit)
+
+            val poster = apiPoster
+                ?: fallbackSeason?.verticalCover?.normalizeUrl()
+                ?: fallbackSeason?.horizontalCover?.normalizeUrl()
+
+            results += newAnimeSearchResponse(title, "$regionBase/play/$seasonId", TvType.Anime) {
+                posterUrl = poster
+            }
+
+            if (results.size >= limit) break
+        }
+
+        return results.distinctBy { it.url }.take(limit)
     }
 
     private suspend fun fetchAnimePageFallback(limit: Int): List<SearchResponse> {
@@ -405,9 +437,9 @@ class BstationProvider : MainAPI() {
             val title = anchor.attr("title").trim()
                 .ifBlank { anchor.text().trim() }
                 .ifBlank { return@mapNotNull null }
-            val poster = anchor.selectFirst("img")?.attr("src")
+            val poster = anchor.findPosterUrl()
             newAnimeSearchResponse(title, "$regionBase/play/$seasonId", TvType.Anime) {
-                this.posterUrl = poster?.normalizeUrl()
+                this.posterUrl = poster
             }
         }
         if (directCards.isNotEmpty()) return directCards.distinctBy { it.url }.take(limit)
@@ -422,6 +454,77 @@ class BstationProvider : MainAPI() {
         return seasonIds.map { seasonId ->
             newAnimeSearchResponse("Anime $seasonId", "$regionBase/play/$seasonId", TvType.Anime)
         }
+    }
+
+    private suspend fun fetchSearchHtml(query: String, limit: Int): List<SearchResponse> {
+        val document = app.get(
+            "$regionBase/search-result?q=${query.urlEncoded()}",
+            headers = requestHeaders(),
+            cookies = requestCookies(),
+            referer = regionBase
+        ).document
+
+        val selectors = listOf(
+            ".all-sheet__ogv_subject .ogv--season",
+            ".ogv--season",
+            ".season-card",
+            "a[href*=/id/play/]"
+        )
+
+        val results = linkedMapOf<String, SearchResponse>()
+
+        for (selector in selectors) {
+            for (card in document.select(selector)) {
+                val anchor = if (card.tagName() == "a") {
+                    card
+                } else {
+                    card.selectFirst("a[href*=/id/play/], a[href*=/play/]")
+                } ?: continue
+
+                val href = anchor.attr("href").toAbsoluteBstationUrl()
+                val seasonId = href.extractSeasonId() ?: continue
+
+                val title = card.selectFirst(".ogv__content-title p, .bstar-meta__title, .title, p")
+                    ?.text()
+                    ?.trim()
+                    .orEmpty()
+                    .ifBlank { anchor.attr("title").trim() }
+                    .ifBlank { anchor.text().trim() }
+                if (title.isBlank()) continue
+
+                val poster = card.findPosterUrl() ?: anchor.findPosterUrl()
+
+                results["$regionBase/play/$seasonId"] = newAnimeSearchResponse(
+                    title,
+                    "$regionBase/play/$seasonId",
+                    TvType.Anime
+                ) {
+                    posterUrl = poster
+                }
+
+                if (results.size >= limit) return results.values.toList()
+            }
+
+            if (results.isNotEmpty()) break
+        }
+
+        return results.values.toList()
+    }
+
+    private fun Element.findPosterUrl(): String? {
+        val img = if (tagName() == "img") this else selectFirst("img")
+        val raw = listOfNotNull(
+            img?.attr("data-src"),
+            img?.attr("data-original"),
+            img?.attr("data-lazy-src"),
+            img?.attr("src"),
+            img?.attr("srcset")?.substringBefore(" "),
+            attr("data-src"),
+            attr("data-original"),
+            attr("style").let { Regex("""url\(['"]?([^)'"]+)""").find(it)?.groupValues?.getOrNull(1) }
+        ).firstOrNull { it.isNotBlank() && !it.startsWith("data:image", true) }
+
+        return raw?.toAbsoluteBstationUrl()?.normalizeUrl()
     }
 
     private fun requestHeaders(): Map<String, String> {
@@ -541,6 +644,31 @@ class BstationProvider : MainAPI() {
         return replace("\\u002F", "/")
             .replace("\\/", "/")
             .replace("&amp;", "&")
+    }
+
+    private fun SearchApiItem.bestPoster(): String? {
+        return listOf(
+            verticalCover,
+            cover,
+            poster,
+            image,
+            imageUrl,
+            coverUrl,
+            squareCover,
+            horizontalCover
+        ).firstOrNull { !it.isNullOrBlank() }?.normalizeUrl()
+    }
+
+    private fun TimelineCard.bestPoster(): String? {
+        return listOf(
+            verticalCover,
+            cover,
+            image,
+            imageUrl,
+            coverUrl,
+            squareCover,
+            horizontalCover
+        ).firstOrNull { !it.isNullOrBlank() }?.normalizeUrl()
     }
 
     private fun Int?.toBstationQuality(): Int {
@@ -693,9 +821,16 @@ class BstationProvider : MainAPI() {
 
     data class SearchApiItem(
         @JsonProperty("title") val title: String? = null,
+        @JsonProperty("name") val name: String? = null,
         @JsonProperty("season_id") val seasonId: String? = null,
+        @JsonProperty("seasonId") val seasonIdString: String? = null,
         @JsonProperty("cover") val cover: String? = null,
         @JsonProperty("poster") val poster: String? = null,
+        @JsonProperty("image") val image: String? = null,
+        @JsonProperty("image_url") val imageUrl: String? = null,
+        @JsonProperty("cover_url") val coverUrl: String? = null,
+        @JsonProperty("vertical_cover") val verticalCover: String? = null,
+        @JsonProperty("square_cover") val squareCover: String? = null,
         @JsonProperty("horizontal_cover") val horizontalCover: String? = null,
     )
 
@@ -714,8 +849,16 @@ class BstationProvider : MainAPI() {
 
     data class TimelineCard(
         @JsonProperty("title") val title: String? = null,
+        @JsonProperty("name") val name: String? = null,
         @JsonProperty("cover") val cover: String? = null,
+        @JsonProperty("image") val image: String? = null,
+        @JsonProperty("image_url") val imageUrl: String? = null,
+        @JsonProperty("cover_url") val coverUrl: String? = null,
+        @JsonProperty("vertical_cover") val verticalCover: String? = null,
+        @JsonProperty("square_cover") val squareCover: String? = null,
+        @JsonProperty("horizontal_cover") val horizontalCover: String? = null,
         @JsonProperty("season_id") val seasonId: String? = null,
+        @JsonProperty("seasonId") val seasonIdString: String? = null,
     )
 
     data class SeasonInfoRoot(
