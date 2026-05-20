@@ -13,7 +13,7 @@ import org.jsoup.nodes.Element
 class Animasu : MainAPI() {
 
     override var mainUrl = "https://v0.animasu.app"
-    override var name = "Animasu😸"
+    override var name = "Animasu"
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true
@@ -206,6 +206,9 @@ class Animasu : MainAPI() {
             null
         }
 
+        val rawTags = table?.select("span:contains(Genre:) a, span:contains(Tipe Karakter:) a")
+            ?.map { it.text().trim() }
+
         return newAnimeLoadResponse(
             title,
             url,
@@ -228,9 +231,9 @@ class Animasu : MainAPI() {
                 document.select("div.sinopsis p")
                     .text()
 
-            this.tags =
-                table?.select("span:contains(Genre:) a")
-                    ?.map { it.text() }
+            this.tags = rawTags?.map { tag ->
+                AnimasuTagCategory.getCategoryByTag(tag)
+            }?.distinct()
 
             addTrailer(trailer)
 
@@ -363,6 +366,34 @@ class Animasu : MainAPI() {
             else -> {
                 this.attr("abs:src")
             }
+        }
+    }
+}
+
+enum class AnimasuTagCategory(val title: String, val tagsList: List<String>) {
+    // Genre Standar
+    ACTION_ADVENTURE("Action & Adventure", listOf("Action", "Adventure", "Martial Arts", "Samurai", "Super Power", "Survival", "Military")),
+    COMEDY("Comedy", listOf("Comedy", "Gag Humor", "Parody")),
+    DRAMA_ROMANCE("Drama & Romance", listOf("Drama", "Romance", "Boys Love", "Girls Love", "School")),
+    FANTASY_SCIFI("Fantasy & Sci-Fi", listOf("Fantasy", "Sci-Fi", "Supernatural", "Isekai", "Magic", "Demons", "Vampire", "Mecha", "Space", "Time Travel", "Mythology")),
+    MYSTERY_HORROR("Mystery & Horror", listOf("Mystery", "Thriller", "Suspense", "Detective", "Police", "Psychological", "Horror", "Gore")),
+    SLICE_OF_LIFE("Slice of Life", listOf("Slice of Life", "Iyashikei", "Kids", "Workplace")),
+    SPORTS_GAMES("Sports & Games", listOf("Sports", "Racing", "Strategy Game", "Game")),
+    ARTS_CULTURE("Arts & Music", listOf("Music", "Idol", "Historical", "Performing Arts")),
+    MATURE("Mature & Ecchi", listOf("Ecchi", "Harem", "Reverse Harem")),
+    DEMOGRAPHICS("Demographics", listOf("Shounen", "Shoujo", "Seinen", "Josei")),
+
+    // Tipe Karakter (MC) yang Anda berikan
+    MC_PERSONALITY_GOOD("MC: Kepribadian Baik", listOf("Ambisi", "Berjuang", "Beruntung", "Blakblakan", "Ceria", "Jenius", "Optimis", "Pemimpin", "Polos", "Semangat", "Setia", "Sopan", "Totalitas")),
+    MC_PERSONALITY_QUIRKY("MC: Sifat Negatif/Eksentrik", listOf("Anti-Sosial", "Berisik", "Cerewet", "Ceroboh", "Kejam", "Licik", "Mencolok", "Menyebalkan", "Mesum", "Narsis", "Pemalas", "Pemalu", "Penakut", "Pendiam", "Pesimis", "Slengekan", "Suram")),
+    MC_IDENTITY("MC: Identitas & Profesi", listOf("Anak-Anak", "Berbisnis", "Bounty Hunter", "Cewek", "Cowok", "Dewa", "Iblis", "Loli", "Monster", "Vampir")),
+    MC_TROPE("MC: Trope Anime", listOf("Badass", "Couple", "Dikagumi", "Disepelekan", "Ditakuti", "Legenda", "Overpower", "Terkutuk", "Tsundere", "Yandere", "Zero To Hero"));
+
+    companion object {
+        fun getCategoryByTag(tag: String): String {
+            return entries.find { category ->
+                category.tagsList.any { it.equals(tag, ignoreCase = true) }
+            }?.title ?: tag
         }
     }
 }
