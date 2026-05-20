@@ -1,10 +1,18 @@
-version = 4
+version = 5
 
 cloudstream {
-    authors     = listOf("BetbetMiro")
-    language    = "id"
-    description = "Chaturbate - Free Adult Webcams, Live Sex, Free Sex Chat, Exhibitionist & Pornstar Free Cams"
-    status  = 1 // will be 3 if unspecified
+    authors = listOf("BetbetMiro")
+    language = "id"
+    description = "Provider NSFW untuk konten live cam dewasa dari Chaturbate."
+
+    /**
+     * Status int:
+     * 0: Down
+     * 1: Ok
+     * 2: Slow
+     * 3: Beta only
+     */
+    status = 1
     tvTypes = listOf("NSFW")
     iconUrl = "https://web.static.mmcdn.com/favicons/apple-touch-icon-120x120.png?hash=b494063e083a"
 }
