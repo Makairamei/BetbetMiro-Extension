@@ -55,7 +55,9 @@ open class AnimexinProvider : MainAPI() {
             selectFirst("h2")?.text(),
             selectFirst("h3")?.text(),
             linkElement.attr("title").takeIf { it.isNotBlank() },
-            select("a[href]").map { it.text().trim() }.filter { it.isNotBlank() && it.lowercase() !in listOf("next","previous") }.maxByOrNull { it.length }
+            select("a[href]").map { it.text().trim() }
+                .filter { it.isNotBlank() && it.lowercase() !in listOf("next","previous") }
+                .maxByOrNull { it.length }
         ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
 
         val title = rawTitle.replace(Regex("(?i)Episode\\s?\\d+"), "")
@@ -65,7 +67,9 @@ open class AnimexinProvider : MainAPI() {
 
         if (title.isBlank()) return null
 
-        val posterUrl = fixUrlNull(this.selectFirst("div.limit img, img.wp-post-image, img.attachment-post-thumbnail, img")?.attr("src"))
+        val posterUrl = fixUrlNull(
+            this.selectFirst("div.limit img, img.wp-post-image, img.attachment-post-thumbnail, img")?.attr("src")
+        )
 
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
