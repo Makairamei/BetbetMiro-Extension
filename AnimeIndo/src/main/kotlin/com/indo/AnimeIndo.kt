@@ -17,35 +17,35 @@ class AnimeIndo : MainAPI() {
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA, TvType.Movie)
 
     override val mainPage = mainPageOf(
-        "$mainUrl/page/" to "Episode Terbaru",
-        "$mainUrl/movie/page/" to "Movie",
-        "$mainUrl/genres/action/page/" to "Action",
-        "$mainUrl/genres/adventure/page/" to "Adventure",
-        "$mainUrl/genres/comedy/page/" to "Comedy",
-        "$mainUrl/genres/demons/page/" to "Demons",
-        "$mainUrl/genres/donghua/page/" to "Donghua",
-        "$mainUrl/genres/drama/page/" to "Drama",
-        "$mainUrl/genres/fantasy/page/" to "Fantasy",
-        "$mainUrl/genres/game/page/" to "Game",
-        "$mainUrl/genres/historical/page/" to "Historical",
-        "$mainUrl/genres/horror/page/" to "Horror",
-        "$mainUrl/genres/isekai/page/" to "Isekai",
-        "$mainUrl/genres/magic/page/" to "Magic",
-        "$mainUrl/genres/martial-arts/page/" to "Martial Arts",
-        "$mainUrl/genres/military/page/" to "Military",
-        "$mainUrl/genres/mystery/page/" to "Mystery",
-        "$mainUrl/genres/psychological/page/" to "Psychological",
-        "$mainUrl/genres/reincarnation/page/" to "Reincarnation",
-        "$mainUrl/genres/romance/page/" to "Romance",
-        "$mainUrl/genres/school/page/" to "School",
-        "$mainUrl/genres/sci-fi/page/" to "Sci-Fi",
-        "$mainUrl/genres/seinen/page/" to "Seinen",
-        "$mainUrl/genres/slice-of-life/page/" to "Slice of Life",
-        "$mainUrl/genres/sports/page/" to "Sports",
-        "$mainUrl/genres/super-power/page/" to "Super Power",
-        "$mainUrl/genres/supernatural/page/" to "Supernatural",
-        "$mainUrl/genres/thriller/page/" to "Thriller",
-        "$mainUrl/genres/vampire/page/" to "Vampire"
+        "$mainUrl/" to "Episode Terbaru",
+        "$mainUrl/movie/" to "Movie",
+        "$mainUrl/genres/action/" to "Action",
+        "$mainUrl/genres/adventure/" to "Adventure",
+        "$mainUrl/genres/comedy/" to "Comedy",
+        "$mainUrl/genres/demons/" to "Demons",
+        "$mainUrl/genres/donghua/" to "Donghua",
+        "$mainUrl/genres/drama/" to "Drama",
+        "$mainUrl/genres/fantasy/" to "Fantasy",
+        "$mainUrl/genres/game/" to "Game",
+        "$mainUrl/genres/historical/" to "Historical",
+        "$mainUrl/genres/horror/" to "Horror",
+        "$mainUrl/genres/isekai/" to "Isekai",
+        "$mainUrl/genres/magic/" to "Magic",
+        "$mainUrl/genres/martial-arts/" to "Martial Arts",
+        "$mainUrl/genres/military/" to "Military",
+        "$mainUrl/genres/mystery/" to "Mystery",
+        "$mainUrl/genres/psychological/" to "Psychological",
+        "$mainUrl/genres/reincarnation/" to "Reincarnation",
+        "$mainUrl/genres/romance/" to "Romance",
+        "$mainUrl/genres/school/" to "School",
+        "$mainUrl/genres/sci-fi/" to "Sci-Fi",
+        "$mainUrl/genres/seinen/" to "Seinen",
+        "$mainUrl/genres/slice-of-life/" to "Slice of Life",
+        "$mainUrl/genres/sports/" to "Sports",
+        "$mainUrl/genres/super-power/" to "Super Power",
+        "$mainUrl/genres/supernatural/" to "Supernatural",
+        "$mainUrl/genres/thriller/" to "Thriller",
+        "$mainUrl/genres/vampire/" to "Vampire"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -53,9 +53,9 @@ class AnimeIndo : MainAPI() {
         val isGenre = request.data.contains("/genres/")
 
         val url = when {
-            isMovie -> if (page == 1) "$mainUrl/movie/" else "$mainUrl/movie/page/$page/"
-            isGenre -> "${request.data.replace("/page/", "")}/page/$page/"
-            else -> if (page == 1) "$mainUrl/" else "$mainUrl/page/$page/"
+            isMovie -> if (page == 1) request.data else "${request.data}page/$page/"
+            isGenre -> "${request.data}page/$page/"
+            else -> if (page == 1) request.data else "${request.data}page/$page/"
         }
         
         val document = app.get(url).document
@@ -76,7 +76,8 @@ class AnimeIndo : MainAPI() {
                 }
             }.distinctBy { it.url }
         } else {
-            document.select("div.menu a[href], div.animemenu a[href]").mapNotNull { a ->
+            // Selector diperluas agar mencakup halaman genre
+            document.select("div.menu a[href], div.animemenu a[href], div.list-anime-parent a[href]").mapNotNull { a ->
                 val inner = a.selectFirst("div.list-anime") ?: return@mapNotNull null
                 val href = a.attr("href")
 
@@ -99,6 +100,7 @@ class AnimeIndo : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
+    // Fungsi lain tetap sama
     private fun episodeToAnimeUrl(url: String): String {
         val slug = url.trimEnd('/').substringAfterLast("/")
         val animeSlug = Regex("-episode-\\d+.*$", RegexOption.IGNORE_CASE).replace(slug, "")
@@ -107,7 +109,6 @@ class AnimeIndo : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val document = app.get("$mainUrl/?s=$query").document
-
         return document.select("div.menu a[href], div.animemenu a[href], div.list-anime-parent a[href]").mapNotNull { a ->
             val inner = a.selectFirst("div.list-anime") ?: return@mapNotNull null
             val href = a.attr("href")
@@ -173,19 +174,11 @@ class AnimeIndo : MainAPI() {
         }
     }
 
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
+    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data).document
         val serverUrls = mutableListOf<String>()
 
-        document.selectFirst("iframe#tontonin")?.attr("src")?.ifBlank { null }?.let {
-            serverUrls.add(it)
-        }
-
+        document.selectFirst("iframe#tontonin")?.attr("src")?.ifBlank { null }?.let { serverUrls.add(it) }
         document.select("a.server[data-video]").forEach { a ->
             val url = a.attr("data-video").ifBlank { null } ?: return@forEach
             if (!serverUrls.contains(url)) serverUrls.add(url)
@@ -196,15 +189,12 @@ class AnimeIndo : MainAPI() {
             if (fullUrl.contains("btube3.php")) {
                 try {
                     val playerDoc = app.get(fullUrl).document
-                    val videoSrc = playerDoc.selectFirst("source[src]")?.attr("src")
-                        ?: playerDoc.selectFirst("video")?.attr("src")
+                    val videoSrc = playerDoc.selectFirst("source[src]")?.attr("src") ?: playerDoc.selectFirst("video")?.attr("src")
                     if (!videoSrc.isNullOrBlank()) {
-                        callback(
-                            newExtractorLink("AnimeIndo", "B-TUBE", videoSrc) {
-                                this.quality = Qualities.P1080.value
-                                this.referer = "https://www.blogger.com/"
-                            }
-                        )
+                        callback(newExtractorLink("AnimeIndo", "B-TUBE", videoSrc) {
+                            this.quality = Qualities.P1080.value
+                            this.referer = "https://www.blogger.com/"
+                        })
                     }
                 } catch (_: Exception) {}
             } else if (fullUrl.contains("xtwap.top")) {
@@ -214,26 +204,16 @@ class AnimeIndo : MainAPI() {
                     val filePath = fileMatch?.groupValues?.getOrNull(1)
                     if (!filePath.isNullOrBlank()) {
                         val videoUrl = if (filePath.startsWith("/")) "https://xtwap.top$filePath" else filePath
-                        callback(
-                            newExtractorLink("AnimeIndo", "CEPAT", videoUrl) {
-                                this.quality = Qualities.P1080.value
-                                this.referer = fullUrl
-                            }
-                        )
+                        callback(newExtractorLink("AnimeIndo", "CEPAT", videoUrl) {
+                            this.quality = Qualities.P1080.value
+                            this.referer = fullUrl
+                        })
                     }
                 } catch (_: Exception) {}
             } else {
                 loadExtractor(fullUrl, data, subtitleCallback, callback)
             }
         }
-
-        document.select("div.navi a[href]").forEach { a ->
-            val href = a.attr("href").ifBlank { null } ?: return@forEach
-            if (href.startsWith("http") && !href.contains(mainUrl)) {
-                loadExtractor(href, data, subtitleCallback, callback)
-            }
-        }
-
         return true
     }
 }
