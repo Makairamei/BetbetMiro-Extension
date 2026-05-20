@@ -13,7 +13,7 @@ import org.jsoup.nodes.Element
 class Animasu : MainAPI() {
 
     override var mainUrl = "https://v0.animasu.app"
-    override var name = "Animasu😸"
+    override var name = "Animasu"
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true
@@ -47,7 +47,7 @@ class Animasu : MainAPI() {
         }
     }
 
-    // === FIX: PARAMETER GENRE MENGGUNAKAN HURUF KECIL (SLUG) ===
+    // === PERBAIKAN: MENGHAPUS GENRE YANG RUSAK/KOSONG, MENGEMBALIKAN KE STRUKTUR ASLI ===
     override val mainPage = mainPageOf(
         "urutan=update" to "Baru diupdate",
         "status=&tipe=&urutan=publikasi" to "Baru ditambahkan",
@@ -55,18 +55,6 @@ class Animasu : MainAPI() {
         "status=&tipe=&urutan=rating" to "Rating Tertinggi",
         "status=&tipe=Movie&urutan=update" to "Movie Terbaru",
         "status=&tipe=Movie&urutan=populer" to "Movie Terpopuler",
-        "genre[]=action" to "Action",
-        "genre[]=comedy" to "Comedy",
-        "genre[]=romance" to "Romance",
-        "genre[]=fantasy" to "Fantasy",
-        "genre[]=drama" to "Drama",
-        "genre[]=isekai" to "Isekai",
-        "genre[]=school" to "School",
-        "genre[]=slice-of-life" to "Slice of Life",
-        "genre[]=mystery" to "Mystery",
-        "genre[]=sci-fi" to "Sci-Fi",
-        "genre[]=supernatural" to "Supernatural",
-        "genre[]=harem" to "Harem"
     )
 
     override suspend fun getMainPage(
