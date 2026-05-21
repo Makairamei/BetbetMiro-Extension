@@ -9,11 +9,12 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import java.net.URLEncoder
 import org.json.JSONArray
 import org.json.JSONObject
+import org.jsoup.nodes.Element
 
 class Dramabox : MainAPI() {
     override var mainUrl = "https://www.dramabox.com/in"
     private val apiUrl = "https://db.hafizhibnusyam.my.id"
-    override var name = "DramaBox👌"
+    override var name = "DramaBox"
     override var lang = "id"
     override val hasMainPage = true
     override val hasQuickSearch = true
@@ -21,30 +22,122 @@ class Dramabox : MainAPI() {
     override val supportedTypes = setOf(TvType.TvSeries, TvType.AsianDrama)
 
     override val mainPage = mainPageOf(
+        // API sections with playback-compatible IDs.
         "/api/dramas/indo" to "Drama Dub Indo",
         "/api/dramas/trending" to "Trending",
         "/api/dramas/must-sees" to "Must Sees",
         "/api/dramas/hidden-gems" to "Hidden Gems",
+
+        // Official DramaBox browse/category pages.
+        "web:/browse" to "Semua Drama",
+        "web:/browse/447" to "Romansa",
+        "web:/browse/449" to "Cinta Pahit",
+        "web:/browse/467" to "Realitas",
+        "web:/browse/456" to "Nikah Dulu Cinta Belakangan",
+        "web:/browse/454" to "Kawin Kontrak",
+        "web:/browse/442" to "Naga",
+        "web:/browse/470" to "Orang Kuat",
+        "web:/browse/466" to "Salah Paham",
+        "web:/browse/464" to "CEO Wanita",
+        "web:/browse/450" to "Kelahiran Kembali",
+        "web:/browse/459" to "Reuni",
+        "web:/browse/448" to "Manis",
+        "web:/browse/462" to "Melawan Balik",
+        "web:/browse/469" to "Cinta Sejati",
+        "web:/browse/430" to "Dokter Dewa",
+        "web:/browse/427" to "Urban",
+        "web:/browse/444" to "Menantu Matrilineal",
+        "web:/browse/433" to "Kekuatan Super",
+        "web:/browse/429" to "Kebangkitan",
+        "web:/browse/441" to "Identitas Rahasia",
+        "web:/browse/258" to "Billionaire",
+        "web:/browse/460" to "Bayi",
+        "web:/browse/435" to "Orang Kecil",
+        "web:/browse/434" to "Misteri",
+        "web:/browse/161" to "Romance",
+        "web:/browse/283" to "Toxic Love",
+        "web:/browse/440" to "Miliarder",
+        "web:/browse/437" to "Ahli Turun Gunung",
+        "web:/browse/457" to "Pernikahan Kilat",
+        "web:/browse/463" to "Wanita Tangguh",
+        "web:/browse/445" to "Pengkhianatan",
+        "web:/browse/436" to "Kebangkitan Warisan",
+        "web:/browse/461" to "Cinta Segitiga",
+        "web:/browse/439" to "Perjalanan Waktu",
+        "web:/browse/455" to "Kekasih Kontrak",
+        "web:/browse/453" to "Identitas Tersembunyi",
+        "web:/browse/689" to "Keluarga",
+        "web:/browse/438" to "Kembali Orang Kuat",
+        "web:/browse/452" to "Identitas Tertukar",
+        "web:/browse/458" to "Balas Dendam",
+
+        // Extra search buckets for terms that are useful in Indonesia/API search.
+        "search:Cinta" to "Romance Indonesia",
+        "search:Love" to "Love Story",
+        "search:Pernikahan" to "Pernikahan",
+        "search:Marriage" to "Marriage",
+        "search:Kontrak" to "Marriage Contract",
+        "search:Revenge" to "Revenge",
+        "search:CEO" to "CEO",
+        "search:Boss" to "Boss",
+        "search:Mafia" to "Mafia",
+        "search:Family" to "Family",
+        "search:Istri" to "Istri",
+        "search:Suami" to "Suami",
+        "search:Rahasia" to "Secret",
+        "search:Fantasy" to "Fantasy",
+        "search:Werewolf" to "Werewolf"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val response = fetchDramaList(request.data, if (page < 1) 1 else page)
-        val items = response?.data.orEmpty().mapNotNull { it.toSearchResult() }.distinctBy { it.url }
-        return newHomePageResponse(HomePageList(request.name, items, false), response?.meta?.pagination?.hasMore ?: items.isNotEmpty())
+        val safePage = if (page < 1) 1 else page
+
+        if (request.data.startsWith("web:")) {
+            val webItems = fetchOfficialBrowseList(request.data.removePrefix("web:"), safePage)
+                .distinctBy { it.url }
+
+            val items = if (webItems.isNotEmpty()) {
+                webItems
+            } else {
+                // Fallback: kalau halaman resmi sedang 403/dinamis, kategori tetap terisi
+                // memakai API search dengan nama kategori.
+                fetchSearchList(request.name, safePage)
+                    ?.data
+                    .orEmpty()
+                    .mapNotNull { it.toSearchResult() }
+                    .distinctBy { it.url }
+            }
+
+            return newHomePageResponse(
+                HomePageList(request.name, items, false),
+                hasNext = items.isNotEmpty()
+            )
+        }
+
+        val response = if (request.data.startsWith("search:")) {
+            fetchSearchList(request.data.removePrefix("search:").trim(), safePage)
+        } else {
+            fetchDramaList(request.data, safePage)
+        }
+
+        val items = response?.data.orEmpty()
+            .mapNotNull { it.toSearchResult() }
+            .distinctBy { it.url }
+
+        return newHomePageResponse(
+            HomePageList(request.name, items, false),
+            response?.meta?.pagination?.hasMore ?: items.isNotEmpty()
+        )
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val keyword = query.trim()
         if (keyword.isBlank()) return emptyList()
 
-        val url = "$apiUrl/api/search?keyword=${URLEncoder.encode(keyword, "UTF-8")}&page=1&size=50"
-        val body = executeWithRetry {
-            rateLimitDelay(moduleName = "Dramabox")
-            app.get(url, timeout = AutoUsedConstants.DEFAULT_TIMEOUT).text
-        }
-
-        val response = tryParseJson<DramaListResponse>(body)
-        return response?.data.orEmpty().mapNotNull { it.toSearchResult() }.distinctBy { it.url }
+        val response = fetchSearchList(keyword, page = 1, size = 50)
+        return response?.data.orEmpty()
+            .mapNotNull { it.toSearchResult() }
+            .distinctBy { it.url }
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
@@ -97,31 +190,55 @@ class Dramabox : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val parsed = parseJson<LoadData>(data)
-        val dramaId = parsed.bookId ?: return false
+        val parsed = runCatching { parseJson<LoadData>(data) }.getOrNull() ?: return false
+        val dramaId = parsed.bookId?.trim()?.takeIf { it.isNotBlank() } ?: return false
         val episodeNo = parsed.episodeNo ?: return false
 
         val chapter = fetchChapterForEpisode(dramaId, episodeNo)
         val streams = chapter?.streamUrl.orEmpty()
-            .filter { it.url?.isNotBlank() == true }
+            .mapNotNull { stream ->
+                val fixedUrl = stream.url
+                    ?.replace("\\u002F", "/")
+                    ?.replace("\\/", "/")
+                    ?.replace("&amp;", "&")
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+
+                if (fixedUrl == null) null else stream.copy(url = fixedUrl)
+            }
             .distinctBy { it.url }
             .sortedByDescending { it.quality ?: 0 }
 
         if (streams.isEmpty()) return false
 
-        streams.forEach { s ->
+        streams.forEach { stream ->
+            val streamUrl = stream.url ?: return@forEach
+            val qualityLabel = stream.quality?.let { "${it}p" } ?: "Auto"
+            val linkType = when {
+                streamUrl.contains(".m3u8", true) -> ExtractorLinkType.M3U8
+                streamUrl.contains(".mpd", true) -> ExtractorLinkType.DASH
+                else -> ExtractorLinkType.VIDEO
+            }
+
             callback.invoke(
                 newExtractorLink(
                     name,
-                    "DramaBox ${s.quality?.let { "${it}p" } ?: "Auto"}",
-                    s.url!!,
-                    ExtractorLinkType.VIDEO
+                    "DramaBox $qualityLabel",
+                    streamUrl,
+                    linkType
                 ) {
-                    this.quality = s.quality ?: Qualities.Unknown.value
+                    this.quality = qualityFromNumber(stream.quality)
                     this.referer = "$mainUrl/"
+                    this.headers = mapOf(
+                        "Referer" to "$mainUrl/",
+                        "Origin" to "https://www.dramabox.com",
+                        "User-Agent" to USER_AGENT,
+                        "Accept" to "*/*"
+                    )
                 }
             )
         }
+
         return true
     }
 
@@ -141,6 +258,173 @@ class Dramabox : MainAPI() {
         }
     }
 
+    private suspend fun fetchOfficialBrowseList(path: String, page: Int): List<SearchResponse> {
+        return try {
+            val basePath = path.trim().ifBlank { "/browse" }
+            val pagePath = if (page <= 1) {
+                basePath
+            } else {
+                "${basePath.trimEnd('/')}/$page"
+            }
+
+            val url = if (pagePath.startsWith("http", true)) {
+                pagePath
+            } else {
+                "$mainUrl${if (pagePath.startsWith("/")) pagePath else "/$pagePath"}"
+            }
+
+            val document = app.get(
+                url,
+                headers = webHeaders,
+                referer = "$mainUrl/"
+            ).document
+
+            document.select("a[href*='/drama/']")
+                .mapNotNull { it.toOfficialSearchResult() }
+                .distinctBy { it.url }
+        } catch (e: Exception) {
+            logError("Dramabox", "fetchOfficialBrowseList failed path=$path page=$page", e)
+            emptyList()
+        }
+    }
+
+    private fun Element.toOfficialSearchResult(): SearchResponse? {
+        val href = attr("href")
+            .takeIf { it.isNotBlank() }
+            ?.toDramaboxUrl()
+            ?: return null
+
+        val dramaId = extractDramaId(href) ?: return null
+
+        val rawTitle = attr("title").trim()
+            .ifBlank { selectFirst("img[alt]")?.attr("alt")?.trim().orEmpty() }
+            .ifBlank { text().trim() }
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+
+        val cleanName = cleanTitle(rawTitle)
+            .removeEpisodeText()
+            .ifBlank { return null }
+
+        if (cleanName.isUiText()) return null
+
+        val poster = findPosterFromElement(this, href)
+
+        return newTvSeriesSearchResponse(cleanName, buildDramaWebUrl(cleanName, dramaId), TvType.AsianDrama) {
+            this.posterUrl = poster
+        }
+    }
+
+    private fun String.removeEpisodeText(): String {
+        return replace(Regex("""(?i)\b\d+\s*episode[s]?\b"""), "")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+
+    private fun String.isUiText(): Boolean {
+        val lower = lowercase()
+        if (lower.isBlank()) return true
+        if (lower.matches(Regex("""^\d+$"""))) return true
+        if (lower.contains("episode") && lower.length < 20) return true
+
+        val blocked = listOf(
+            "beranda",
+            "kategori",
+            "aplikasi",
+            "login",
+            "lainnya",
+            "previous",
+            "next",
+            "prev",
+            "semua",
+            "feedback",
+            "dramabox"
+        )
+
+        return blocked.any { lower == it }
+    }
+
+    private fun findPosterFromElement(element: Element, baseUrl: String): String? {
+        val boxes = listOfNotNull(
+            element,
+            element.parent(),
+            element.parent()?.parent(),
+            element.parent()?.parent()?.parent()
+        ).distinct()
+
+        for (box in boxes) {
+            extractImageFromElement(box, baseUrl)?.let { return it }
+            box.select("img, source, picture, div, span").forEach { child ->
+                extractImageFromElement(child, baseUrl)?.let { return it }
+            }
+        }
+
+        return null
+    }
+
+    private fun extractImageFromElement(element: Element, baseUrl: String): String? {
+        val attrs = listOf(
+            "src",
+            "data-src",
+            "data-original",
+            "data-lazy-src",
+            "data-image",
+            "data-img",
+            "poster"
+        )
+
+        attrs.forEach { attr ->
+            val value = element.attr(attr).trim()
+            if (value.isImageCandidate()) return value.toDramaboxUrl(baseUrl)
+        }
+
+        listOf("srcset", "data-srcset").forEach { attr ->
+            val src = element.attr(attr)
+                .split(",")
+                .map { it.trim().substringBefore(" ").trim() }
+                .firstOrNull { it.isImageCandidate() }
+
+            if (!src.isNullOrBlank()) return src.toDramaboxUrl(baseUrl)
+        }
+
+        val style = element.attr("style")
+        Regex("""url\((['"]?)(.*?)\1\)""", RegexOption.IGNORE_CASE)
+            .find(style)
+            ?.groupValues
+            ?.getOrNull(2)
+            ?.trim()
+            ?.takeIf { it.isImageCandidate() }
+            ?.let { return it.toDramaboxUrl(baseUrl) }
+
+        return null
+    }
+
+    private fun String.isImageCandidate(): Boolean {
+        if (isBlank()) return false
+        if (startsWith("data:", true)) return false
+        if (contains("logo", true) || contains("icon", true) || contains("avatar", true)) return false
+        return contains(".jpg", true) ||
+            contains(".jpeg", true) ||
+            contains(".png", true) ||
+            contains(".webp", true) ||
+            contains("dramaboxdb.com", true) ||
+            contains("thwztchapter", true)
+    }
+
+    private fun String.toDramaboxUrl(baseUrl: String = mainUrl): String {
+        val value = replace("\\u002F", "/")
+            .replace("\\/", "/")
+            .replace("&amp;", "&")
+            .trim()
+
+        return when {
+            value.startsWith("http://", true) || value.startsWith("https://", true) -> value
+            value.startsWith("//") -> "https:$value"
+            value.startsWith("/") -> "https://www.dramabox.com$value"
+            else -> "${baseUrl.trimEnd('/')}/$value"
+        }
+    }
+
     private suspend fun fetchDramaList(path: String, page: Int): DramaListResponse? {
         return try {
             val url = "${if (path.startsWith("http")) path else "$apiUrl$path"}${if (path.contains("?")) "&" else "?"}page=$page"
@@ -152,6 +436,21 @@ class Dramabox : MainAPI() {
         } catch (e: Exception) {
             // FIX #5: Log errors instead of silently swallowing them
             logError("Dramabox", "fetchDramaList failed for path=$path page=$page", e)
+            null
+        }
+    }
+
+    private suspend fun fetchSearchList(keyword: String, page: Int, size: Int = 24): DramaListResponse? {
+        return try {
+            val encoded = URLEncoder.encode(keyword.trim(), "UTF-8")
+            val url = "$apiUrl/api/search?keyword=$encoded&page=$page&size=$size"
+            val body = executeWithRetry {
+                rateLimitDelay(moduleName = "Dramabox")
+                app.get(url, timeout = AutoUsedConstants.DEFAULT_TIMEOUT).text
+            }
+            tryParseJson<DramaListResponse>(body)
+        } catch (e: Exception) {
+            logError("Dramabox", "fetchSearchList failed keyword=$keyword page=$page", e)
             null
         }
     }
@@ -235,6 +534,19 @@ class Dramabox : MainAPI() {
         }
     }
 
+
+    private fun qualityFromNumber(value: Int?): Int {
+        return when (value) {
+            2160 -> Qualities.P2160.value
+            1440 -> Qualities.P1080.value
+            1080 -> Qualities.P1080.value
+            720 -> Qualities.P720.value
+            480 -> Qualities.P480.value
+            360 -> Qualities.P360.value
+            240 -> Qualities.P240.value
+            else -> Qualities.Unknown.value
+        }
+    }
 
     private fun parseOpenData(raw: String): DramaOpenData? {
         return runCatching { parseJson<DramaOpenData>(raw) }.getOrNull()
@@ -400,10 +712,15 @@ class Dramabox : MainAPI() {
                         .ifBlank { value.optString("file") }
                         .ifBlank { value.optString("video_url") }
                         .ifBlank { value.optString("videoUrl") }
+                        .ifBlank { value.optString("src") }
+                        .ifBlank { value.optString("link") }
 
                     val quality = value.optInt("quality", -1)
                         .takeIf { it > 0 }
                         ?: value.optString("quality")
+                            .filter { it.isDigit() }
+                            .toIntOrNull()
+                        ?: value.optString("label")
                             .filter { it.isDigit() }
                             .toIntOrNull()
 
@@ -411,6 +728,12 @@ class Dramabox : MainAPI() {
 
                     value.keys().forEach { key ->
                         val child = value.opt(key)
+                        val keyQuality = key.filter { it.isDigit() }.toIntOrNull()
+
+                        if (child is String && child.startsWith("http", true)) {
+                            result.add(StreamItem(keyQuality, child))
+                        }
+
                         if (child is JSONObject || child is JSONArray) parseOne(child)
                     }
                 }
@@ -427,8 +750,15 @@ class Dramabox : MainAPI() {
         return result.distinctBy { it.url }
     }
 
+    private val webHeaders = mapOf(
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+        "User-Agent" to USER_AGENT,
+        "Referer" to "$mainUrl/"
+    )
+
     companion object {
-        private const val FALLBACK_EPISODE_COUNT = 50
+        private const val FALLBACK_EPISODE_COUNT = 120
     }
 
     data class DramaListResponse(@JsonProperty("data") val data: List<DramaItem>? = null, @JsonProperty("meta") val meta: ResponseMeta? = null)
