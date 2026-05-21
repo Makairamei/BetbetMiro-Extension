@@ -151,29 +151,6 @@
         "fileHash": "sha256-2ef817d9f83596a097e75b5f728f6cad63877f9899ed1092b31012a0226bf2f5"
     },
     {
-        "iconUrl": "https://www.google.com/s2/favicons?domain=simplycufflinks.com&sz=%size%",
-        "fileHash": "sha256-e563ad8d9b26a0c1492068a23d4a78d1b35f16bf37f34aa60b2f301050b0f37b",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
-        "fileSize": 149688,
-        "status": 1,
-        "language": "id",
-        "authors": [
-            "BetbetMiro"
-        ],
-        "tvTypes": [
-            "Movie",
-            "TvSeries",
-            "AsianDrama",
-            "Anime"
-        ],
-        "version": 3,
-        "internalName": "ProviderDutamovie21",
-        "description": "Dutamovie21 - Nonton film box office, series, dan serial TV subtitle Indonesia",
-        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/master/Betbet/ProviderDutamovie21.cs3",
-        "name": "Dutamovie21"
-    },
-    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=89.124.116.48&sz=%size%",
         "fileHash": "sha256-9b14830cb76a536561445581db36ba8ede498196224f0cb99a1a4a70db700d23",
         "apiVersion": 1,
