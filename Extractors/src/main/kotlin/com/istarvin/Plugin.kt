@@ -1,11 +1,18 @@
 package com.istarvin
 
-import com.lagradost.cloudstream3.plugins.BasePlugin
+import android.content.Context
+import androidx.appcompat.app.AppCompatActivity
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
+import com.lagradost.cloudstream3.plugins.Plugin
 
 @CloudstreamPlugin
-class ExtractorPlugin : BasePlugin() {
-    override fun load() {
+class ExtractorPlugin : Plugin() {
+    companion object {
+        private const val PREF_FILE = "Extractors"
+    }
+
+    override fun load(context: Context) {
+        val sharedPref = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
         registerExtractorAPI(LuluVid())
         registerExtractorAPI(Vidara())
         registerExtractorAPI(RubyVidHub())
@@ -48,5 +55,16 @@ class ExtractorPlugin : BasePlugin() {
         registerExtractorAPI(Hanerix())
         registerExtractorAPI(JavVids())
         registerExtractorAPI(Reely())
+        registerExtractorAPI(HLSProxy(sharedPref))
+        registerExtractorAPI(Emturbovid())
+        registerExtractorAPI(AsnWish())
+
+        openSettings = { ctx ->
+            val activity = ctx as AppCompatActivity
+            if (!activity.isFinishing && !activity.isDestroyed) {
+                ExtractorsSettingsFragment(this, sharedPref)
+                    .show(activity.supportFragmentManager, "extractors_settings")
+            }
+        }
     }
 }
