@@ -30,6 +30,7 @@ import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import java.net.URLEncoder
 
 open class DrakorProvider : TmdbProvider() {
     override var name = "Drakor"
@@ -41,6 +42,8 @@ open class DrakorProvider : TmdbProvider() {
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
+        TvType.AsianDrama,
+        TvType.Anime,
     )
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
@@ -84,16 +87,37 @@ open class DrakorProvider : TmdbProvider() {
     }
 
     override val mainPage = mainPageOf(
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=first_air_date.desc&first_air_date.lte=${getDate().today}&vote_count.gte=1" to "Latest Korean Drama",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=primary_release_date.desc&primary_release_date.lte=${getDate().today}&vote_count.gte=1" to "Latest Korean Movies",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular Korean Movies",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Top Rated K-Dramas",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Top Rated Korean Movies",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Airing Today K-Dramas",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&primary_release_date.gte=${getDate().today}" to "Upcoming Korean Movies",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&with_genres=10749" to "Romance K-Dramas",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=28" to "Action Korean Movies"
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=first_air_date.desc&first_air_date.lte=${getDate().today}&vote_count.gte=1" to "Drama Korea Terbaru",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Drama Korea Populer",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Drama Korea Rating Tinggi",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Drama Korea Tayang Hari Ini",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&first_air_date.gte=${getDate().today}&sort_by=first_air_date.asc" to "Drama Korea Upcoming",
+
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=primary_release_date.desc&primary_release_date.lte=${getDate().today}&vote_count.gte=1" to "Film Korea Terbaru",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Film Korea Populer",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Film Korea Rating Tinggi",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&primary_release_date.gte=${getDate().today}&sort_by=primary_release_date.asc" to "Film Korea Upcoming",
+
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&with_genres=18&sort_by=popularity.desc" to "Drama",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&with_genres=35&sort_by=popularity.desc" to "Comedy",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&with_genres=10749&sort_by=popularity.desc" to "Romance",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&with_genres=9648&sort_by=popularity.desc" to "Mystery",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&with_genres=80&sort_by=popularity.desc" to "Crime",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&with_genres=10765&sort_by=popularity.desc" to "Sci-Fi & Fantasy",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&with_genres=10759&sort_by=popularity.desc" to "Action & Adventure",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&with_genres=10751&sort_by=popularity.desc" to "Family",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&with_genres=10768&sort_by=popularity.desc" to "War & Politics",
+
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=28&sort_by=popularity.desc" to "Action Movie",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=35&sort_by=popularity.desc" to "Comedy Movie",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=18&sort_by=popularity.desc" to "Drama Movie",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=27&sort_by=popularity.desc" to "Horror Movie",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=53&sort_by=popularity.desc" to "Thriller Movie",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=80&sort_by=popularity.desc" to "Crime Movie",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=9648&sort_by=popularity.desc" to "Mystery Movie",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=10749&sort_by=popularity.desc" to "Romance Movie",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=878&sort_by=popularity.desc" to "Sci-Fi Movie",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=16&sort_by=popularity.desc" to "Korean Animation"
     )
 
     // FIX #1: Removed double slash — posterPath already starts with "/"
@@ -114,19 +138,29 @@ open class DrakorProvider : TmdbProvider() {
         val type = if (request.data.contains("/movie")) "movie" else "tv"
 
         val home = app.get("${request.data}$adultQuery&page=$page")
-            .parsedSafe<Results>()?.results?.mapNotNull { media ->
-                media.toSearchResponse(type)
-            } ?: throw ErrorLoadingException("Invalid Json reponse")
-        return newHomePageResponse(request.name, home)
+            .parsedSafe<Results>()?.results
+            ?.mapNotNull { media -> media.toSearchResponse(type) }
+            .orEmpty()
+
+        return newHomePageResponse(
+            request.name,
+            home,
+            hasNext = home.isNotEmpty()
+        )
     }
 
     // FIX #2: Use correct TvType based on media type, not hardcode TvType.Movie
     private fun Media.toSearchResponse(type: String? = null): SearchResponse? {
+        val mediaId = id ?: return null
         val resolvedType = mediaType ?: type
+        if (resolvedType == null || resolvedType == "person") return null
+
         val tvType = if (resolvedType == "movie") TvType.Movie else TvType.TvSeries
+        val cleanTitle = title ?: name ?: originalTitle ?: return null
+
         return newMovieSearchResponse(
-            title ?: name ?: originalTitle ?: return null,
-            Data(id = id, type = resolvedType).toJson(),
+            cleanTitle,
+            Data(id = mediaId, type = resolvedType).toJson(),
             tvType,
         ) {
             this.posterUrl = getImageUrl(posterPath)
@@ -137,10 +171,14 @@ open class DrakorProvider : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
-            .parsedSafe<Results>()?.results?.mapNotNull { media ->
-                media.toSearchResponse()
-            }
+        if (query.isBlank()) return emptyList()
+
+        val encodedQuery = query.urlEncoded()
+        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$encodedQuery&page=1&include_adult=${settingsForProvider.enableAdult}")
+            .parsedSafe<Results>()?.results
+            ?.mapNotNull { media -> media.toSearchResponse() }
+            ?.distinctBy { it.url }
+            ?: emptyList()
     }
 
     override suspend fun load(url: String): LoadResponse? {
@@ -310,10 +348,13 @@ open class DrakorProvider : TmdbProvider() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-
         val res = parseJson<LinkData>(data)
+        var found = false
+        val safeCallback: (ExtractorLink) -> Unit = { link ->
+            found = true
+            callback.invoke(link)
+        }
 
-        // FIX #6: Added invokeGomovies, invokeXprime, invokeVidrock that were defined but never called
         runAllAsync(
             {
                 invokeIdlix(
@@ -322,7 +363,7 @@ open class DrakorProvider : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    callback
+                    safeCallback
                 )
             },
             {
@@ -332,7 +373,7 @@ open class DrakorProvider : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    callback
+                    safeCallback
                 )
             },
             {
@@ -342,7 +383,7 @@ open class DrakorProvider : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    callback
+                    safeCallback
                 )
             },
             {
@@ -352,7 +393,7 @@ open class DrakorProvider : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    callback
+                    safeCallback
                 )
             },
             {
@@ -362,7 +403,7 @@ open class DrakorProvider : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    callback
+                    safeCallback
                 )
             },
             {
@@ -371,7 +412,7 @@ open class DrakorProvider : TmdbProvider() {
                     res.year,
                     res.season,
                     res.episode,
-                    callback
+                    safeCallback
                 )
             },
             {
@@ -382,7 +423,7 @@ open class DrakorProvider : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    callback
+                    safeCallback
                 )
             },
             {
@@ -391,11 +432,11 @@ open class DrakorProvider : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    callback
+                    safeCallback
                 )
             },
             {
-                invokeVidlink(res.id, res.season, res.episode, callback)
+                invokeVidlink(res.id, res.season, res.episode, safeCallback)
             },
             {
                 invokeVidsrccc(
@@ -404,11 +445,11 @@ open class DrakorProvider : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    callback
+                    safeCallback
                 )
             },
             {
-                invokeVixsrc(res.id, res.season, res.episode, callback)
+                invokeVixsrc(res.id, res.season, res.episode, safeCallback)
             },
             {
                 invokeCinemaOS(
@@ -418,7 +459,7 @@ open class DrakorProvider : TmdbProvider() {
                     res.season,
                     res.episode,
                     res.year,
-                    callback,
+                    safeCallback,
                     subtitleCallback
                 )
             },
@@ -428,11 +469,11 @@ open class DrakorProvider : TmdbProvider() {
                     res.season,
                     res.episode,
                     res.year,
-                    callback
+                    safeCallback
                 )
             },
             {
-                if (!res.isAnime) invokeRiveStream(res.id, res.season, res.episode, callback)
+                if (!res.isAnime) invokeRiveStream(res.id, res.season, res.episode, safeCallback)
             },
             {
                 invokeVidsrc(
@@ -440,7 +481,7 @@ open class DrakorProvider : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    callback
+                    safeCallback
                 )
             },
             {
@@ -452,10 +493,10 @@ open class DrakorProvider : TmdbProvider() {
                 )
             },
             {
-                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
+                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, safeCallback)
             },
             {
-                invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
+                invokeMapple(res.id, res.season, res.episode, subtitleCallback, safeCallback)
             },
             {
                 invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
@@ -466,13 +507,17 @@ open class DrakorProvider : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    callback
+                    safeCallback
                 )
             }
         )
 
-        return true
+        return found
     }
+
+    private fun String.urlEncoded(): String = runCatching {
+        URLEncoder.encode(this, "UTF-8")
+    }.getOrDefault(this)
 
     data class LinkData(
         val id: Int? = null,

@@ -1,5 +1,5 @@
 // use an integer for version numbers
-version = 2
+version = 3
 
 
 cloudstream {
@@ -20,6 +20,7 @@ cloudstream {
         "AsianDrama",
         "TvSeries",
         "Movie",
+        "Anime",
     )
 
     iconUrl = "https://klikxxi.me/wp-content/uploads/2024/02/cropped-site-icon.png"
