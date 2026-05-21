@@ -1,10 +1,9 @@
-// ! Bu araç @Kraptor123 tarafından | @Cs-GizliKeyif için yazılmıştır.
-version = 1
+version = 2
 
 cloudstream {
-    authors     = listOf("BetbetMiro")
-    language    = "id"
-    description = "The best Gym porn and Fitness nude videos. Gym sex - Naked workout - Nude Fit Instagram Girls - Naked Yoga"
+    authors = listOf("BetbetMiro")
+    language = "id"
+    description = "FitNakedGirls NSFW video provider"
 
     /**
      * Status int as the following:
@@ -12,8 +11,10 @@ cloudstream {
      * 1: Ok
      * 2: Slow
      * 3: Beta only
-    **/
-    status  = 1 // will be 3 if unspecified
+     */
+    status = 1
+
     tvTypes = listOf("NSFW")
+
     iconUrl = "https://www.google.com/s2/favicons?sz=64&domain=fitnakedgirls.com"
 }
