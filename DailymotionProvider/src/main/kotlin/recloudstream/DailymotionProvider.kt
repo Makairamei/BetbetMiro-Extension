@@ -31,8 +31,6 @@ class DailymotionProvider : MainAPI() {
     override val mainPage = mainPageOf(
         "sort=recent" to "Terbaru",
         "sort=visited" to "Paling Banyak Ditonton",
-        "sort=rated" to "Rating Tertinggi",
-        "sort=commented" to "Paling Banyak Komentar",
 
         "channel=news&sort=recent" to "Berita",
         "channel=sport&sort=recent" to "Olahraga",
