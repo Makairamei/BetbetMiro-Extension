@@ -110,7 +110,9 @@ class Gojodesu : MainAPI() {
         val results = linkedMapOf<String, SearchResponse>()
 
         for (url in endpoints) {
-            val document = runCatching { app.get(url).document }.getOrNull() ?: continue
+            val document = runCatching {
+                app.get(url).document
+            }.getOrNull() ?: continue
 
             document.select(
                 "article, " +
@@ -199,10 +201,11 @@ class Gojodesu : MainAPI() {
 
         extractM3u8Urls(response.text).forEach { m3u8 ->
             generateM3u8(
-                name = name,
+                source = name,
                 streamUrl = m3u8,
                 referer = data
             ).forEach(callback)
+
             found = true
         }
 
@@ -241,10 +244,11 @@ class Gojodesu : MainAPI() {
             if (m3u8s.isNotEmpty()) {
                 m3u8s.forEach { m3u8 ->
                     generateM3u8(
-                        name = name,
+                        source = name,
                         streamUrl = m3u8,
                         referer = link
                     ).forEach(callback)
+
                     found = true
                 }
             }
@@ -341,9 +345,11 @@ class Gojodesu : MainAPI() {
             url.contains("movie", true) -> TvType.AnimeMovie
             title.contains("movie", true) -> TvType.AnimeMovie
             tags.any { it.equals("Movie", true) } -> TvType.AnimeMovie
+
             url.contains("ova", true) -> TvType.OVA
             title.contains("ova", true) -> TvType.OVA
             tags.any { it.equals("OVA", true) } -> TvType.OVA
+
             else -> TvType.Anime
         }
     }

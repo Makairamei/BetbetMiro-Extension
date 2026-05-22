@@ -23,10 +23,9 @@ open class Kotakajaib : ExtractorApi() {
         val document = response.document
         val html = response.text
 
-        val directM3u8 = extractM3u8Urls(html)
-        directM3u8.forEach { m3u8 ->
+        extractM3u8Urls(html).forEach { m3u8 ->
             generateM3u8(
-                name = name,
+                source = name,
                 streamUrl = normalizeUrl(m3u8),
                 referer = url
             ).forEach(callback)
@@ -64,7 +63,7 @@ open class Kotakajaib : ExtractorApi() {
             if (frameM3u8.isNotEmpty()) {
                 frameM3u8.forEach { m3u8 ->
                     generateM3u8(
-                        name = name,
+                        source = name,
                         streamUrl = normalizeUrl(m3u8),
                         referer = frame
                     ).forEach(callback)
