@@ -68,6 +68,7 @@ class JuraganFilmProvider : MainAPI() {
 
         "$mainUrl/api/browse?page=%d&limit=36&sort=popular" to "Popular",
         "$mainUrl/api/browse?page=%d&limit=36&sort=rating" to "Rating Tertinggi",
+
         "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=action" to "Action",
         "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=adventure" to "Adventure",
         "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=animation" to "Animation",
@@ -87,11 +88,12 @@ class JuraganFilmProvider : MainAPI() {
         request: MainPageRequest
     ): HomePageResponse {
         val url = request.data.format(page.coerceAtLeast(1))
-        val res = runCatching {
+
+        val response = runCatching {
             app.get(url, timeout = 10000L).parsedSafe<ApiResponse>()
         }.getOrNull()
 
-        val home = res?.data.orEmpty()
+        val home = response?.data.orEmpty()
             .mapNotNull { it.toSearchResponse() }
             .distinctBy { it.url }
 
@@ -113,14 +115,15 @@ class JuraganFilmProvider : MainAPI() {
         val q = URLEncoder.encode(query.trim(), "UTF-8")
         val url = "$mainUrl/api/search?q=$q&page=${page.coerceAtLeast(1)}&limit=12"
 
-        val res = runCatching {
+        val response = runCatching {
             app.get(url, timeout = 10000L).parsedSafe<SearchApiResponse>()
-        }.getOrNull() ?: return emptyList<SearchResponse>().toNewSearchResponseList()
+        }.getOrNull()
 
-        return res.results
+        val results = response?.results.orEmpty()
             .mapNotNull { it.toSearchResponse() }
             .distinctBy { it.url }
-            .toNewSearchResponseList()
+
+        return results.toNewSearchResponseList()
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -128,35 +131,49 @@ class JuraganFilmProvider : MainAPI() {
             ?: throw ErrorLoadingException("Invalid JSON")
 
         val title = data.title ?: data.name ?: "Unknown"
-        val poster = data.posterPath?.toTmdbPoster("w500")
-        val backdrop = data.backdropPath?.toTmdbPoster("w780")
-        val logoUrl = data.logoPath?.toTmdbPoster("w500")
-        val year = (data.releaseDate ?: data.firstAirDate)?.substringBefore("-")?.toIntOrNull()
-        val tags = data.genres.orEmpty().mapNotNull { it.name }.distinct()
-        val actors = data.cast.orEmpty().mapNotNull {
-            val actorName = it.name ?: return@mapNotNull null
-            Actor(actorName, it.profilePath?.toTmdbPoster("w185"))
+        val poster = data.posterPathFinal?.toTmdbPoster("w500")
+        val backdrop = data.backdropPathFinal?.toTmdbPoster("w780")
+        val logoUrl = data.logoPathFinal?.toTmdbPoster("w500")
+        val year = (data.releaseDateFinal ?: data.firstAirDateFinal)
+            ?.substringBefore("-")
+            ?.toIntOrNull()
+
+        val tags = data.genres.orEmpty()
+            .mapNotNull { it.name }
+            .distinct()
+
+        val actors = data.cast.orEmpty().mapNotNull { cast ->
+            val actorName = cast.name ?: return@mapNotNull null
+            Actor(
+                actorName,
+                cast.profilePathFinal?.toTmdbPoster("w185")
+            )
         }
 
-        val trailer = data.trailerUrl
-        val rating = data.voteAverage
+        val trailer = data.trailerUrlFinal
+        val rating = data.voteAverageFinal
         val recommendations = getRecommendations(data)
 
         return if (!data.seasons.isNullOrEmpty()) {
             val episodes = getEpisodes(data)
 
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+            newTvSeriesLoadResponse(
+                title,
+                url,
+                TvType.TvSeries,
+                episodes
+            ) {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = backdrop
                 this.logoUrl = logoUrl
                 this.year = year
                 this.plot = data.overview
                 this.tags = tags
-                this.score = Score.from10(rating?.toString())
+                this.score = Score.from10(rating)
                 addActors(actors)
                 addTrailer(trailer)
-                addTMDbId(data.tmdbId)
-                addImdbId(data.imdbId)
+                addTMDbId(data.tmdbIdFinal?.toString())
+                addImdbId(data.imdbIdFinal)
                 this.recommendations = recommendations
             }
         } else {
@@ -175,11 +192,11 @@ class JuraganFilmProvider : MainAPI() {
                 this.year = year
                 this.plot = data.overview
                 this.tags = tags
-                this.score = Score.from10(rating?.toString())
+                this.score = Score.from10(rating)
                 addActors(actors)
                 addTrailer(trailer)
-                addTMDbId(data.tmdbId)
-                addImdbId(data.imdbId)
+                addTMDbId(data.tmdbIdFinal?.toString())
+                addImdbId(data.imdbIdFinal)
                 this.recommendations = recommendations
             }
         }
@@ -204,30 +221,36 @@ class JuraganFilmProvider : MainAPI() {
 
     private suspend fun getEpisodes(data: DetailResponse): List<Episode> {
         val episodes = mutableListOf<Episode>()
+        val firstSeason = data.firstSeasonFinal
 
-        data.firstSeason?.episodes.orEmpty().forEach { ep ->
-            episodes.add(ep.toEpisode(data.firstSeason?.seasonNumber))
+        firstSeason?.episodes.orEmpty().forEach { episodeData ->
+            episodes.add(episodeData.toEpisode(firstSeason?.seasonNumberFinal))
         }
 
         data.seasons.orEmpty().forEach { season ->
-            val seasonNum = season.seasonNumber ?: return@forEach
-            if (seasonNum == data.firstSeason?.seasonNumber) return@forEach
+            val seasonNum = season.seasonNumberFinal ?: return@forEach
+            if (seasonNum == firstSeason?.seasonNumberFinal) return@forEach
 
             val seasonUrl = "$mainUrl/api/series/${data.slug}/season/$seasonNum"
+
             val seasonData = runCatching {
                 app.get(seasonUrl, referer = mainUrl)
                     .parsedSafe<SeasonWrapper>()
                     ?.season
             }.getOrNull()
 
-            seasonData?.episodes.orEmpty().forEach { ep ->
-                episodes.add(ep.toEpisode(seasonNum))
+            seasonData?.episodes.orEmpty().forEach { episodeData ->
+                episodes.add(episodeData.toEpisode(seasonNum))
             }
         }
 
-        return episodes.distinctBy { it.data }.sortedWith(
-            compareBy<Episode> { it.season ?: 0 }.thenBy { it.episode ?: 0 }
-        )
+        return episodes
+            .filter { it.data.isNotBlank() }
+            .distinctBy { it.data }
+            .sortedWith(
+                compareBy<Episode> { it.season ?: 0 }
+                    .thenBy { it.episode ?: 0 }
+            )
     }
 
     private fun EpisodeData.toEpisode(seasonNumber: Int?): Episode {
@@ -239,11 +262,11 @@ class JuraganFilmProvider : MainAPI() {
         ) {
             this.name = name
             this.season = seasonNumber
-            this.episode = episodeNumber
+            this.episode = episodeNumberFinal
             this.description = overview
             this.runTime = runtime
-            this.score = Score.from10(voteAverage?.toString())
-            this.posterUrl = stillPath?.toTmdbPoster("w300")
+            this.score = Score.from10(voteAverageFinal)
+            this.posterUrl = stillPathFinal?.toTmdbPoster("w300")
         }
     }
 
@@ -257,13 +280,15 @@ class JuraganFilmProvider : MainAPI() {
             AppUtils.parseJson<LoadData>(data)
         }.getOrNull() ?: return false
 
-        val res = runCatching {
-            app.get("$mainUrl/api/watch/play-info/${parsed.type}/${parsed.id}", timeout = 10000L)
-                .parsedSafe<Res>()
+        val response = runCatching {
+            app.get(
+                "$mainUrl/api/watch/play-info/${parsed.type}/${parsed.id}",
+                timeout = 10000L
+            ).parsedSafe<Res>()
         }.getOrNull() ?: return false
 
-        val redeemUrl = res.redeemUrl ?: return false
-        val claim = res.claim.orEmpty()
+        val redeemUrl = response.redeemUrlFinal ?: return false
+        val claim = response.claim.orEmpty()
 
         val body = """
             {
@@ -293,6 +318,7 @@ class JuraganFilmProvider : MainAPI() {
                     streamUrl = streamUrl,
                     referer = mainUrl
                 ).forEach(callback)
+
                 found = true
             }
 
@@ -313,29 +339,46 @@ class JuraganFilmProvider : MainAPI() {
 
     private fun ApiItem.toSearchResponse(): SearchResponse? {
         val title = title ?: name ?: return null
-        val poster = posterPath?.toTmdbPoster("w342")
-        val year = (releaseDate ?: firstAirDate)?.substringBefore("-")?.toIntOrNull()
-        val rating = voteAverage
+        val slugValue = slug ?: return null
+        val poster = posterPathFinal?.toTmdbPoster("w342")
+        val year = (releaseDateFinal ?: firstAirDateFinal)
+            ?.substringBefore("-")
+            ?.toIntOrNull()
+
+        val rating = voteAverageFinal
         val qualityValue = getSearchQuality(quality)
 
-        val link = when (contentType) {
-            "movie" -> "$mainUrl/api/movies/$slug"
-            "tv_series", "series" -> "$mainUrl/api/series/$slug"
+        val type = contentTypeFinal
+
+        val link = when (type) {
+            "movie" -> "$mainUrl/api/movies/$slugValue"
+            "tv_series", "series" -> "$mainUrl/api/series/$slugValue"
             else -> {
-                if (!firstAirDate.isNullOrBlank()) "$mainUrl/api/series/$slug"
-                else "$mainUrl/api/movies/$slug"
+                if (!firstAirDateFinal.isNullOrBlank()) {
+                    "$mainUrl/api/series/$slugValue"
+                } else {
+                    "$mainUrl/api/movies/$slugValue"
+                }
             }
         }
 
         return if (link.contains("/api/movies/")) {
-            newMovieSearchResponse(title, link, TvType.Movie) {
+            newMovieSearchResponse(
+                title,
+                link,
+                TvType.Movie
+            ) {
                 this.posterUrl = poster
                 this.year = year
                 this.quality = qualityValue
                 this.score = Score.from10(rating)
             }
         } else {
-            newTvSeriesSearchResponse(title, link, TvType.TvSeries) {
+            newTvSeriesSearchResponse(
+                title,
+                link,
+                TvType.TvSeries
+            ) {
                 this.posterUrl = poster
                 this.year = year
                 this.quality = qualityValue
@@ -345,13 +388,18 @@ class JuraganFilmProvider : MainAPI() {
     }
 
     private fun String.toTmdbPoster(size: String): String {
-        return if (startsWith("http", true)) this else "https://image.tmdb.org/t/p/$size$this"
+        return if (startsWith("http", true)) {
+            this
+        } else {
+            "https://image.tmdb.org/t/p/$size$this"
+        }
     }
 }
 
 fun getSearchQuality(check: String?): SearchQuality? {
     val s = check ?: return null
     val u = Normalizer.normalize(s, Normalizer.Form.NFKC).lowercase()
+
     val patterns = listOf(
         Regex("\\b(4k|ds4k|uhd|2160p)\\b", RegexOption.IGNORE_CASE) to SearchQuality.FourK,
         Regex("\\b(hdts|hdcam|hdtc)\\b", RegexOption.IGNORE_CASE) to SearchQuality.HdCam,
@@ -388,23 +436,29 @@ data class ApiItem(
     @JsonProperty("title") val title: String? = null,
     @JsonProperty("name") val name: String? = null,
     @JsonProperty("slug") val slug: String? = null,
+
     @JsonProperty("posterPath") val posterPath: String? = null,
     @JsonProperty("poster_path") val posterPathAlt: String? = null,
+
     @JsonProperty("releaseDate") val releaseDate: String? = null,
     @JsonProperty("release_date") val releaseDateAlt: String? = null,
+
     @JsonProperty("firstAirDate") val firstAirDate: String? = null,
     @JsonProperty("first_air_date") val firstAirDateAlt: String? = null,
+
     @JsonProperty("contentType") val contentType: String? = null,
     @JsonProperty("content_type") val contentTypeAlt: String? = null,
+
     @JsonProperty("quality") val quality: String? = null,
+
     @JsonProperty("voteAverage") val voteAverage: String? = null,
     @JsonProperty("vote_average") val voteAverageAlt: String? = null
 ) {
-    val finalPosterPath: String? get() = posterPath ?: posterPathAlt
-    val finalReleaseDate: String? get() = releaseDate ?: releaseDateAlt
-    val finalFirstAirDate: String? get() = firstAirDate ?: firstAirDateAlt
-    val finalContentType: String? get() = contentType ?: contentTypeAlt
-    val finalVoteAverage: String? get() = voteAverage ?: voteAverageAlt
+    val posterPathFinal: String? get() = posterPath ?: posterPathAlt
+    val releaseDateFinal: String? get() = releaseDate ?: releaseDateAlt
+    val firstAirDateFinal: String? get() = firstAirDate ?: firstAirDateAlt
+    val contentTypeFinal: String? get() = contentType ?: contentTypeAlt
+    val voteAverageFinal: String? get() = voteAverage ?: voteAverageAlt
 }
 
 data class DetailResponse(
@@ -412,28 +466,40 @@ data class DetailResponse(
     @JsonProperty("title") val title: String? = null,
     @JsonProperty("name") val name: String? = null,
     @JsonProperty("slug") val slug: String? = null,
+
     @JsonProperty("posterPath") val posterPath: String? = null,
     @JsonProperty("poster_path") val posterPathAlt: String? = null,
+
     @JsonProperty("backdropPath") val backdropPath: String? = null,
     @JsonProperty("backdrop_path") val backdropPathAlt: String? = null,
+
     @JsonProperty("logoPath") val logoPath: String? = null,
     @JsonProperty("logo_path") val logoPathAlt: String? = null,
+
     @JsonProperty("releaseDate") val releaseDate: String? = null,
     @JsonProperty("release_date") val releaseDateAlt: String? = null,
+
     @JsonProperty("firstAirDate") val firstAirDate: String? = null,
     @JsonProperty("first_air_date") val firstAirDateAlt: String? = null,
+
     @JsonProperty("overview") val overview: String? = null,
     @JsonProperty("genres") val genres: List<Genre>? = null,
     @JsonProperty("cast") val cast: List<Cast>? = null,
+
     @JsonProperty("trailerUrl") val trailerUrl: String? = null,
     @JsonProperty("trailer_url") val trailerUrlAlt: String? = null,
+
     @JsonProperty("voteAverage") val voteAverage: String? = null,
     @JsonProperty("vote_average") val voteAverageAlt: String? = null,
+
     @JsonProperty("tmdbId") val tmdbId: Int? = null,
     @JsonProperty("tmdb_id") val tmdbIdAlt: Int? = null,
+
     @JsonProperty("imdbId") val imdbId: String? = null,
     @JsonProperty("imdb_id") val imdbIdAlt: String? = null,
+
     @JsonProperty("seasons") val seasons: List<Season>? = null,
+
     @JsonProperty("firstSeason") val firstSeason: Season? = null,
     @JsonProperty("first_season") val firstSeasonAlt: Season? = null
 ) {
@@ -457,7 +523,9 @@ data class Cast(
     @JsonProperty("name") val name: String? = null,
     @JsonProperty("profilePath") val profilePath: String? = null,
     @JsonProperty("profile_path") val profilePathAlt: String? = null
-)
+) {
+    val profilePathFinal: String? get() = profilePath ?: profilePathAlt
+}
 
 data class SeasonWrapper(
     @JsonProperty("season") val season: Season? = null
@@ -467,20 +535,30 @@ data class Season(
     @JsonProperty("seasonNumber") val seasonNumber: Int? = null,
     @JsonProperty("season_number") val seasonNumberAlt: Int? = null,
     @JsonProperty("episodes") val episodes: List<EpisodeData>? = null
-)
+) {
+    val seasonNumberFinal: Int? get() = seasonNumber ?: seasonNumberAlt
+}
 
 data class EpisodeData(
     @JsonProperty("id") val id: String? = null,
     @JsonProperty("name") val name: String? = null,
+
     @JsonProperty("episodeNumber") val episodeNumber: Int? = null,
     @JsonProperty("episode_number") val episodeNumberAlt: Int? = null,
+
     @JsonProperty("overview") val overview: String? = null,
     @JsonProperty("runtime") val runtime: Int? = null,
+
     @JsonProperty("voteAverage") val voteAverage: String? = null,
     @JsonProperty("vote_average") val voteAverageAlt: String? = null,
+
     @JsonProperty("stillPath") val stillPath: String? = null,
     @JsonProperty("still_path") val stillPathAlt: String? = null
-)
+) {
+    val episodeNumberFinal: Int? get() = episodeNumber ?: episodeNumberAlt
+    val voteAverageFinal: String? get() = voteAverage ?: voteAverageAlt
+    val stillPathFinal: String? get() = stillPath ?: stillPathAlt
+}
 
 data class LoadData(
     @JsonProperty("id") val id: String,
@@ -489,16 +567,22 @@ data class LoadData(
 
 data class Res(
     @JsonProperty("claim") val claim: String? = null,
+
     @JsonProperty("redeemUrl") val redeemUrl: String? = null,
     @JsonProperty("redeem_url") val redeemUrlAlt: String? = null
-)
+) {
+    val redeemUrlFinal: String? get() = redeemUrl ?: redeemUrlAlt
+}
 
 data class Iframe(
     @JsonProperty("code") val code: String? = null,
     @JsonProperty("url") val url: String? = null,
+
     @JsonProperty("expiresAt") val expiresAt: Long? = null,
     @JsonProperty("expires_at") val expiresAtAlt: Long? = null,
+
     @JsonProperty("subtitles") val subtitles: List<Subtitle> = emptyList(),
+
     @JsonProperty("videoId") val videoId: String? = null,
     @JsonProperty("video_id") val videoIdAlt: String? = null
 )

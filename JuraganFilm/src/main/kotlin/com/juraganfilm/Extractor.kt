@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.fixUrl
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
@@ -42,14 +41,18 @@ class Jeniusplay : ExtractorApi() {
         val html = response.text.cleanEscaped()
         val found = linkedSetOf<String>()
 
-        extractStreamUrls(html).forEach { found.add(normalizeUrl(it, cleanUrl)) }
+        extractStreamUrls(html).forEach {
+            found.add(normalizeUrl(it, cleanUrl))
+        }
 
         val unpacked = runCatching {
             if (!getPacked(html).isNullOrEmpty()) getAndUnpack(html) else null
         }.getOrNull()
 
         if (!unpacked.isNullOrBlank()) {
-            extractStreamUrls(unpacked.cleanEscaped()).forEach { found.add(normalizeUrl(it, cleanUrl)) }
+            extractStreamUrls(unpacked.cleanEscaped()).forEach {
+                found.add(normalizeUrl(it, cleanUrl))
+            }
         }
 
         if (found.isEmpty()) {
@@ -66,21 +69,28 @@ class Jeniusplay : ExtractorApi() {
                 val postText = runCatching {
                     app.post(
                         url = endpoint,
-                        data = mapOf("hash" to hash, "r" to (referer ?: "")),
+                        data = mapOf(
+                            "hash" to hash,
+                            "r" to (referer ?: "")
+                        ),
                         referer = cleanUrl,
                         headers = headers + mapOf("X-Requested-With" to "XMLHttpRequest")
                     ).text.cleanEscaped()
                 }.getOrNull().orEmpty()
 
-                extractStreamUrls(postText).forEach { found.add(normalizeUrl(it, cleanUrl)) }
+                extractStreamUrls(postText).forEach {
+                    found.add(normalizeUrl(it, cleanUrl))
+                }
             }
         }
 
         found.forEach { stream ->
-            if (stream.contains(".m3u8", true)) {
+            val fixedStream = stream.replace(".txt", ".m3u8")
+
+            if (fixedStream.contains(".m3u8", true)) {
                 generateM3u8(
                     source = name,
-                    streamUrl = stream.replace(".txt", ".m3u8"),
+                    streamUrl = fixedStream,
                     referer = cleanUrl
                 ).forEach(callback)
             } else {
@@ -88,11 +98,11 @@ class Jeniusplay : ExtractorApi() {
                     newExtractorLink(
                         source = name,
                         name = name,
-                        url = stream,
+                        url = fixedStream,
                         type = ExtractorLinkType.VIDEO
                     ) {
                         this.referer = cleanUrl
-                        this.quality = getQualityFromName(stream)
+                        this.quality = getQualityFromName(fixedStream)
                         this.headers = headers
                     }
                 )
@@ -137,25 +147,36 @@ class Majorplay : ExtractorApi() {
         val streams = linkedSetOf<String>()
 
         document.select("video source[src], source[src], video[src]").forEach { source ->
-            val src = source.attr("src").ifBlank { source.attr("abs:src") }.trim()
-            if (src.isNotBlank()) streams.add(normalizeUrl(src, url))
+            val src = source.attr("src")
+                .ifBlank { source.attr("abs:src") }
+                .trim()
+
+            if (src.isNotBlank()) {
+                streams.add(normalizeUrl(src, url))
+            }
         }
 
-        extractStreamUrls(html).forEach { streams.add(normalizeUrl(it, url)) }
+        extractStreamUrls(html).forEach {
+            streams.add(normalizeUrl(it, url))
+        }
 
         val unpacked = runCatching {
             if (!getPacked(html).isNullOrEmpty()) getAndUnpack(html) else null
         }.getOrNull()
 
         if (!unpacked.isNullOrBlank()) {
-            extractStreamUrls(unpacked.cleanEscaped()).forEach { streams.add(normalizeUrl(it, url)) }
+            extractStreamUrls(unpacked.cleanEscaped()).forEach {
+                streams.add(normalizeUrl(it, url))
+            }
         }
 
         streams.forEach { stream ->
-            if (stream.contains(".m3u8", true)) {
+            val fixedStream = stream.replace(".txt", ".m3u8")
+
+            if (fixedStream.contains(".m3u8", true)) {
                 generateM3u8(
                     source = name,
-                    streamUrl = stream,
+                    streamUrl = fixedStream,
                     referer = domain
                 ).forEach(callback)
             } else {
@@ -163,12 +184,13 @@ class Majorplay : ExtractorApi() {
                     newExtractorLink(
                         source = name,
                         name = name,
-                        url = stream,
+                        url = fixedStream,
                         type = ExtractorLinkType.VIDEO
                     ) {
                         this.referer = domain
-                        this.quality = getQualityFromName(stream).takeIf { it != Qualities.Unknown.value }
-                            ?: qualityFromUrl(stream)
+                        this.quality = getQualityFromName(fixedStream).takeIf {
+                            it != Qualities.Unknown.value
+                        } ?: qualityFromUrl(fixedStream)
                     }
                 )
             }
@@ -193,13 +215,17 @@ class Majorplay : ExtractorApi() {
 private fun extractStreamUrls(text: String): List<String> {
     val urls = linkedSetOf<String>()
 
-    Regex("""https?://[^"'\\\s<>]+?\.(?:m3u8|mp4|txt)(?:\?[^"'\\\s<>]*)?""", RegexOption.IGNORE_CASE)
-        .findAll(text)
+    Regex(
+        """https?://[^"'\\\s<>]+?\.(?:m3u8|mp4|txt)(?:\?[^"'\\\s<>]*)?""",
+        RegexOption.IGNORE_CASE
+    ).findAll(text)
         .map { it.value.cleanEscaped() }
         .forEach { urls.add(it.replace(".txt", ".m3u8")) }
 
-    Regex("""https?%3A%2F%2F[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.txt)[^"'\\\s<>]*""", RegexOption.IGNORE_CASE)
-        .findAll(text)
+    Regex(
+        """https?%3A%2F%2F[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.txt)[^"'\\\s<>]*""",
+        RegexOption.IGNORE_CASE
+    ).findAll(text)
         .map {
             runCatching {
                 URLDecoder.decode(it.value, "UTF-8")
@@ -208,29 +234,48 @@ private fun extractStreamUrls(text: String): List<String> {
         .map { it.cleanEscaped().replace(".txt", ".m3u8") }
         .forEach { urls.add(it) }
 
-    Regex("""(?:file|source|src|url|videoSource)\s*[:=]\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
-        .findAll(text)
+    Regex(
+        """(?:file|source|src|url|videoSource)\s*[:=]\s*["']([^"']+)["']""",
+        RegexOption.IGNORE_CASE
+    ).findAll(text)
         .mapNotNull { it.groupValues.getOrNull(1) }
         .map { it.cleanEscaped().replace(".txt", ".m3u8") }
-        .filter { it.contains(".m3u8", true) || it.contains(".mp4", true) }
+        .filter {
+            it.contains(".m3u8", true) ||
+                it.contains(".mp4", true)
+        }
         .forEach { urls.add(it) }
 
     return urls.toList()
 }
 
-private fun normalizeUrl(url: String, baseUrl: String): String {
+private fun normalizeUrl(
+    url: String,
+    baseUrl: String
+): String {
     val clean = url.cleanEscaped()
 
     return when {
         clean.startsWith("http", true) -> clean
         clean.startsWith("//") -> "https:$clean"
         clean.startsWith("/") -> {
-            val origin = Regex("""^https?://[^/]+""").find(baseUrl)?.value ?: ""
+            val origin = Regex("""^https?://[^/]+""")
+                .find(baseUrl)
+                ?.value
+                ?: "https://"
             "$origin$clean"
         }
-        else -> runCatching {
-            URI(baseUrl).resolve(clean).toString()
-        }.getOrDefault(fixUrl(clean))
+        else -> {
+            runCatching {
+                URI(baseUrl).resolve(clean).toString()
+            }.getOrElse {
+                val origin = Regex("""^https?://[^/]+""")
+                    .find(baseUrl)
+                    ?.value
+                    ?: ""
+                if (origin.isNotBlank()) "$origin/$clean" else clean
+            }
+        }
     }
 }
 
