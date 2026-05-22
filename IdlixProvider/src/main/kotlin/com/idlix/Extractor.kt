@@ -92,14 +92,16 @@ class Jeniusplay : ExtractorApi() {
             }
         }
 
-        found.forEach { stream ->
-            emitVideo(
-                source = name,
-                streamUrl = stream,
-                referer = cleanUrl,
-                callback = callback
-            )
-        }
+        found
+            .filterNot { isAdUrl(it) }
+            .forEach { stream ->
+                emitVideo(
+                    source = name,
+                    streamUrl = stream,
+                    referer = cleanUrl,
+                    callback = callback
+                )
+            }
     }
 
     data class ResponseSource(
@@ -135,7 +137,18 @@ class Majorplay : ExtractorApi() {
             )
         }.getOrNull() ?: return
 
-        val html = response.text.cleanEscaped()
+        val body = response.text.cleanEscaped()
+
+        if (body.trimStart().startsWith("#EXTM3U")) {
+            emitVideo(
+                source = name,
+                streamUrl = url,
+                referer = referer ?: domain,
+                callback = callback
+            )
+            return
+        }
+
         val document = response.document
         val streams = linkedSetOf<String>()
 
@@ -149,28 +162,46 @@ class Majorplay : ExtractorApi() {
             }
         }
 
-        extractStreamUrls(html).forEach {
+        extractStreamUrls(body).forEach {
             streams.add(normalizeUrl(it, url))
         }
 
+        extractMajorplayConfigUrls(body).forEach { configUrl ->
+            resolveMajorplayConfig(
+                configUrl = normalizeUrl(configUrl, url),
+                referer = referer ?: domain,
+                callback = callback
+            )
+        }
+
         val unpacked = runCatching {
-            if (!getPacked(html).isNullOrEmpty()) getAndUnpack(html) else null
+            if (!getPacked(body).isNullOrEmpty()) getAndUnpack(body) else null
         }.getOrNull()
 
         if (!unpacked.isNullOrBlank()) {
             extractStreamUrls(unpacked.cleanEscaped()).forEach {
                 streams.add(normalizeUrl(it, url))
             }
+
+            extractMajorplayConfigUrls(unpacked.cleanEscaped()).forEach { configUrl ->
+                resolveMajorplayConfig(
+                    configUrl = normalizeUrl(configUrl, url),
+                    referer = referer ?: domain,
+                    callback = callback
+                )
+            }
         }
 
-        streams.forEach { stream ->
-            emitVideo(
-                source = name,
-                streamUrl = stream,
-                referer = domain,
-                callback = callback
-            )
-        }
+        streams
+            .filterNot { isAdUrl(it) }
+            .forEach { stream ->
+                emitVideo(
+                    source = name,
+                    streamUrl = stream,
+                    referer = referer ?: domain,
+                    callback = callback
+                )
+            }
 
         val scripts = document.selectFirst("script:containsData(subtitles)")?.data().orEmpty()
         val subRegex = Regex("""\\"label\\":\\"([^\\"]*?)\\"[^}]*?\\"path\\":\\"([^\\"]*?)\\\"""")
@@ -191,6 +222,54 @@ class Majorplay : ExtractorApi() {
             )
         }
     }
+
+    private suspend fun resolveMajorplayConfig(
+        configUrl: String,
+        referer: String,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        if (isAdUrl(configUrl)) return
+
+        val response = runCatching {
+            app.get(
+                configUrl,
+                referer = referer,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to referer,
+                    "Accept" to "*/*"
+                ),
+                timeout = 30L
+            )
+        }.getOrNull() ?: return
+
+        val text = response.text.cleanEscaped()
+
+        when {
+            text.trimStart().startsWith("#EXTM3U") -> {
+                emitVideo(
+                    source = name,
+                    streamUrl = configUrl,
+                    referer = referer,
+                    callback = callback
+                )
+            }
+
+            else -> {
+                extractStreamUrls(text)
+                    .map { normalizeUrl(it, configUrl) }
+                    .filterNot { isAdUrl(it) }
+                    .forEach { stream ->
+                        emitVideo(
+                            source = name,
+                            streamUrl = stream,
+                            referer = configUrl,
+                            callback = callback
+                        )
+                    }
+            }
+        }
+    }
 }
 
 private suspend fun emitVideo(
@@ -201,7 +280,9 @@ private suspend fun emitVideo(
 ) {
     val fixedStream = streamUrl.cleanEscaped().replace(".txt", ".m3u8")
 
-    if (fixedStream.contains(".m3u8", true)) {
+    if (isAdUrl(fixedStream)) return
+
+    if (fixedStream.contains(".m3u8", true) || fixedStream.contains(".json", true)) {
         generateM3u8(
             source = source,
             streamUrl = fixedStream,
@@ -233,6 +314,7 @@ private fun extractStreamUrls(text: String): List<String> {
         RegexOption.IGNORE_CASE
     ).findAll(cleanText)
         .map { it.value.cleanEscaped().replace(".txt", ".m3u8") }
+        .filterNot { isAdUrl(it) }
         .forEach { urls.add(it) }
 
     Regex(
@@ -245,6 +327,7 @@ private fun extractStreamUrls(text: String): List<String> {
             }.getOrDefault(it.value)
         }
         .map { it.cleanEscaped().replace(".txt", ".m3u8") }
+        .filterNot { isAdUrl(it) }
         .forEach { urls.add(it) }
 
     Regex(
@@ -255,8 +338,34 @@ private fun extractStreamUrls(text: String): List<String> {
         .map { it.cleanEscaped().replace(".txt", ".m3u8") }
         .filter {
             it.contains(".m3u8", true) ||
-                it.contains(".mp4", true)
+                it.contains(".mp4", true) ||
+                it.contains(".txt", true)
         }
+        .filterNot { isAdUrl(it) }
+        .forEach { urls.add(it) }
+
+    return urls.toList()
+}
+
+private fun extractMajorplayConfigUrls(text: String): List<String> {
+    val urls = linkedSetOf<String>()
+    val cleanText = text.cleanEscaped()
+
+    Regex(
+        """https?://[^"'\\\s<>]+?(?:majorplay|e2e\.majorplay)[^"'\\\s<>]*?config[^"'\\\s<>]*?\.json(?:\?[^"'\\\s<>]*)?""",
+        RegexOption.IGNORE_CASE
+    ).findAll(cleanText)
+        .map { it.value.cleanEscaped() }
+        .filterNot { isAdUrl(it) }
+        .forEach { urls.add(it) }
+
+    Regex(
+        """(?:url|src|file|source|videoSource|videoUrl)\s*[:=]\s*["']([^"']*config[^"']*\.json[^"']*)["']""",
+        RegexOption.IGNORE_CASE
+    ).findAll(cleanText)
+        .mapNotNull { it.groupValues.getOrNull(1) }
+        .map { it.cleanEscaped() }
+        .filterNot { isAdUrl(it) }
         .forEach { urls.add(it) }
 
     return urls.toList()
@@ -290,6 +399,15 @@ private fun normalizeUrl(
             }
         }
     }
+}
+
+private fun isAdUrl(url: String): Boolean {
+    return url.contains("vast", true) ||
+        url.contains("preroll", true) ||
+        url.contains("qq288", true) ||
+        url.contains("sngine", true) ||
+        url.contains("/content/uploads/videos/", true) ||
+        url.contains("demo.sngine.com", true)
 }
 
 private fun qualityFromUrl(url: String): Int {

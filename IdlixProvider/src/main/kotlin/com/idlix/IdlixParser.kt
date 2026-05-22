@@ -247,24 +247,13 @@ data class SearchApiResult(
 }
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-data class ChallengeResponse(
-    @JsonProperty("challenge") val challenge: String? = null,
-    @JsonProperty("signature") val signature: String? = null,
-    @JsonProperty("difficulty") val difficulty: Int? = null
-)
-
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class SolveResponse(
-    @JsonProperty("embedUrl") val embedUrl: String? = null,
-    @JsonProperty("embed_url") val embedUrlAlt: String? = null
-) {
-    val embedUrlFinal: String? get() = embedUrl ?: embedUrlAlt
-}
-
-@JsonIgnoreProperties(ignoreUnknown = true)
 data class LoadData(
     @JsonProperty("id") val id: String,
-    @JsonProperty("type") val type: String
+    @JsonProperty("type") val type: String,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("slug") val slug: String? = null,
+    @JsonProperty("season") val season: Int? = null,
+    @JsonProperty("episode") val episode: Int? = null
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -287,6 +276,9 @@ data class Iframe(
     @JsonProperty("file") val file: String? = null,
     @JsonProperty("source") val source: String? = null,
     @JsonProperty("videoSource") val videoSource: String? = null,
+    @JsonProperty("video_source") val videoSourceAlt: String? = null,
+    @JsonProperty("videoUrl") val videoUrl: String? = null,
+    @JsonProperty("video_url") val videoUrlAlt: String? = null,
     @JsonProperty("expiresAt") val expiresAt: Long? = null,
     @JsonProperty("expires_at") val expiresAtAlt: Long? = null,
     @JsonProperty("subtitles") val subtitles: List<Subtitle> = emptyList(),
@@ -294,7 +286,16 @@ data class Iframe(
     @JsonProperty("video_id") val videoIdAlt: String? = null
 ) {
     val streamUrlFinal: String?
-        get() = url ?: embedUrl ?: embedUrlAlt ?: src ?: file ?: source ?: videoSource
+        get() = url
+            ?: embedUrl
+            ?: embedUrlAlt
+            ?: src
+            ?: file
+            ?: source
+            ?: videoSource
+            ?: videoSourceAlt
+            ?: videoUrl
+            ?: videoUrlAlt
 }
 
 @JsonIgnoreProperties(ignoreUnknown = true)

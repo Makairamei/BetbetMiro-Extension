@@ -228,7 +228,9 @@ class IdlixProvider : MainAPI() {
                 TvType.Movie,
                 LoadData(
                     id = data.id.orEmpty(),
-                    type = "movie"
+                    type = "movie",
+                    title = title,
+                    slug = data.slug
                 ).toJson()
             ) {
                 this.posterUrl = poster
@@ -269,9 +271,17 @@ class IdlixProvider : MainAPI() {
     private suspend fun getEpisodes(data: DetailResponse): List<CsEpisode> {
         val episodes = mutableListOf<CsEpisode>()
         val firstSeason = data.firstSeasonFinal
+        val seriesTitle = data.title ?: data.name
+        val seriesSlug = data.slug
 
         firstSeason?.episodes.orEmpty().forEach { episodeData ->
-            episodes.add(episodeData.toCloudstreamEpisode(firstSeason?.seasonNumberFinal))
+            episodes.add(
+                episodeData.toCloudstreamEpisode(
+                    seasonNumber = firstSeason?.seasonNumberFinal,
+                    seriesTitle = seriesTitle,
+                    seriesSlug = seriesSlug
+                )
+            )
         }
 
         data.seasons.orEmpty().forEach { season ->
@@ -289,7 +299,13 @@ class IdlixProvider : MainAPI() {
             }.getOrNull()
 
             seasonData?.episodes.orEmpty().forEach { episodeData ->
-                episodes.add(episodeData.toCloudstreamEpisode(seasonNum))
+                episodes.add(
+                    episodeData.toCloudstreamEpisode(
+                        seasonNumber = seasonNum,
+                        seriesTitle = seriesTitle,
+                        seriesSlug = seriesSlug
+                    )
+                )
             }
         }
 
@@ -302,11 +318,19 @@ class IdlixProvider : MainAPI() {
             )
     }
 
-    private fun com.idlix.Episode.toCloudstreamEpisode(seasonNumber: Int?): CsEpisode {
+    private fun com.idlix.Episode.toCloudstreamEpisode(
+        seasonNumber: Int?,
+        seriesTitle: String?,
+        seriesSlug: String?
+    ): CsEpisode {
         return newEpisode(
             LoadData(
                 id = id.orEmpty(),
-                type = "episode"
+                type = "episode",
+                title = seriesTitle,
+                slug = seriesSlug,
+                season = seasonNumber,
+                episode = episodeNumberFinal
             ).toJson()
         ) {
             this.name = name
@@ -376,82 +400,49 @@ class IdlixProvider : MainAPI() {
             AppUtils.parseJson<LoadData>(data)
         }.getOrNull() ?: return false
 
-        val playInfoUrl = "$mainUrl/api/watch/play-info/${parsed.type}/${parsed.id}"
-
-        val responseText = runCatching {
-            app.get(
-                playInfoUrl,
-                referer = mainUrl,
-                timeout = 10000L
-            ).text
-        }.getOrNull() ?: return false
-
-        val response = runCatching {
-            AppUtils.parseJson<Res>(responseText)
-        }.getOrNull()
-
-        val claim = response?.claim.orEmpty()
-        val redeemUrl = response?.redeemUrlFinal
-
-        val candidates = linkedSetOf<String>()
         val directLinks = linkedSetOf<String>()
         val embedLinks = linkedSetOf<String>()
 
-        extractPlayableUrls(responseText).forEach { candidates.add(it) }
-
-        if (!redeemUrl.isNullOrBlank()) {
-            val body = """
-                {
-                    "claim": "$claim"
-                }
-            """.trimIndent().toRequestBody("application/json".toMediaType())
-
-            val redeemText = runCatching {
-                app.post(
-                    redeemUrl,
-                    requestBody = body,
+        buildWatchEndpoints(parsed).forEach { endpoint ->
+            val responseText = runCatching {
+                app.get(
+                    endpoint,
                     referer = mainUrl,
-                    headers = mapOf(
-                        "Content-Type" to "application/json",
-                        "Accept" to "application/json"
-                    ),
                     timeout = 10000L
                 ).text
             }.getOrNull().orEmpty()
 
-            val iframe = runCatching {
-                AppUtils.parseJson<Iframe>(redeemText)
+            if (responseText.isBlank()) return@forEach
+
+            collectPlaybackCandidates(
+                text = responseText,
+                baseUrl = endpoint,
+                directLinks = directLinks,
+                embedLinks = embedLinks
+            )
+
+            val res = runCatching {
+                AppUtils.parseJson<Res>(responseText)
             }.getOrNull()
 
-            iframe?.streamUrlFinal
-                ?.takeIf { it.isNotBlank() }
-                ?.let { candidates.add(it) }
+            val claim = res?.claim.orEmpty()
+            val redeemUrl = res?.redeemUrlFinal
 
-            iframe?.subtitles.orEmpty().forEach { subtitle ->
-                val subPath = subtitle.pathFinal ?: return@forEach
-                subtitleCallback(
-                    newSubtitleFile(
-                        subtitle.labelFinal,
-                        normalizeUrl(subPath, mainUrl)
-                    )
+            if (!redeemUrl.isNullOrBlank()) {
+                redeemPlayback(
+                    redeemUrl = redeemUrl,
+                    claim = claim,
+                    referer = endpoint,
+                    subtitleCallback = subtitleCallback,
+                    directLinks = directLinks,
+                    embedLinks = embedLinks
                 )
-            }
-
-            extractPlayableUrls(redeemText).forEach { candidates.add(it) }
-        }
-
-        candidates.forEach { raw ->
-            val fixed = normalizeUrl(raw, mainUrl).replace(".txt", ".m3u8")
-
-            when {
-                fixed.contains(".m3u8", true) || fixed.contains(".mp4", true) -> directLinks.add(fixed)
-                fixed.startsWith("http", true) -> embedLinks.add(fixed)
             }
         }
 
         var found = false
 
-        directLinks.forEach { link ->
+        directLinks.distinct().forEach { link ->
             emitDirectLink(
                 link = link,
                 referer = mainUrl,
@@ -460,7 +451,7 @@ class IdlixProvider : MainAPI() {
             found = true
         }
 
-        embedLinks.forEach { embed ->
+        embedLinks.distinct().forEach { embed ->
             val success = loadExtractor(
                 embed,
                 mainUrl,
@@ -471,10 +462,8 @@ class IdlixProvider : MainAPI() {
             if (success) {
                 found = true
             } else {
-                val nested = resolveNestedLinks(embed)
-
-                nested.forEach { nestedLink ->
-                    val fixed = normalizeUrl(nestedLink, embed).replace(".txt", ".m3u8")
+                resolveNestedLinks(embed).forEach { nested ->
+                    val fixed = normalizeUrl(nested, embed).replace(".txt", ".m3u8")
 
                     when {
                         fixed.contains(".m3u8", true) || fixed.contains(".mp4", true) -> {
@@ -486,13 +475,14 @@ class IdlixProvider : MainAPI() {
                             found = true
                         }
 
-                        fixed.startsWith("http", true) -> {
+                        fixed.startsWith("http", true) && !isAdUrl(fixed) -> {
                             val nestedSuccess = loadExtractor(
                                 fixed,
                                 embed,
                                 subtitleCallback,
                                 callback
                             )
+
                             if (nestedSuccess) found = true
                         }
                     }
@@ -503,16 +493,159 @@ class IdlixProvider : MainAPI() {
         return found
     }
 
+    private fun buildWatchEndpoints(data: LoadData): List<String> {
+        val id = data.id.trim()
+        val type = data.type.trim()
+        val slug = data.slug?.trim().orEmpty()
+
+        val endpoints = linkedSetOf<String>()
+
+        if (id.isNotBlank()) {
+            endpoints.add("$mainUrl/api/watch/play-info/$type/$id")
+            endpoints.add("$mainUrl/api/watch/play-info/$id")
+            endpoints.add("$mainUrl/api/watch/$type/$id")
+            endpoints.add("$mainUrl/api/watch/$id")
+            endpoints.add("$mainUrl/api/stream/$type/$id")
+            endpoints.add("$mainUrl/api/stream/$id")
+            endpoints.add("$mainUrl/api/streams/$type/$id")
+            endpoints.add("$mainUrl/api/streams/$id")
+        }
+
+        if (slug.isNotBlank()) {
+            when (type) {
+                "movie" -> {
+                    endpoints.add("$mainUrl/movie/$slug")
+                    endpoints.add("$mainUrl/api/movies/$slug/watch")
+                    endpoints.add("$mainUrl/api/movies/$slug/play")
+                }
+
+                "episode" -> {
+                    val season = data.season ?: 1
+                    val episode = data.episode ?: 1
+
+                    endpoints.add("$mainUrl/series/$slug")
+                    endpoints.add("$mainUrl/api/series/$slug/season/$season/episode/$episode/watch")
+                    endpoints.add("$mainUrl/api/series/$slug/season/$season/episode/$episode/play")
+                    endpoints.add("$mainUrl/api/watch/series/$slug/$season/$episode")
+                }
+            }
+        }
+
+        return endpoints.toList()
+    }
+
+    private suspend fun redeemPlayback(
+        redeemUrl: String,
+        claim: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        directLinks: MutableSet<String>,
+        embedLinks: MutableSet<String>
+    ) {
+        val bodies = listOf(
+            """
+                {
+                    "claim": "$claim"
+                }
+            """.trimIndent(),
+            """
+                {
+                    "claim":"$claim"
+                }
+            """.trimIndent(),
+            "{}"
+        )
+
+        bodies.forEach { json ->
+            val redeemText = runCatching {
+                app.post(
+                    redeemUrl,
+                    requestBody = json.toRequestBody("application/json".toMediaType()),
+                    referer = referer,
+                    headers = mapOf(
+                        "Content-Type" to "application/json",
+                        "Accept" to "application/json",
+                        "Origin" to mainUrl
+                    ),
+                    timeout = 10000L
+                ).text
+            }.getOrNull().orEmpty()
+
+            if (redeemText.isBlank()) return@forEach
+
+            val iframe = runCatching {
+                AppUtils.parseJson<Iframe>(redeemText)
+            }.getOrNull()
+
+            iframe?.streamUrlFinal
+                ?.takeIf { it.isNotBlank() }
+                ?.let { stream ->
+                    val fixed = normalizeUrl(stream, redeemUrl).replace(".txt", ".m3u8")
+
+                    when {
+                        fixed.contains(".m3u8", true) || fixed.contains(".mp4", true) -> directLinks.add(fixed)
+                        fixed.startsWith("http", true) && !isAdUrl(fixed) -> embedLinks.add(fixed)
+                    }
+                }
+
+            iframe?.subtitles.orEmpty().forEach { subtitle ->
+                val subPath = subtitle.pathFinal ?: return@forEach
+
+                subtitleCallback(
+                    newSubtitleFile(
+                        subtitle.labelFinal,
+                        normalizeUrl(subPath, redeemUrl)
+                    )
+                )
+            }
+
+            collectPlaybackCandidates(
+                text = redeemText,
+                baseUrl = redeemUrl,
+                directLinks = directLinks,
+                embedLinks = embedLinks
+            )
+        }
+    }
+
     private suspend fun resolveNestedLinks(url: String): List<String> {
         val response = runCatching {
             app.get(
                 url,
                 referer = mainUrl,
                 timeout = 10000L
-            )
-        }.getOrNull() ?: return emptyList()
+            ).text
+        }.getOrNull().orEmpty()
 
-        return extractPlayableUrls(response.text)
+        if (response.isBlank()) return emptyList()
+
+        return extractPlayableUrls(response)
+    }
+
+    private fun collectPlaybackCandidates(
+        text: String,
+        baseUrl: String,
+        directLinks: MutableSet<String>,
+        embedLinks: MutableSet<String>
+    ) {
+        extractPlayableUrls(text).forEach { raw ->
+            val fixed = normalizeUrl(raw, baseUrl).replace(".txt", ".m3u8")
+
+            if (isAdUrl(fixed)) return@forEach
+
+            when {
+                fixed.contains(".m3u8", true) || fixed.contains(".mp4", true) -> directLinks.add(fixed)
+
+                isMajorplayConfig(fixed) ||
+                    fixed.contains("jeniusplay", true) ||
+                    fixed.contains("majorplay", true) ||
+                    fixed.contains("embed", true) ||
+                    fixed.contains("player", true) ||
+                    fixed.contains("stream", true) -> embedLinks.add(fixed)
+
+                fixed.startsWith("http", true) -> embedLinks.add(fixed)
+            }
+        }
     }
 
     private suspend fun emitDirectLink(
@@ -520,6 +653,8 @@ class IdlixProvider : MainAPI() {
         referer: String,
         callback: (ExtractorLink) -> Unit
     ) {
+        if (isAdUrl(link)) return
+
         if (link.contains(".m3u8", true)) {
             generateM3u8(
                 source = name,
@@ -552,10 +687,19 @@ class IdlixProvider : MainAPI() {
             RegexOption.IGNORE_CASE
         ).findAll(clean)
             .map { it.value.cleanEscaped() }
+            .filterNot { isAdUrl(it) }
             .forEach { urls.add(it) }
 
         Regex(
-            """https?%3A%2F%2F[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.txt)[^"'\\\s<>]*""",
+            """https?://[^"'\\\s<>]+?(?:majorplay|e2e\.majorplay|jeniusplay)[^"'\\\s<>]*?(?:config[^"'\\\s<>]*?\.json|\.json)(?:\?[^"'\\\s<>]*)?""",
+            RegexOption.IGNORE_CASE
+        ).findAll(clean)
+            .map { it.value.cleanEscaped() }
+            .filterNot { isAdUrl(it) }
+            .forEach { urls.add(it) }
+
+        Regex(
+            """https?%3A%2F%2F[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.txt|config[^"'\\\s<>]*?\.json|\.json)[^"'\\\s<>]*""",
             RegexOption.IGNORE_CASE
         ).findAll(clean)
             .map {
@@ -564,10 +708,11 @@ class IdlixProvider : MainAPI() {
                 }.getOrDefault(it.value)
             }
             .map { it.cleanEscaped() }
+            .filterNot { isAdUrl(it) }
             .forEach { urls.add(it) }
 
         Regex(
-            """(?:url|src|file|source|embedUrl|videoSource|videoUrl)\s*[:=]\s*["']([^"']+)["']""",
+            """(?:url|src|file|source|embedUrl|embed_url|videoSource|video_source|videoUrl|video_url)\s*[:=]\s*["']([^"']+)["']""",
             RegexOption.IGNORE_CASE
         ).findAll(clean)
             .mapNotNull { it.groupValues.getOrNull(1) }
@@ -576,14 +721,42 @@ class IdlixProvider : MainAPI() {
                 it.contains(".m3u8", true) ||
                     it.contains(".mp4", true) ||
                     it.contains(".txt", true) ||
+                    isMajorplayConfig(it) ||
                     it.contains("jeniusplay", true) ||
                     it.contains("majorplay", true) ||
                     it.contains("embed", true) ||
-                    it.contains("player", true)
+                    it.contains("player", true) ||
+                    it.contains("stream", true)
             }
+            .filterNot { isAdUrl(it) }
+            .forEach { urls.add(it) }
+
+        Regex(
+            """"([^"]*(?:jeniusplay|majorplay|embed|player|stream|config)[^"]*)"""",
+            RegexOption.IGNORE_CASE
+        ).findAll(clean)
+            .mapNotNull { it.groupValues.getOrNull(1) }
+            .map { it.cleanEscaped() }
+            .filter { it.startsWith("http", true) || it.startsWith("/", true) }
+            .filterNot { isAdUrl(it) }
             .forEach { urls.add(it) }
 
         return urls.toList()
+    }
+
+    private fun isMajorplayConfig(url: String): Boolean {
+        return url.contains("majorplay", true) &&
+            url.contains(".json", true) &&
+            url.contains("config", true)
+    }
+
+    private fun isAdUrl(url: String): Boolean {
+        return url.contains("vast", true) ||
+            url.contains("preroll", true) ||
+            url.contains("qq288", true) ||
+            url.contains("sngine", true) ||
+            url.contains("/content/uploads/videos/", true) ||
+            url.contains("demo.sngine.com", true)
     }
 
     private fun normalizeUrl(
