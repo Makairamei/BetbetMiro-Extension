@@ -3,7 +3,6 @@ package com.gojodesu
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
-import com.lagradost.cloudstream3.fixUrl
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
@@ -27,17 +26,28 @@ open class Kotakajaib : ExtractorApi() {
             if (encodedFrame.isBlank()) continue
 
             val frameUrl = runCatching {
-                base64Decode(encodedFrame)
-            }.getOrNull()?.trim()
+                base64Decode(encodedFrame).trim()
+            }.getOrNull()
 
             if (!frameUrl.isNullOrBlank()) {
                 loadExtractor(
-                    fixUrl(frameUrl),
+                    normalizeUrl(frameUrl),
                     "$mainUrl/",
                     subtitleCallback,
                     callback
                 )
             }
+        }
+    }
+
+    private fun normalizeUrl(url: String): String {
+        val cleanUrl = url.trim()
+
+        return when {
+            cleanUrl.startsWith("http", ignoreCase = true) -> cleanUrl
+            cleanUrl.startsWith("//") -> "https:$cleanUrl"
+            cleanUrl.startsWith("/") -> "$mainUrl$cleanUrl"
+            else -> "$mainUrl/$cleanUrl"
         }
     }
 }
