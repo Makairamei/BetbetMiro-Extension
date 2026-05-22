@@ -86,14 +86,8 @@ class HentaiWorld : MainAPI() {
             timeout = 30L
         ).document
 
-        val content = document.selectFirst("div#primary, main#main, main, #content") ?: document
-
-        val home = content.select(
-            "a.card-container[href], " +
-                "article a:has(img), " +
-                ".swiper-slide a:has(img), " +
-                ".post a:has(img)"
-        ).distinctBy { it.attr("href") }
+        val home = document.select("a.card-container[href]")
+            .distinctBy { it.attr("href") }
             .mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -123,32 +117,26 @@ class HentaiWorld : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val anchor = if (this.`is`("a[href]")) {
+        val anchor = if (this.`is`("a.card-container[href], a[href]")) {
             this
         } else {
-            selectFirst(
-                "a.card-container[href], " +
-                    "a[href*='/hentai-videos/'], " +
-                    "a[href]"
-            ) ?: return null
+            selectFirst("a.card-container[href], a[href]") ?: return null
         }
 
         val href = fixUrlNull(anchor.attr("href")) ?: return null
 
-        if (!href.startsWith(mainUrl)) return null
+        if (!href.contains("hentaiworld.tv", true)) return null
         if (isBlockedUrl(href)) return null
 
+        val parent = anchor.parent()
         val image = anchor.selectFirst("img")
-            ?: selectFirst("img")
+            ?: parent?.selectFirst("img")
             ?: return null
 
         val title = listOf(
             anchor.selectFirst(".video-title-text")?.text()?.trim(),
-            selectFirst(".video-title-text")?.text()?.trim(),
-            anchor.selectFirst(".entry-title")?.text()?.trim(),
-            selectFirst(".entry-title")?.text()?.trim(),
-            anchor.selectFirst(".title")?.text()?.trim(),
-            selectFirst(".title")?.text()?.trim(),
+            parent?.selectFirst(".video-title-text")?.text()?.trim(),
+            parent?.selectFirst("h2, h3, h4, .title, .entry-title")?.text()?.trim(),
             anchor.attr("title").trim(),
             image.attr("alt").trim(),
             image.attr("title").trim()
@@ -173,7 +161,7 @@ class HentaiWorld : MainAPI() {
     }
 
     private fun isBlockedUrl(url: String): Boolean {
-        val path = url.substringAfter(mainUrl).trim('/').lowercase()
+        val path = url.substringAfter("hentaiworld.tv").trim('/').lowercase()
 
         if (path.isBlank()) return true
 
@@ -189,7 +177,7 @@ class HentaiWorld : MainAPI() {
         )
 
         return blocked.any {
-            path == it.trimEnd('/') || path.startsWith(it) && !path.contains("episode")
+            path == it.trimEnd('/') || path.startsWith(it)
         }
     }
 
@@ -215,13 +203,8 @@ class HentaiWorld : MainAPI() {
             timeout = 30L
         ).document
 
-        val results = document.select(
-            "article, " +
-                "a.card-container[href], " +
-                "article a:has(img), " +
-                ".swiper-slide a:has(img), " +
-                ".post a:has(img)"
-        ).mapNotNull { it.toSearchResult() }
+        val results = document.select("a.card-container[href]")
+            .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
 
         return newSearchResponseList(
@@ -332,8 +315,7 @@ class HentaiWorld : MainAPI() {
         val recommendations = document.select(
             "div.crp_related div.swiper-slide, " +
                 ".crp_related .swiper-slide, " +
-                "article a:has(img), " +
-                ".swiper-slide a:has(img)"
+                "a.card-container[href]"
         ).mapNotNull { it.toRecommendationResult() }
             .distinctBy { it.url }
             .filter { it.url != url }
@@ -356,18 +338,25 @@ class HentaiWorld : MainAPI() {
     }
 
     private fun Element.toRecommendationResult(): SearchResponse? {
-        val link = selectFirst("a.crp_link[href], a[href]") ?: return null
+        val link = if (this.`is`("a[href]")) {
+            this
+        } else {
+            selectFirst("a.crp_link[href], a.card-container[href], a[href]") ?: return null
+        }
+
         val href = fixUrlNull(link.attr("href")) ?: return null
 
-        if (!href.startsWith(mainUrl)) return null
+        if (!href.contains("hentaiworld.tv", true)) return null
         if (isBlockedUrl(href)) return null
 
+        val parent = link.parent()
         val image = link.selectFirst("img")
-            ?: selectFirst("img")
+            ?: parent?.selectFirst("img")
 
         val name = listOf(
             selectFirst(".crp_title")?.text()?.trim(),
             link.selectFirst(".video-title-text")?.text()?.trim(),
+            parent?.selectFirst(".video-title-text")?.text()?.trim(),
             link.attr("title").trim(),
             image?.attr("alt")?.trim(),
             image?.attr("title")?.trim()
@@ -501,39 +490,44 @@ class HentaiWorld : MainAPI() {
     }
 
     private fun Element.getImageAttr(): String? {
-        val srcset = when {
-            hasAttr("data-srcset") -> attr("abs:data-srcset")
-            hasAttr("data-lazy-srcset") -> attr("abs:data-lazy-srcset")
-            hasAttr("srcset") -> attr("abs:srcset")
-            else -> null
-        }
+        fun bestFromSrcset(value: String?): String? {
+            if (value.isNullOrBlank()) return null
 
-        if (!srcset.isNullOrBlank()) {
-            return srcset
+            return value
                 .split(",")
                 .map { it.trim().substringBefore(" ") }
-                .lastOrNull { it.isNotBlank() }
-                ?.takeIf {
-                    !it.contains("blank", true) &&
+                .lastOrNull {
+                    it.isNotBlank() &&
+                        !it.contains("blank", true) &&
                         !it.contains("placeholder", true) &&
                         !it.endsWith(".svg", true)
                 }
         }
 
-        return when {
-            hasAttr("data-src") -> attr("abs:data-src")
-            hasAttr("data-lazy-src") -> attr("abs:data-lazy-src")
-            hasAttr("data-original") -> attr("abs:data-original")
-            hasAttr("data-full") -> attr("abs:data-full")
-            hasAttr("data-thumb") -> attr("abs:data-thumb")
-            hasAttr("src") -> attr("abs:src")
+        val srcset = bestFromSrcset(attr("data-srcset"))
+            ?: bestFromSrcset(attr("data-lazy-srcset"))
+            ?: bestFromSrcset(attr("srcset"))
+
+        if (!srcset.isNullOrBlank()) {
+            return fixUrl(srcset)
+        }
+
+        val raw = when {
+            hasAttr("data-src") -> attr("data-src")
+            hasAttr("data-lazy-src") -> attr("data-lazy-src")
+            hasAttr("data-original") -> attr("data-original")
+            hasAttr("data-full") -> attr("data-full")
+            hasAttr("data-thumb") -> attr("data-thumb")
+            hasAttr("src") -> attr("src")
             else -> null
-        }?.takeIf {
+        }?.trim()
+
+        return raw?.takeIf {
             it.isNotBlank() &&
                 !it.contains("blank", true) &&
                 !it.contains("placeholder", true) &&
                 !it.endsWith(".svg", true)
-        }
+        }?.let { fixUrl(it) }
     }
 
     private fun qualityFromUrl(url: String): Int {
