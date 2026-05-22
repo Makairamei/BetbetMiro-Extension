@@ -1,23 +1,20 @@
-// use an integer for version numbers
-version = 1
+version = 2
 
 cloudstream {
-    // All of these properties are optional, you can safely remove any of them.
-
     language = "id"
     authors = listOf("BetbetMiro")
+    description = "Provider CloudStream untuk HentaiCity"
 
     /**
-     * Status int as one of the following:
+     * Status int as the following:
      * 0: Down
      * 1: Ok
      * 2: Slow
-     * 3: Beta-only
-     **/
-    status = 1 // Will be 3 if unspecified
+     * 3: Beta only
+     */
+    status = 1
 
-    tvTypes = listOf(
-        "NSFW"
-    )
-    iconUrl = "https://www.google.com/s2/favicons?domain=https://www.hentaicity.com&sz=256"
+    tvTypes = listOf("NSFW")
+
+    iconUrl = "https://www.google.com/s2/favicons?domain=hentaicity.com&sz=%size%"
 }
