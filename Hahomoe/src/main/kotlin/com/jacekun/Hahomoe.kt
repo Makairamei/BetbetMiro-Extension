@@ -29,7 +29,6 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.EnumSet
 import java.util.Locale
@@ -46,18 +45,20 @@ class Hahomoe : MainAPI() {
 
     override val mainPage = mainPageOf(
         "__home__" to "Beranda",
+
         "anime?page=%d" to "Anime Index",
+
         "type/ova?page=%d" to "OVA",
         "type/movie?page=%d" to "Movie",
         "type/tv-series?page=%d" to "TV Series",
         "type/web?page=%d" to "Web",
         "type/tv-special?page=%d" to "TV Special",
+
         "status/ongoing?page=%d" to "Ongoing",
         "status/completed?page=%d" to "Completed",
         "status/stalled?page=%d" to "Stalled",
 
-        // Genre route Haho memakai ID, bukan slug biasa.
-        // action = https://haho.moe/genre/zdwxopnb
+        // Route genre Haho memakai ID, bukan slug biasa.
         "genre/zdwxopnb?page=%d" to "Action"
     )
 
@@ -72,10 +73,16 @@ class Hahomoe : MainAPI() {
         request: MainPageRequest
     ): HomePageResponse {
         if (request.data == "__home__") {
-            val document = app.get(mainUrl, headers = commonHeaders).document
+            val document = app.get(
+                mainUrl,
+                headers = commonHeaders
+            ).document
+
             val rows = parseHomeSections(document)
 
-            if (rows.isEmpty()) throw ErrorLoadingException("Homepage kosong")
+            if (rows.isEmpty()) {
+                throw ErrorLoadingException("Homepage kosong")
+            }
 
             return newHomePageResponse(rows)
         }
@@ -154,6 +161,7 @@ class Hahomoe : MainAPI() {
 
         if (rows.isEmpty()) {
             val fallback = parseAnimeList(document)
+
             if (fallback.isNotEmpty()) {
                 rows.add(HomePageList("Beranda", fallback))
             }
@@ -180,7 +188,10 @@ class Hahomoe : MainAPI() {
 
     private fun Element.toSearchResult(): SearchResponse? {
         val href = fixUrlNull(attr("href")) ?: return null
-        if (!href.contains("/anime/", true)) return null
+
+        if (!href.contains("/anime/", true)) {
+            return null
+        }
 
         val title = listOf(
             attr("title").trim(),
@@ -220,7 +231,11 @@ class Hahomoe : MainAPI() {
             val response = app.get(
                 pageUrl,
                 headers = commonHeaders,
-                params = if (pageUrl == "$mainUrl/anime") mapOf("q" to query) else emptyMap(),
+                params = if (pageUrl == "$mainUrl/anime") {
+                    mapOf("q" to query)
+                } else {
+                    emptyMap()
+                },
                 cookies = mapOf("loop-view" to "thumb")
             )
 
@@ -283,7 +298,10 @@ class Hahomoe : MainAPI() {
             ?.value
             ?.toIntOrNull()
 
-        val poster = fixUrlNull(document.selectFirst("img.cover-image, .cover img, img.poster")?.getImageAttr())
+        val poster = fixUrlNull(
+            document.selectFirst("img.cover-image, .cover img, img.poster")
+                ?.getImageAttr()
+        )
 
         val synopsis = document.selectFirst(".entry-description > .card-body, .entry-description, .description")
             ?.text()
@@ -329,9 +347,16 @@ class Hahomoe : MainAPI() {
         val href = fixUrlNull(attr("href")) ?: return@runCatching null
         val epText = selectFirst(".episode-slug")?.text()?.trim().orEmpty()
         val title = selectFirst(".episode-title")?.text()?.trim()
+
         val name = when {
-            title.isNullOrBlank() -> epText.ifBlank { "Episode ${extractEpisodeNumber(epText, href) ?: 1}" }
-            title.contains("No Title", ignoreCase = true) -> epText.ifBlank { title }
+            title.isNullOrBlank() -> epText.ifBlank {
+                "Episode ${extractEpisodeNumber(epText, href) ?: 1}"
+            }
+
+            title.contains("No Title", ignoreCase = true) -> epText.ifBlank {
+                title
+            }
+
             else -> title
         }
 
@@ -341,7 +366,6 @@ class Hahomoe : MainAPI() {
             episode = extractEpisodeNumber("$epText $title", href)
             posterUrl = fixUrlNull(selectFirst("img")?.getImageAttr())
             description = attr("data-content").trim().takeIf { it.isNotBlank() }
-            addDate(selectFirst(".episode-date")?.text()?.trim())
         }
     }.getOrNull()
 
@@ -380,12 +404,8 @@ class Hahomoe : MainAPI() {
 
         document.select("[aria-labelledby=mirror-dropdown] > li > a.dropdown-item[href], a.dropdown-item[href*='v=']")
             .forEach { source ->
-                val release = source.text()
-                    .replace("/", "")
-                    .trim()
-                    .ifBlank { "Server" }
-
                 val href = source.attr("href").trim()
+
                 val videoId = href.substringAfter("v=", "")
                     .substringBefore("&")
                     .takeIf { it.isNotBlank() }
@@ -395,6 +415,7 @@ class Hahomoe : MainAPI() {
                 }
 
                 val directUrl = fixUrlNull(href)
+
                 if (!directUrl.isNullOrBlank() && directUrl.contains("/embed", true)) {
                     embedUrls.add(directUrl)
                 }
@@ -415,6 +436,7 @@ class Hahomoe : MainAPI() {
         document.select("iframe[src], embed[src], source[src], video[src]")
             .forEach { element ->
                 val src = element.attr("src").trim()
+
                 if (src.isNotBlank()) {
                     embedUrls.add(fixUrl(src))
                 }
@@ -432,6 +454,7 @@ class Hahomoe : MainAPI() {
             sourceDocument?.select("video#player > source[src], video source[src], source[src]")
                 ?.forEach { source ->
                     val src = source.attr("src").trim()
+
                     if (src.isBlank()) return@forEach
 
                     val qualityName = source.attr("title")
@@ -450,8 +473,10 @@ class Hahomoe : MainAPI() {
                                 ExtractorLinkType.VIDEO
                             }
                         ) {
-                            quality = getQualityFromName(qualityName).takeIf { it != Qualities.Unknown.value }
-                                ?: qualityFromName(qualityName)
+                            quality = getQualityFromName(qualityName).takeIf {
+                                it != Qualities.Unknown.value
+                            } ?: qualityFromName(qualityName)
+
                             referer = embed
                             headers = mapOf(
                                 "Referer" to embed,
