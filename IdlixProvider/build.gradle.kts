@@ -1,9 +1,9 @@
-version = 22
+version = 23
 
 cloudstream {
     language = "id"
     authors = listOf("BetbetMiro")
-    description = "Idlix HTML provider for ryangoslingfrance.com with categories, movies, series, episodes, and hardened playback extraction."
+    description = "Idlix HTML provider for ryangoslingfrance.com with fixed categories, poster parsing, Dooplay AJAX playback, and hardened extractor fallback."
 
     status = 1
 

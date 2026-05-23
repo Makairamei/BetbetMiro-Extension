@@ -1,5 +1,7 @@
 package com.sad25kag.idlix
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.Actor
 import com.lagradost.cloudstream3.Episode
 import com.lagradost.cloudstream3.HomePageResponse
@@ -24,12 +26,15 @@ import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newSearchResponseList
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.newTvSeriesSearchResponse
+import com.lagradost.cloudstream3.utils.AppUtils
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.net.URI
@@ -52,43 +57,54 @@ class IdlixProvider : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "" to "Home",
+        "" to "Terbaru",
         "category/movies/" to "Movies",
         "category/serial-tv/" to "Serial TV",
         "category/animation/" to "Animation",
-        "category/anime/" to "Anime",
-        "category/best-rating/" to "Best Rating",
+        "best-rating/" to "Best Rating",
 
         "category/action/" to "Action",
         "category/adventure/" to "Adventure",
+        "category/action-adventure/" to "Action & Adventure",
         "category/comedy/" to "Comedy",
         "category/crime/" to "Crime",
-        "category/drama/" to "Drama",
-        "category/fantasy/" to "Fantasy",
-        "category/romance/" to "Romance",
-        "category/mystery/" to "Mystery",
-        "category/science-fiction/" to "Science Fiction",
-        "category/thriller/" to "Thriller",
-        "category/horror/" to "Horror",
-        "category/family/" to "Family",
         "category/documentary/" to "Documentary",
+        "category/drama/" to "Drama",
+        "category/family/" to "Family",
+        "category/fantasy/" to "Fantasy",
+        "category/horror/" to "Horror",
+        "category/mystery/" to "Mystery",
+        "category/romance/" to "Romance",
+        "category/science-fiction/" to "Science Fiction",
+        "category/sci-fi-fantasy/" to "Sci-Fi & Fantasy",
+        "category/thriller/" to "Thriller",
         "category/war-politics/" to "War & Politics",
 
-        "category/indonesia/" to "Indonesia",
-        "category/korea/" to "Korea",
-        "category/japan/" to "Japan",
-        "category/china/" to "China",
-        "category/thailand/" to "Thailand",
-        "category/usa/" to "USA",
-        "category/united-kingdom/" to "United Kingdom",
+        "year/2024/" to "2024",
+        "year/2023/" to "2023",
+        "year/2022/" to "2022",
+        "year/2021/" to "2021",
+        "year/2020/" to "2020",
+        "year/2019/" to "2019",
+        "year/2018/" to "2018",
+        "year/2017/" to "2017",
+        "year/2016/" to "2016",
+        "year/2015/" to "2015",
 
-        "2026/" to "2026",
-        "2025/" to "2025",
-        "2024/" to "2024",
-        "2023/" to "2023",
-        "2022/" to "2022",
-        "2021/" to "2021",
-        "2020/" to "2020"
+        "country/philippines/" to "Philippines",
+        "country/korea/" to "Korea",
+        "country/australia/" to "Australia",
+        "country/canada/" to "Canada",
+        "country/china/" to "China",
+        "country/usa/" to "USA",
+        "country/united-kingdom/" to "United Kingdom",
+        "country/thailand/" to "Thailand",
+        "country/indonesia/" to "Indonesia",
+        "country/japan/" to "Japan",
+        "country/hong-kong/" to "Hong Kong",
+        "country/india/" to "India",
+        "country/singapore/" to "Singapore",
+        "country/malaysia/" to "Malaysia"
     )
 
     private val headers = mapOf(
@@ -120,8 +136,9 @@ class IdlixProvider : MainAPI() {
                     "a[rel=next], " +
                     ".pagination a:contains(Next), " +
                     ".nav-links a:contains(Next), " +
+                    ".page-numbers.next, " +
                     "a[href*='/page/${page + 1}/']"
-            ) != null || results.isNotEmpty()
+            ) != null
         )
     }
 
@@ -143,16 +160,17 @@ class IdlixProvider : MainAPI() {
         val results = linkedMapOf<String, SearchResponse>()
 
         document.select(
-            "article, " +
-                ".post, " +
-                ".item, " +
-                ".result-item, " +
-                ".movie-item, " +
-                ".ml-item, " +
-                ".content article, " +
-                ".module article, " +
-                ".box article, " +
-                "h2:has(a)"
+            "article:has(h2 a):has(img), " +
+                "article:has(h3 a):has(img), " +
+                ".post:has(h2 a):has(img), " +
+                ".post:has(h3 a):has(img), " +
+                ".result-item:has(a):has(img), " +
+                ".movie-item:has(a):has(img), " +
+                ".ml-item:has(a):has(img), " +
+                ".items article:has(a):has(img), " +
+                ".content article:has(a):has(img), " +
+                ".module article:has(a):has(img), " +
+                ".box article:has(a):has(img)"
         ).forEach { element ->
             element.toSearchResult()?.let { item ->
                 results[item.url] = item
@@ -179,9 +197,8 @@ class IdlixProvider : MainAPI() {
                     "h3 a[href], " +
                     ".entry-title a[href], " +
                     ".title a[href], " +
-                    "a[href]:has(img), " +
                     "a[href]:contains(Tonton), " +
-                    "a[href]"
+                    "a[href]:has(img)"
             ) ?: return null
         }
 
@@ -190,6 +207,9 @@ class IdlixProvider : MainAPI() {
         if (isBlockedUrl(href)) return null
 
         val image = selectFirst("img") ?: anchor.selectFirst("img")
+        val poster = fixUrlNull(image?.getImageAttr())
+            ?.takeIf { !isBadImage(it) }
+            ?: return null
 
         val title = listOf(
             selectFirst("h2")?.text(),
@@ -205,12 +225,12 @@ class IdlixProvider : MainAPI() {
                 !it.equals("Tonton Film", true) &&
                 !it.equals("Trailer", true) &&
                 !it.equals("Download", true) &&
-                !it.equals("Home", true)
+                !it.equals("Home", true) &&
+                !it.equals("Iklan", true)
         }?.cleanTitle() ?: return null
 
         if (title.length < 2) return null
 
-        val poster = fixUrlNull(image?.getImageAttr())
         val type = guessType(href, text(), title)
 
         return if (type == TvType.TvSeries || type == TvType.Anime || type == TvType.AsianDrama) {
@@ -252,10 +272,17 @@ class IdlixProvider : MainAPI() {
             "live-stream",
             "privacy",
             "dmca",
-            "contact"
+            "contact",
+            "sitemap",
+            "feed",
+            "wp-content/",
+            "wp-json/",
+            "wp-admin/"
         )
 
-        return blockedPrefixes.any { path == it.trimEnd('/') || path.startsWith(it) }
+        return blockedPrefixes.any {
+            path == it.trimEnd('/') || path.startsWith(it)
+        }
     }
 
     override suspend fun search(
@@ -291,8 +318,9 @@ class IdlixProvider : MainAPI() {
                     "a[rel=next], " +
                     ".pagination a:contains(Next), " +
                     ".nav-links a:contains(Next), " +
+                    ".page-numbers.next, " +
                     "a[href*='/page/${page + 1}/']"
-            ) != null || results.isNotEmpty()
+            ) != null
         )
     }
 
@@ -311,10 +339,8 @@ class IdlixProvider : MainAPI() {
             timeout = 30L
         ).document
 
-        val title = document.selectFirst(
-            "h1.entry-title, " +
-                "h1"
-        )?.text()
+        val title = document.selectFirst("h1.entry-title, h1")
+            ?.text()
             ?.cleanTitle()
             ?.takeIf { it.isNotBlank() }
             ?: url.substringAfterLast("/")
@@ -323,14 +349,20 @@ class IdlixProvider : MainAPI() {
 
         val poster = fixUrlNull(
             document.selectFirst(
-                ".poster img, " +
+                "meta[property=og:image], " +
+                    ".poster img, " +
                     ".thumb img, " +
                     ".post-thumbnail img, " +
                     "article img, " +
                     "img.wp-post-image, " +
                     "img"
-            )?.getImageAttr()
-        )
+            )?.let { element ->
+                when {
+                    element.hasAttr("content") -> element.attr("content")
+                    else -> element.getImageAttr()
+                }
+            }
+        )?.takeIf { !isBadImage(it) }
 
         val plot = document.selectFirst(
             ".entry-content p, " +
@@ -357,7 +389,8 @@ class IdlixProvider : MainAPI() {
                 it.isNotBlank() &&
                     !it.equals("Movies", true) &&
                     !it.equals("Serial TV", true) &&
-                    !it.equals("Home", true)
+                    !it.equals("Home", true) &&
+                    !it.equals("Iklan", true)
             }
             .distinct()
 
@@ -380,10 +413,9 @@ class IdlixProvider : MainAPI() {
         }?.takeIf { it.isNotBlank() }
 
         val recommendations = document.select(
-            ".related article, " +
-                ".film-terkait article, " +
-                ".items article, " +
-                "article"
+            ".related article:has(a):has(img), " +
+                ".film-terkait article:has(a):has(img), " +
+                ".items article:has(a):has(img)"
         ).mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
             .filter { it.url != url }
@@ -466,6 +498,7 @@ class IdlixProvider : MainAPI() {
                 ".serial a[href]"
         ).forEachIndexed { index, element ->
             val href = fixUrlNull(element.attr("href")) ?: return@forEachIndexed
+
             if (!href.startsWith(mainUrl)) return@forEachIndexed
             if (isBlockedUrl(href)) return@forEachIndexed
 
@@ -511,6 +544,13 @@ class IdlixProvider : MainAPI() {
 
         val directLinks = linkedSetOf<String>()
         val embedLinks = linkedSetOf<String>()
+
+        collectDooplayAjaxLinks(
+            document = document,
+            pageUrl = data,
+            directLinks = directLinks,
+            embedLinks = embedLinks
+        )
 
         document.select(
             "iframe[src], " +
@@ -593,9 +633,7 @@ class IdlixProvider : MainAPI() {
             if (success) {
                 found = true
             } else {
-                val nestedLinks = resolveNestedLinks(embed, data)
-
-                nestedLinks.forEach { nested ->
+                resolveNestedLinks(embed, data).forEach { nested ->
                     val fixed = normalizeUrl(nested, embed).replace(".txt", ".m3u8")
 
                     when {
@@ -626,6 +664,94 @@ class IdlixProvider : MainAPI() {
         }
 
         return found
+    }
+
+    private suspend fun collectDooplayAjaxLinks(
+        document: Document,
+        pageUrl: String,
+        directLinks: MutableSet<String>,
+        embedLinks: MutableSet<String>
+    ) {
+        val options = document.select(
+            ".dooplay_player_option[data-post][data-nume][data-type], " +
+                ".player-option[data-post][data-nume][data-type], " +
+                "li[data-post][data-nume][data-type], " +
+                "div[data-post][data-nume][data-type], " +
+                "span[data-post][data-nume][data-type]"
+        )
+
+        if (options.isEmpty()) return
+
+        val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
+
+        options.forEach { option ->
+            val post = option.attr("data-post").trim()
+            val nume = option.attr("data-nume").trim()
+            val type = option.attr("data-type").trim()
+
+            if (post.isBlank() || nume.isBlank() || type.isBlank()) return@forEach
+
+            val ajaxText = runCatching {
+                app.post(
+                    ajaxUrl,
+                    data = mapOf(
+                        "action" to "doo_player_ajax",
+                        "post" to post,
+                        "nume" to nume,
+                        "type" to type
+                    ),
+                    referer = pageUrl,
+                    headers = headers + mapOf(
+                        "X-Requested-With" to "XMLHttpRequest",
+                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
+                    ),
+                    timeout = 30L
+                ).text.cleanEscaped()
+            }.getOrNull().orEmpty()
+
+            if (ajaxText.isBlank()) return@forEach
+
+            val embedUrl = runCatching {
+                AppUtils.parseJson<DooplayAjaxResponse>(ajaxText).embedUrlFinal
+            }.getOrNull()
+
+            if (!embedUrl.isNullOrBlank()) {
+                val decoded = decodeIframe(embedUrl)
+                addCandidate(decoded, pageUrl, directLinks, embedLinks)
+
+                Jsoup.parse(decoded).select("iframe[src], iframe[data-src], source[src], video[src]").forEach { element ->
+                    val raw = element.attr("data-src")
+                        .ifBlank { element.attr("src") }
+                        .trim()
+
+                    addCandidate(raw, pageUrl, directLinks, embedLinks)
+                }
+            }
+
+            extractPlayableUrls(ajaxText).forEach { raw ->
+                addCandidate(raw, pageUrl, directLinks, embedLinks)
+            }
+
+            Jsoup.parse(ajaxText).select("iframe[src], iframe[data-src], source[src], video[src]").forEach { element ->
+                val raw = element.attr("data-src")
+                    .ifBlank { element.attr("src") }
+                    .trim()
+
+                addCandidate(raw, pageUrl, directLinks, embedLinks)
+            }
+        }
+    }
+
+    private fun decodeIframe(value: String): String {
+        val clean = value.cleanEscaped()
+
+        return when {
+            clean.contains("<iframe", true) -> clean
+            clean.startsWith("http", true) -> clean
+            else -> runCatching {
+                URLDecoder.decode(clean, "UTF-8")
+            }.getOrDefault(clean)
+        }
     }
 
     private suspend fun resolveNestedLinks(
@@ -783,16 +909,51 @@ class IdlixProvider : MainAPI() {
             return value
                 .split(",")
                 .map { it.trim().substringBefore(" ") }
-                .lastOrNull { it.isNotBlank() }
+                .lastOrNull {
+                    it.isNotBlank() &&
+                        !isBadImage(it)
+                }
         }
 
-        return fromSrcSet(attr("data-srcset"))
+        val raw = fromSrcSet(attr("data-srcset"))
             ?: fromSrcSet(attr("data-lazy-srcset"))
             ?: fromSrcSet(attr("srcset"))
             ?: attr("abs:data-src").takeIf { it.isNotBlank() }
             ?: attr("abs:data-lazy-src").takeIf { it.isNotBlank() }
             ?: attr("abs:data-original").takeIf { it.isNotBlank() }
+            ?: attr("abs:data-full").takeIf { it.isNotBlank() }
             ?: attr("abs:src").takeIf { it.isNotBlank() }
+            ?: attr("data-src").takeIf { it.isNotBlank() }
+            ?: attr("data-lazy-src").takeIf { it.isNotBlank() }
+            ?: attr("src").takeIf { it.isNotBlank() }
+
+        return raw
+            ?.trim()
+            ?.takeIf { !isBadImage(it) }
+    }
+
+    private fun isBadImage(url: String): Boolean {
+        val value = url.lowercase()
+
+        return value.isBlank() ||
+            value.startsWith("data:image") ||
+            value.contains("blank") ||
+            value.contains("placeholder") ||
+            value.contains("default") ||
+            value.contains("no-image") ||
+            value.contains("noimage") ||
+            value.contains("loader") ||
+            value.contains("loading") ||
+            value.contains("lazy") ||
+            value.contains("spacer") ||
+            value.contains("logo") ||
+            value.contains("favicon") ||
+            value.contains("klikzeus") ||
+            value.contains("ibosport") ||
+            value.contains("dewasport") ||
+            value.contains("qq288") ||
+            value.contains("sngine") ||
+            value.endsWith(".svg")
     }
 
     private fun guessType(
@@ -911,4 +1072,14 @@ class IdlixProvider : MainAPI() {
             .replace(Regex("""\s+"""), " ")
             .trim()
     }
+}
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class DooplayAjaxResponse(
+    @JsonProperty("embed_url") val embedUrl: String? = null,
+    @JsonProperty("embedUrl") val embedUrlAlt: String? = null,
+    @JsonProperty("url") val url: String? = null
+) {
+    val embedUrlFinal: String?
+        get() = embedUrl ?: embedUrlAlt ?: url
 }
