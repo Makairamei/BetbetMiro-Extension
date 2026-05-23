@@ -615,11 +615,25 @@ class IndoAV : MainAPI() {
             .filterNot { shouldSkipUrl(it) }
             .distinct()
 
-        embedUrls.forEach { embed ->
+        val detailCode = extractIndoAvCodeAndStream(pageUrl).first
+
+        val manualEmbedUrls = buildList {
+            if (detailCode.isNotBlank()) {
+                add("$mainUrl/e/$detailCode")
+                add("$mainUrl/video/embed/$detailCode/EM")
+            }
+        }
+
+        val finalEmbedUrls = (embedUrls + manualEmbedUrls)
+            .filterNot { isAdUrl(it) }
+            .filterNot { shouldSkipUrl(it) }
+            .distinct()
+
+        finalEmbedUrls.forEach { embed ->
             addCandidate(embed, pageUrl, directLinks, embedLinks)
         }
 
-        for (embed in embedUrls.take(4)) {
+        for (embed in finalEmbedUrls.take(6)) {
             val embedResponse = runCatching {
                 app.get(
                     embed,
@@ -843,16 +857,17 @@ class IndoAV : MainAPI() {
         }
 
         jobs.forEach { (code, streamName) ->
-            val payload = buildIndoAvLoadPayload(
+            val payload = buildIndoAvPayload(
                 code = code,
                 streamName = streamName.ifBlank { "EM" }
             )
 
             val responseText = runCatching {
                 app.post(
-                    "$mainUrl/video/load/$payload/",
+                    "$mainUrl/video/v/$payload/",
                     data = mapOf(
-                        "video" to payload
+                        "video" to payload,
+                        "origin" to mainUrl
                     ),
                     headers = headers + mapOf(
                         "Content-Type" to "application/x-www-form-urlencoded",
@@ -953,7 +968,7 @@ class IndoAV : MainAPI() {
         }
     }
 
-    private fun buildIndoAvLoadPayload(
+    private fun buildIndoAvPayload(
         code: String,
         streamName: String
     ): String {
@@ -1208,6 +1223,7 @@ class IndoAV : MainAPI() {
 
         val endpoints = linkedSetOf<String>()
 
+        endpoints.add("$mainUrl/video/v")
         endpoints.add("$mainUrl/video/source")
         endpoints.add("$mainUrl/video/stream")
         endpoints.add("$mainUrl/video/play")
@@ -1223,7 +1239,7 @@ class IndoAV : MainAPI() {
 
         scripts.forEach { script ->
             Regex(
-                """["']((?:https?://www\.indoav\.com)?/[^"']*(?:source|stream|play|embed|token|file|img|load|dp)[^"']*)["']""",
+                """["']((?:https?://www\.indoav\.com)?/[^"']*(?:source|stream|play|embed|token|file|img|load|v|dp)[^"']*)["']""",
                 RegexOption.IGNORE_CASE
             ).findAll(script).forEach { match ->
                 val endpoint = normalizeUrl(match.groupValues[1], mainUrl)
@@ -1507,6 +1523,9 @@ class IndoAV : MainAPI() {
                 fixed.contains("/video/load/", true) -> embedLinks.add(fixed)
 
             fixed.startsWith("http", true) &&
+                fixed.contains("/video/v/", true) -> embedLinks.add(fixed)
+
+            fixed.startsWith("http", true) &&
                 fixed.contains("/e/", true) -> embedLinks.add(fixed)
         }
     }
@@ -1638,24 +1657,25 @@ class IndoAV : MainAPI() {
         val value = url.lowercase()
 
         return when {
-            value.contains("www.indoav.com/video/load") -> 0
-            value.contains("www.indoav.com/video/img") -> 1
-            value.contains("www.indoav.com/video/embed") -> 2
-            value.contains("embedan") -> 3
-            value.contains("majorplay") -> 4
-            value.contains("jeniusplay") -> 5
-            value.contains("hglink") -> 6
-            value.contains("hgcloud") -> 7
-            value.contains("lulustream") || value.contains("luluvdoo") || value.contains("lulu") -> 8
-            value.contains("streamwish") || value.contains("wishfast") -> 9
-            value.contains("filemoon") -> 10
-            value.contains("vidhide") -> 11
-            value.contains("vidguard") -> 12
-            value.contains("voe") -> 13
-            value.contains("mixdrop") -> 14
-            value.contains("mp4upload") -> 15
-            value.contains("streamtape") -> 16
-            value.contains("dood") -> 17
+            value.contains("www.indoav.com/video/v") -> 0
+            value.contains("www.indoav.com/video/load") -> 1
+            value.contains("www.indoav.com/video/img") -> 2
+            value.contains("www.indoav.com/video/embed") -> 3
+            value.contains("embedan") -> 4
+            value.contains("majorplay") -> 5
+            value.contains("jeniusplay") -> 6
+            value.contains("hglink") -> 7
+            value.contains("hgcloud") -> 8
+            value.contains("lulustream") || value.contains("luluvdoo") || value.contains("lulu") -> 9
+            value.contains("streamwish") || value.contains("wishfast") -> 10
+            value.contains("filemoon") -> 11
+            value.contains("vidhide") -> 12
+            value.contains("vidguard") -> 13
+            value.contains("voe") -> 14
+            value.contains("mixdrop") -> 15
+            value.contains("mp4upload") -> 16
+            value.contains("streamtape") -> 17
+            value.contains("dood") -> 18
             value.contains("embed") -> 30
             value.contains("player") -> 31
             value.contains("stream") -> 32
@@ -1667,6 +1687,7 @@ class IndoAV : MainAPI() {
         val value = url.lowercase()
 
         return listOf(
+            "www.indoav.com/video/v",
             "www.indoav.com/video/load",
             "www.indoav.com/video/img",
             "www.indoav.com/video/embed",
@@ -1704,6 +1725,7 @@ class IndoAV : MainAPI() {
             url.contains(".mp4", true) ||
             url.contains(".webm", true) ||
             url.contains(".txt", true) ||
+            url.contains("/video/v/", true) ||
             url.contains("/video/load/", true) ||
             url.contains("/video/embed/", true) ||
             url.contains("/video/img/", true) ||
