@@ -16,6 +16,7 @@ class AuraTail : MainAPI() {
     override var mainUrl = "https://auratail.vip"
     override var name = "AuraTail"
     override val hasMainPage = true
+    override val hasQuickSearch = true
     override var lang = "id"
 
     override val supportedTypes = setOf(
@@ -122,11 +123,7 @@ class AuraTail : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(buildMainPageUrl(page, request.data)).document
-        val items =
-            document
-                .select("div.listupd article.bs")
-                .mapNotNull { it.toSearchResult() }
-                .distinctBy { it.url }
+        val items = parseSearchResults(document)
 
         val hasNext = document.selectFirst(
             "a.nextpostslink, a[rel=next], .pagination a:contains(Next), .hpage a:contains(Next), .wp-pagenavi a:contains(Next)"
@@ -141,10 +138,7 @@ class AuraTail : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
         val document = app.get("$mainUrl/?s=$encodedQuery").document
-        return document
-            .select("div.listupd article.bs")
-            .mapNotNull { it.toSearchResult() }
-            .distinctBy { it.url }
+        return parseSearchResults(document)
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -332,20 +326,22 @@ class AuraTail : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val document = app.get(data).document
+        val response = app.get(data)
+        val document = response.document
+        var found = false
 
         document
-            .selectFirst("div.player-embed iframe")
+            .selectFirst("div.player-embed iframe, .player-embed iframe, .embed-responsive iframe, iframe[src], iframe[data-src], iframe[data-litespeed-src]")
             ?.getIframeAttr()
             ?.let { iframe ->
-                loadExtractor(httpsify(iframe), data, subtitleCallback, callback)
+                found = loadExtractor(httpsify(iframe), data, subtitleCallback, callback) || found
             }
 
-        val mirrorOptions = document.select("select.mirror option[value]:not([disabled])")
+        val mirrorOptions = document.select("select.mirror option[value]:not([disabled]), option[value]:not([disabled])")
         for (option in mirrorOptions) {
-            val base64 = option.attr("value")
+            val base64 = option.attr("value").trim()
             if (base64.isBlank()) continue
-            try {
+            runCatching {
                 val decodedHtml = base64Decode(base64.replace("\\s".toRegex(), ""))
                 val iframeTag = Jsoup.parse(decodedHtml).selectFirst("iframe")
                 val mirrorUrl =
@@ -355,76 +351,193 @@ class AuraTail : MainAPI() {
                         else -> null
                     }
                 if (!mirrorUrl.isNullOrBlank()) {
-                    loadExtractor(httpsify(mirrorUrl), data, subtitleCallback, callback)
+                    found = loadExtractor(httpsify(mirrorUrl), data, subtitleCallback, callback) || found
                 }
-            } catch (_: Exception) {
-                // Skip broken mirror entries.
             }
         }
 
-        val downloadLinks = document.select("div.dlbox li span.e a[href]")
+        Regex("""<iframe[^>]+(?:src|data-src|data-litespeed-src)=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+            .findAll(response.text)
+            .map { it.groupValues[1] }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .forEach { iframe ->
+                found = loadExtractor(httpsify(iframe), data, subtitleCallback, callback) || found
+            }
+
+        val downloadLinks = document.select("div.dlbox li span.e a[href], .dlbox a[href], a[href*='.m3u8'], a[href*='.mp4']")
         for (anchor in downloadLinks) {
-            val downloadUrl = anchor.attr("href").trim()
+            val downloadUrl = anchor.attr("abs:href").ifBlank { anchor.attr("href") }.trim()
             if (downloadUrl.isNotBlank()) {
-                loadExtractor(httpsify(downloadUrl), data, subtitleCallback, callback)
+                found = loadExtractor(httpsify(downloadUrl), data, subtitleCallback, callback) || found
             }
         }
 
-        return true
+        return found
+    }
+
+    private fun parseSearchResults(document: org.jsoup.nodes.Document): List<SearchResponse> {
+        val results = linkedMapOf<String, SearchResponse>()
+
+        val containerSelector = listOf(
+            "div.listupd article.bs",
+            "article.bs",
+            ".listupd .bs",
+            ".listupd .bsx",
+            ".listupd .utao",
+            ".latest .bs",
+            ".latest .bsx",
+            ".bixbox .listupd article",
+            ".items article",
+            ".items .bsx",
+            ".postbody article",
+            ".releases article",
+            "article:has(a[href])",
+        ).joinToString(", ")
+
+        document.select(containerSelector).forEach { element ->
+            element.toSearchResult()?.let { results[it.url] = it }
+        }
+
+        if (results.isEmpty()) {
+            document.select("a[href]").forEach { anchor ->
+                anchor.toSearchResult()?.let { results[it.url] = it }
+            }
+        }
+
+        return results.values
+            .filter { it.name.isNotBlank() }
+            .distinctBy { it.url }
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val link = selectFirst("a")?.attr("href") ?: return null
-        val title =
-            selectFirst("div.tt")?.text()?.trim()
-                ?: selectFirst("a")?.attr("title")?.trim()
-                ?: return null
-        val cleanTitle =
-            title
-                .replace(
-                    Regex(
-                        "\\b(Sub(\\s*)?(title)?\\s*Indonesia|Subtitle\\s*Indonesia|Sub\\s*Indo)\\b",
-                        RegexOption.IGNORE_CASE,
-                    ),
-                    "",
-                ).replace(Regex("\\s+"), " ")
-                .trim()
-        val poster = selectFirst("img")?.getImageAttr()?.let { fixUrlNull(it) }
-        val type = getType(selectFirst(".typez, .limit .type, span.type")?.text()?.trim())
-        val href = fixUrl(link)
+        val anchor =
+            if (tagName().equals("a", true)) {
+                this
+            } else {
+                selectFirst("a[href]:has(img)")
+                    ?: selectFirst("h2 a[href], h3 a[href], h4 a[href], .tt a[href], .entry-title a[href]")
+                    ?: selectFirst("a[href]")
+            } ?: return null
+
+        val href = anchor.attr("abs:href").ifBlank { anchor.attr("href") }
+        if (!isValidItemUrl(href)) return null
+
+        val fixedUrl = fixUrl(href)
+        val image = selectFirst("img") ?: anchor.selectFirst("img")
+
+        val rawTitle = listOfNotNull(
+            selectFirst(".tt")?.text(),
+            selectFirst("h2")?.text(),
+            selectFirst("h3")?.text(),
+            selectFirst("h4")?.text(),
+            anchor.attr("title"),
+            anchor.attr("aria-label"),
+            image?.attr("alt"),
+            anchor.text(),
+            fixedUrl.substringBefore("?").trim('/').substringAfterLast("/").replace("-", " "),
+        ).firstOrNull { it.isNotBlank() && !isBadCardTitle(it) } ?: return null
+
+        val cleanTitle = cleanCardTitle(rawTitle)
+        if (cleanTitle.isBlank() || isBadCardTitle(cleanTitle)) return null
+
+        val poster = image?.getImageAttr()?.let { fixUrlNull(it) }
+        val type = getType(selectFirst(".typez, .limit .type, span.type, .type, .bt span")?.text()?.trim())
+
         return when (type) {
-            TvType.AnimeMovie -> newMovieSearchResponse(cleanTitle, href, type) {
+            TvType.AnimeMovie -> newMovieSearchResponse(cleanTitle, fixedUrl, type) {
                 posterUrl = poster
             }
-            else -> newAnimeSearchResponse(cleanTitle, href, type) {
+            else -> newAnimeSearchResponse(cleanTitle, fixedUrl, type) {
                 posterUrl = poster
             }
         }
     }
 
     private fun Element.toRecommendResult(): SearchResponse? {
-        val title = selectFirst("div.tt")?.text()?.trim() ?: return null
-        val cleanTitle =
-            title
-                .replace(
-                    Regex(
-                        "\\b(Sub(\\s*)?(title)?\\s*Indonesia|Subtitle\\s*Indonesia|Sub\\s*Indo)\\b",
-                        RegexOption.IGNORE_CASE,
-                    ),
-                    "",
-                ).replace(Regex("\\s+"), " ")
-                .trim()
-        val href = selectFirst("a")?.attr("href") ?: return null
-        val posterUrl = selectFirst("img")?.getImageAttr()?.let { fixUrlNull(it) }
-        val type = getType(selectFirst(".typez, .limit .type, span.type")?.text()?.trim())
-        return when (type) {
-            TvType.AnimeMovie -> newMovieSearchResponse(cleanTitle, fixUrl(href), type) {
-                this.posterUrl = posterUrl
-            }
-            else -> newAnimeSearchResponse(cleanTitle, fixUrl(href), type) {
-                this.posterUrl = posterUrl
-            }
+        return toSearchResult()
+    }
+
+    private fun isValidItemUrl(url: String): Boolean {
+        val fixed = fixUrlNull(url)?.substringBefore("#") ?: return false
+        if (!fixed.startsWith(mainUrl, true)) return false
+
+        val path = runCatching {
+            URI(fixed).path.trim('/')
+        }.getOrDefault(fixed.substringAfter(mainUrl).trim('/'))
+
+        if (path.isBlank()) return false
+
+        val blockedPrefixes = listOf(
+            "genres/",
+            "genre/",
+            "anime/",
+            "az-list",
+            "schedule",
+            "bookmark",
+            "history",
+            "page/",
+            "wp-",
+            "tag/",
+            "studio/",
+            "season/",
+            "status/",
+            "type/",
+            "order/",
+            "author/",
+            "privacy-policy",
+            "contact",
+            "login",
+            "register",
+        )
+
+        return blockedPrefixes.none { path.equals(it.trim('/'), true) || path.startsWith(it, true) }
+    }
+
+    private fun isBadCardTitle(title: String): Boolean {
+        val value = title.trim().lowercase(Locale.ROOT)
+        return value.isBlank() ||
+            value == "home" ||
+            value == "anime lists" ||
+            value == "az lists" ||
+            value == "schedule" ||
+            value == "bookmark" ||
+            value == "history" ||
+            value == "view all" ||
+            value == "next" ||
+            value == "prev" ||
+            value == "all episodes" ||
+            value == "image" ||
+            value == "expand" ||
+            value == "turn off light" ||
+            value == "select video server" ||
+            value.startsWith("genre all") ||
+            value.startsWith("season all") ||
+            value.startsWith("studio all") ||
+            value.startsWith("status all") ||
+            value.startsWith("type all") ||
+            value.startsWith("order by")
+    }
+
+    private fun cleanCardTitle(title: String): String {
+        var clean = title
+            .replace(Regex("\\b(Completed|Ongoing|Upcoming|Hiatus|ONA|OVA|TV|Movie|Special|BD|Sub)\\b", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("\\bEps?\\s*\\d+\\b", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("\\bReleased\\s+on\\b.*$", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+        val parts = clean.split(" ")
+        if (parts.size >= 2 && parts.size % 2 == 0) {
+            val half = parts.size / 2
+            val first = parts.take(half).joinToString(" ")
+            val second = parts.drop(half).joinToString(" ")
+            if (first.equals(second, true)) clean = first
         }
+
+        return clean
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 
     private fun buildEpisodes(
