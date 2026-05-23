@@ -757,6 +757,14 @@ class Anoboy : MainAPI() {
                 lower.contains("doubleclick") ||
                 lower.contains("analytics") ||
                 lower.contains("histats") ||
+                lower.contains("safeBrowsing", true) ||
+                lower.contains("safebrowsing", true) ||
+                lower.contains("beacons.gcp.gvt2.com") ||
+                lower.contains("beacons.gvt2.com") ||
+                lower.contains("dns.google") ||
+                lower.contains("cloudflareinsights") ||
+                lower.contains("google-analytics") ||
+                lower.contains("googletagmanager") ||
                 lower.contains("wp-json") ||
                 lower.contains("/wp-content/themes/") ||
                 lower.endsWith(".css") ||
@@ -776,7 +784,8 @@ class Anoboy : MainAPI() {
                 lower.contains(".mkv") ||
                 lower.contains("googlevideo.com/videoplayback") ||
                 lower.contains("blogger.googleusercontent.com") ||
-                lower.contains("video-downloads.googleusercontent.com")
+                lower.contains("video-downloads.googleusercontent.com") ||
+                lower.contains("redirector.googlevideo.com")
         }
 
         fun shouldQueue(url: String): Boolean {
@@ -790,6 +799,11 @@ class Anoboy : MainAPI() {
                 lower.contains("yupbatch") ||
                 lower.contains("embed.php") ||
                 lower.contains("blogger.com/video.g") ||
+                lower.contains("blogger.com/_/bloggervideoplayerui") ||
+                lower.contains("youtube.googleapis.com/embed") ||
+                lower.contains("youtube.com/embed") ||
+                lower.contains("viiwbpyl.com/h/") ||
+                lower.contains("viiwbpyl.com/embed") ||
                 lower.contains("yourupload.com/") ||
                 lower.contains("streamtape") ||
                 lower.contains("dood") ||
@@ -830,7 +844,21 @@ class Anoboy : MainAPI() {
             }
 
             Regex(
+                """https?://[^"'<>\s\\]+googlevideo\.com/videoplayback[^"'<>\s\\]*""",
+                RegexOption.IGNORE_CASE
+            ).findAll(cleaned).forEach { match ->
+                queueUrl(match.value, base)
+            }
+
+            Regex(
                 """//[^"'<>\s\\]+\.(?:m3u8|mp4|webm|mkv)(?:\?[^"'<>\s\\]*)?""",
+                RegexOption.IGNORE_CASE
+            ).findAll(cleaned).forEach { match ->
+                queueUrl("https:${match.value}", base)
+            }
+
+            Regex(
+                """//[^"'<>\s\\]+googlevideo\.com/videoplayback[^"'<>\s\\]*""",
                 RegexOption.IGNORE_CASE
             ).findAll(cleaned).forEach { match ->
                 queueUrl("https:${match.value}", base)
