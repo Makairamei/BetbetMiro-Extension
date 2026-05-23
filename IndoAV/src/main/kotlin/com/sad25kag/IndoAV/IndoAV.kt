@@ -34,6 +34,9 @@ import org.jsoup.nodes.Element
 import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+import java.util.Calendar
 
 @CloudstreamPlugin
 class IndoAVPlugin : BasePlugin() {
@@ -560,6 +563,13 @@ class IndoAV : MainAPI() {
             embedLinks = embedLinks
         )
 
+        collectIndoAvImgPlayer(
+            pageUrl = pageUrl,
+            document = document,
+            directLinks = directLinks,
+            embedLinks = embedLinks
+        )
+
         extractPlayableUrls(html).forEach { raw ->
             addCandidate(raw, pageUrl, directLinks, embedLinks)
         }
@@ -584,8 +594,6 @@ class IndoAV : MainAPI() {
             }
         }
 
-        // Detail page IndoAV biasanya memberi embedURL, token, dan filecode.
-        // Buka embed page dulu supaya video tag + player JS bisa terbaca.
         val embedUrls = document.select(
             "meta[itemprop=embedURL], " +
                 "meta[property=og:video], " +
@@ -630,6 +638,13 @@ class IndoAV : MainAPI() {
             collectCandidatesFromDocument(
                 document = embedDocument,
                 baseUrl = embed,
+                directLinks = directLinks,
+                embedLinks = embedLinks
+            )
+
+            collectIndoAvImgPlayer(
+                pageUrl = pageUrl,
+                document = embedDocument,
                 directLinks = directLinks,
                 embedLinks = embedLinks
             )
@@ -762,6 +777,274 @@ class IndoAV : MainAPI() {
         return false
     }
 
+    private suspend fun collectIndoAvImgPlayer(
+        pageUrl: String,
+        document: Document,
+        directLinks: MutableSet<String>,
+        embedLinks: MutableSet<String>
+    ) {
+        val slug = pageUrl
+            .substringAfter("/video/", "")
+            .substringBefore("?")
+            .trim('/')
+
+        if (slug.isBlank()) return
+
+        document.select("[data-play-token]").forEach { element ->
+            val token = element.attr("data-play-token").trim()
+
+            decodeIndoAvEncodedJsonUrls(token).forEach { url ->
+                addCandidate(
+                    raw = url,
+                    baseUrl = pageUrl,
+                    directLinks = directLinks,
+                    embedLinks = embedLinks
+                )
+            }
+        }
+
+        val streamLinks = document.select(
+            "a.select-stream-link[data-filecode], " +
+                "a.select-stream-link[data-play-token], " +
+                "[data-filecode][data-play-token]"
+        )
+
+        if (streamLinks.isEmpty()) {
+            val videoToken = document.selectFirst("video[data-play-token]")
+                ?.attr("data-play-token")
+                ?.trim()
+                .orEmpty()
+
+            if (videoToken.isNotBlank()) {
+                decodeIndoAvEncodedJsonUrls(videoToken).forEach { url ->
+                    addCandidate(
+                        raw = url,
+                        baseUrl = pageUrl,
+                        directLinks = directLinks,
+                        embedLinks = embedLinks
+                    )
+                }
+            }
+
+            return
+        }
+
+        streamLinks.forEach { element ->
+            val streamName = element.attr("aria-label")
+                .replace(Regex("""(?i)^Stream\s+"""), "")
+                .trim()
+                .ifBlank { "EM" }
+
+            val fileCode = element.attr("data-filecode").trim()
+
+            val targetCode = if (streamName.equals("EM", true) && fileCode.isNotBlank()) {
+                fileCode
+            } else {
+                slug
+            }
+
+            if (targetCode.isBlank()) return@forEach
+
+            val payload = buildIndoAvImgPayload(
+                code = targetCode,
+                streamName = streamName
+            )
+
+            val responseText = runCatching {
+                app.post(
+                    "$mainUrl/video/img/$payload/",
+                    data = mapOf(
+                        "video" to payload
+                    ),
+                    headers = headers + mapOf(
+                        "Content-Type" to "application/x-www-form-urlencoded",
+                        "X-REQUESTED-WITH" to "official-app",
+                        "Origin" to mainUrl,
+                        "Accept" to "text/html,application/json,text/plain,*/*"
+                    ),
+                    referer = pageUrl,
+                    timeout = 15L
+                ).text.cleanEscaped()
+            }.getOrNull().orEmpty()
+
+            if (responseText.isBlank()) return@forEach
+
+            val decrypted = decryptIndoAvEncoded(responseText)
+                ?.cleanEscaped()
+                .orEmpty()
+
+            listOf(responseText, decrypted)
+                .filter { it.isNotBlank() }
+                .distinct()
+                .forEach { playerHtml ->
+                    parsePlayerResponse(
+                        text = playerHtml,
+                        baseUrl = pageUrl,
+                        directLinks = directLinks,
+                        embedLinks = embedLinks
+                    )
+
+                    val playerDocument = Jsoup.parse(playerHtml)
+
+                    collectCandidatesFromDocument(
+                        document = playerDocument,
+                        baseUrl = pageUrl,
+                        directLinks = directLinks,
+                        embedLinks = embedLinks
+                    )
+
+                    extractPlayableUrls(playerHtml).forEach { raw ->
+                        addCandidate(
+                            raw = raw,
+                            baseUrl = pageUrl,
+                            directLinks = directLinks,
+                            embedLinks = embedLinks
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun buildIndoAvImgPayload(
+        code: String,
+        streamName: String
+    ): String {
+        val calendar = Calendar.getInstance()
+
+        val timestamp = ":.e:" +
+            calendar.get(Calendar.DAY_OF_MONTH) +
+            "/" +
+            (calendar.get(Calendar.MONTH) + 1) +
+            "/" +
+            calendar.get(Calendar.YEAR) +
+            "@" +
+            calendar.get(Calendar.HOUR_OF_DAY) +
+            ":" +
+            calendar.get(Calendar.MINUTE) +
+            ":" +
+            calendar.get(Calendar.SECOND)
+
+        val raw = randomAlphaNum(10) +
+            ":.a:" +
+            reverseToken(code) +
+            timestamp +
+            ":.s:" +
+            streamName
+
+        var payload = reverseToken(base64EncodeBinary(raw))
+        payload = rc4(payload, indoAvSecretKey())
+        payload = reverseToken(base64EncodeBinary(payload))
+
+        return payload
+    }
+
+    private fun decodeIndoAvEncodedJsonUrls(value: String): List<String> {
+        if (value.isBlank()) return emptyList()
+
+        val decoded = decryptIndoAvEncoded(value).orEmpty()
+        if (decoded.isBlank()) return emptyList()
+
+        val results = linkedSetOf<String>()
+
+        Regex(
+            """"u"\s*:\s*\[(.*?)]""",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+        ).find(decoded)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.let { arrayText ->
+                Regex(""""([^"]+)"""")
+                    .findAll(arrayText)
+                    .map { it.groupValues[1].cleanEscaped() }
+                    .filter { it.startsWith("http", true) }
+                    .forEach { results.add(it) }
+            }
+
+        extractPlayableUrls(decoded).forEach { results.add(it) }
+
+        return results.toList()
+    }
+
+    private fun decryptIndoAvEncoded(value: String): String? {
+        return runCatching {
+            val binary = base64DecodeBinary(reverseToken(value.trim()))
+            rc4(binary, indoAvSecretKey())
+        }.getOrNull()
+    }
+
+    private fun indoAvSecretKey(): String {
+        val encoded = "rqpSaEddZ156f342cjwOD8vc4/SYtI0ILIo5UUj45apkqA06FzRKvr92GErrdKGZozMV1L52EueOl7B7yO1efjk8uBhSzLOf"
+        val once = base64DecodeBinary(encoded)
+        return base64DecodeBinary(once)
+    }
+
+    private fun reverseToken(value: String): String {
+        return value.reversed()
+    }
+
+    private fun base64EncodeBinary(value: String): String {
+        return Base64.getEncoder().encodeToString(
+            value.toByteArray(StandardCharsets.ISO_8859_1)
+        )
+    }
+
+    private fun base64DecodeBinary(value: String): String {
+        return String(
+            Base64.getDecoder().decode(value),
+            StandardCharsets.ISO_8859_1
+        )
+    }
+
+    private fun rc4(
+        value: String,
+        key: String
+    ): String {
+        if (key.isEmpty()) return value
+
+        val data = value.toByteArray(StandardCharsets.ISO_8859_1)
+        val keyBytes = key.toByteArray(StandardCharsets.ISO_8859_1)
+
+        val s = IntArray(256) { it }
+        var j = 0
+
+        for (i in 0 until 256) {
+            j = (j + s[i] + keyBytes[i % keyBytes.size].toInt().and(0xff)) and 0xff
+
+            val temp = s[i]
+            s[i] = s[j]
+            s[j] = temp
+        }
+
+        var i = 0
+        j = 0
+
+        val output = ByteArray(data.size)
+
+        for (index in data.indices) {
+            i = (i + 1) and 0xff
+            j = (j + s[i]) and 0xff
+
+            val temp = s[i]
+            s[i] = s[j]
+            s[j] = temp
+
+            val keyStream = s[(s[i] + s[j]) and 0xff]
+            output[index] = (data[index].toInt().and(0xff) xor keyStream).toByte()
+        }
+
+        return String(output, StandardCharsets.ISO_8859_1)
+    }
+
+    private fun randomAlphaNum(length: Int): String {
+        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+
+        return buildString {
+            repeat(length) {
+                append(chars.random())
+            }
+        }
+    }
+
     private fun collectCandidatesFromDocument(
         document: Document,
         baseUrl: String,
@@ -884,7 +1167,7 @@ class IndoAV : MainAPI() {
 
         scripts.forEach { script ->
             Regex(
-                """["']((?:https?://www\.indoav\.com)?/[^"']*(?:source|stream|play|embed|token|file)[^"']*)["']""",
+                """["']((?:https?://www\.indoav\.com)?/[^"']*(?:source|stream|play|embed|token|file|img|dp)[^"']*)["']""",
                 RegexOption.IGNORE_CASE
             ).findAll(script).forEach { match ->
                 val endpoint = normalizeUrl(match.groupValues[1], mainUrl)
@@ -1162,6 +1445,9 @@ class IndoAV : MainAPI() {
                 fixed.contains("/video/embed/", true) -> embedLinks.add(fixed)
 
             fixed.startsWith("http", true) &&
+                fixed.contains("/video/img/", true) -> embedLinks.add(fixed)
+
+            fixed.startsWith("http", true) &&
                 fixed.contains("/e/", true) -> embedLinks.add(fixed)
         }
     }
@@ -1293,22 +1579,23 @@ class IndoAV : MainAPI() {
         val value = url.lowercase()
 
         return when {
-            value.contains("www.indoav.com/video/embed") -> 0
-            value.contains("embedan") -> 1
-            value.contains("majorplay") -> 2
-            value.contains("jeniusplay") -> 3
-            value.contains("hglink") -> 4
-            value.contains("hgcloud") -> 5
-            value.contains("lulustream") || value.contains("luluvdoo") || value.contains("lulu") -> 6
-            value.contains("streamwish") || value.contains("wishfast") -> 7
-            value.contains("filemoon") -> 8
-            value.contains("vidhide") -> 9
-            value.contains("vidguard") -> 10
-            value.contains("voe") -> 11
-            value.contains("mixdrop") -> 12
-            value.contains("mp4upload") -> 13
-            value.contains("streamtape") -> 14
-            value.contains("dood") -> 15
+            value.contains("www.indoav.com/video/img") -> 0
+            value.contains("www.indoav.com/video/embed") -> 1
+            value.contains("embedan") -> 2
+            value.contains("majorplay") -> 3
+            value.contains("jeniusplay") -> 4
+            value.contains("hglink") -> 5
+            value.contains("hgcloud") -> 6
+            value.contains("lulustream") || value.contains("luluvdoo") || value.contains("lulu") -> 7
+            value.contains("streamwish") || value.contains("wishfast") -> 8
+            value.contains("filemoon") -> 9
+            value.contains("vidhide") -> 10
+            value.contains("vidguard") -> 11
+            value.contains("voe") -> 12
+            value.contains("mixdrop") -> 13
+            value.contains("mp4upload") -> 14
+            value.contains("streamtape") -> 15
+            value.contains("dood") -> 16
             value.contains("embed") -> 30
             value.contains("player") -> 31
             value.contains("stream") -> 32
@@ -1320,6 +1607,7 @@ class IndoAV : MainAPI() {
         val value = url.lowercase()
 
         return listOf(
+            "www.indoav.com/video/img",
             "www.indoav.com/video/embed",
             "embedan",
             "embed",
@@ -1356,6 +1644,7 @@ class IndoAV : MainAPI() {
             url.contains(".webm", true) ||
             url.contains(".txt", true) ||
             url.contains("/video/embed/", true) ||
+            url.contains("/video/img/", true) ||
             isKnownHost(url)
     }
 
