@@ -47,7 +47,7 @@ class BioskopKerenPlugin : BasePlugin() {
 }
 
 class BioskopKeren : MainAPI() {
-    override var mainUrl = "https://bioskop-keren.com"
+    override var mainUrl = "https://kebioskop21.cfd"
     override var name = "BioskopKeren"
     override val hasMainPage = true
     override val hasQuickSearch = true
@@ -62,45 +62,42 @@ class BioskopKeren : MainAPI() {
 
     override val mainPage = mainPageOf(
         "" to "Terbaru",
-        "movie/" to "Movie",
-        "tv-series-korea/" to "TV Series Korea",
-        "tv-series-west/" to "TV Series West",
-        "tv-series/" to "TV Series",
+        "category/movie/" to "Movie",
+        "category/serial-asia/" to "TV Series Asia",
+        "category/k-movie/" to "Film Korea",
+        "category/korea/" to "Drama Korea",
+        "category/west/" to "TV Series West",
+        "category/box-office/" to "Box Office",
 
-        "genre/action/" to "Action",
-        "genre/adventure/" to "Adventure",
-        "genre/animation/" to "Animation",
-        "genre/biography/" to "Biography",
-        "genre/comedy/" to "Comedy",
-        "genre/crime/" to "Crime",
-        "genre/documentary/" to "Documentary",
-        "genre/drama/" to "Drama",
-        "genre/family/" to "Family",
-        "genre/fantasy/" to "Fantasy",
-        "genre/history/" to "History",
-        "genre/horror/" to "Horror",
-        "genre/mystery/" to "Mystery",
-        "genre/romance/" to "Romance",
-        "genre/sci-fi/" to "Sci-Fi",
-        "genre/thriller/" to "Thriller",
-        "genre/war/" to "War",
+        "category/action/" to "Action",
+        "category/adventure/" to "Adventure",
+        "category/animasi/" to "Animation",
+        "category/biography/" to "Biography",
+        "category/comedy/" to "Comedy",
+        "category/crime/" to "Crime",
+        "category/documentary/" to "Documentary",
+        "category/drama/" to "Drama",
+        "category/family/" to "Family",
+        "category/fantasy/" to "Fantasy",
+        "category/history/" to "History",
+        "category/horor/" to "Horror",
+        "category/mystery/" to "Mystery",
+        "category/romance/" to "Romance",
+        "category/sci-fi/" to "Sci-Fi",
+        "category/sport/" to "Sport",
+        "category/thriller/" to "Thriller",
+        "category/mandarin/" to "Chinese",
+        "category/india/" to "Hindi",
+        "category/japan/" to "Japan",
+        "category/thailand/" to "Thailand",
 
-        "country/usa/" to "USA",
-        "country/korea/" to "Korea",
-        "country/china/" to "China",
-        "country/japan/" to "Japan",
-        "country/thailand/" to "Thailand",
-        "country/indonesia/" to "Indonesia",
-        "country/india/" to "India",
-        "country/united-kingdom/" to "United Kingdom",
-
-        "year/2026/" to "2026",
-        "year/2025/" to "2025",
-        "year/2024/" to "2024",
-        "year/2023/" to "2023",
-        "year/2022/" to "2022",
-        "year/2021/" to "2021",
-        "year/2020/" to "2020"
+        "category/2026/" to "2026",
+        "category/film-tahun-2025-terbaru/" to "2025",
+        "category/2024/" to "2024",
+        "category/2023/" to "2023",
+        "category/2022/" to "2022",
+        "category/2021/" to "2021",
+        "category/2020/" to "2020"
     )
 
     private val headers = mapOf(
@@ -108,6 +105,30 @@ class BioskopKeren : MainAPI() {
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
     )
+
+    private val siteHosts = listOf(
+        "kebioskop21.cfd",
+        "bioskop-keren.com",
+        "bioskopkeren.now",
+        "bioskop-keren.com.now"
+    )
+
+    private val playerHosts = listOf(
+        "streaming.kebioskop21.pro",
+        "abyss.to",
+        "short.icu",
+        "abysscdn.com",
+        "iamcdn.net"
+    )
+
+    private fun isSiteUrl(url: String): Boolean {
+        val host = runCatching { URI(url).host.orEmpty().lowercase() }.getOrDefault("")
+        return siteHosts.any { host == it || host.endsWith(".$it") }
+    }
+
+    private fun stripOrigin(url: String): String {
+        return url.replace(Regex("""^https?://[^/]+/?""", RegexOption.IGNORE_CASE), "")
+    }
 
     override suspend fun getMainPage(
         page: Int,
@@ -175,7 +196,9 @@ class BioskopKeren : MainAPI() {
                 ".items article:has(a), " +
                 ".content article:has(a), " +
                 ".grid article:has(a), " +
-                ".box:has(a)"
+                ".box:has(a), " +
+                ".moviefilm:has(a), " +
+                ".movief:has(a)"
         ).forEach { element ->
             element.toSearchResult()?.let { item ->
                 results[item.url] = item
@@ -215,7 +238,7 @@ class BioskopKeren : MainAPI() {
 
         val href = fixUrlNull(anchor.attr("href")) ?: return null
 
-        if (!href.startsWith(mainUrl)) return null
+        if (!isSiteUrl(href)) return null
         if (isBlockedUrl(href)) return null
 
         val image = selectFirst("img") ?: anchor.selectFirst("img")
@@ -271,11 +294,12 @@ class BioskopKeren : MainAPI() {
     }
 
     private fun isBlockedUrl(url: String): Boolean {
-        val path = url.substringAfter(mainUrl).trim('/').lowercase()
+        val path = stripOrigin(url).trim('/').lowercase()
 
         if (path.isBlank()) return true
 
         val blockedPrefixes = listOf(
+            "category/",
             "genre/",
             "country/",
             "year/",
@@ -502,7 +526,7 @@ class BioskopKeren : MainAPI() {
         ).forEachIndexed { index, element ->
             val href = fixUrlNull(element.attr("href")) ?: return@forEachIndexed
 
-            if (!href.startsWith(mainUrl)) return@forEachIndexed
+            if (!isSiteUrl(href)) return@forEachIndexed
             if (isBlockedUrl(href)) return@forEachIndexed
 
             val label = element.text().trim()
@@ -561,131 +585,186 @@ class BioskopKeren : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val response = app.get(
-            data,
-            headers = headers,
-            referer = mainUrl,
-            timeout = 30L
-        )
-
-        val document = response.document
-        val html = response.text.cleanEscaped()
-
-        val directLinks = linkedSetOf<String>()
-        val embedLinks = linkedSetOf<String>()
-
-        document.select(
-            "iframe[src], " +
-                "iframe[data-src], " +
-                "iframe[data-litespeed-src], " +
-                "embed[src], " +
-                "source[src], " +
-                "video[src], " +
-                "video source[src]"
-        ).forEach { element ->
-            val raw = element.attr("data-litespeed-src")
-                .ifBlank { element.attr("data-src") }
-                .ifBlank { element.attr("src") }
-                .trim()
-
-            addCandidate(raw, data, directLinks, embedLinks)
-        }
-
-        document.select("a[href]").forEach { element ->
-            val href = element.attr("href").trim()
-            val label = element.text().lowercase()
-
-            if (
-                href.startsWith("#") ||
-                href.startsWith("javascript", true) ||
-                href.contains("youtube.com", true) ||
-                href.contains("youtu.be", true) ||
-                label.contains("trailer")
-            ) {
-                return@forEach
-            }
-
-            if (isLikelyPlayable(href) || isLikelyPlayableText(label)) {
-                addCandidate(href, data, directLinks, embedLinks)
-            }
-        }
-
-        extractPlayableUrls(html).forEach { raw ->
-            addCandidate(raw, data, directLinks, embedLinks)
-        }
-
+        val visited = mutableSetOf<String>()
+        val directLinks = linkedSetOf<Pair<String, String>>()
+        val embedLinks = ArrayDeque<Pair<String, String>>()
         var found = false
 
-        directLinks.distinct().forEach { link ->
+        fun queueEmbed(raw: String?, baseUrl: String, referer: String = baseUrl) {
+            if (raw.isNullOrBlank()) return
+            val fixed = normalizeUrl(raw.cleanEscaped(), baseUrl)
+                .replace(".txt", ".m3u8")
+                .trim()
+
+            if (fixed.isBlank() || isAdUrl(fixed) || isBadPlayableUrl(fixed)) return
+
+            when {
+                isDirectMedia(fixed) -> directLinks.add(fixed to referer)
+                fixed.startsWith("http", true) && isLikelyPlayable(fixed) -> embedLinks.add(fixed to referer)
+            }
+        }
+
+        suspend fun parsePage(pageUrl: String, referer: String): String {
+            val response = app.get(
+                pageUrl,
+                headers = headers,
+                referer = referer,
+                timeout = 30L
+            )
+
+            val document = response.document
+            val html = response.text.cleanEscaped()
+
+            extractSubtitles(pageUrl, html, subtitleCallback)
+
+            document.select(
+                "iframe#player[src], " +
+                    "iframe[src], " +
+                    "iframe[data-src], " +
+                    "iframe[data-litespeed-src], " +
+                    "embed[src], " +
+                    "source[src], " +
+                    "video[src], " +
+                    "video source[src], " +
+                    "a[data-video], " +
+                    "[data-video], " +
+                    "[data-src], " +
+                    "[data-url]"
+            ).forEach { element ->
+                queueEmbed(element.attr("data-video"), pageUrl)
+                queueEmbed(element.attr("data-url"), pageUrl)
+                queueEmbed(element.attr("data-litespeed-src"), pageUrl)
+                queueEmbed(element.attr("data-src"), pageUrl)
+                queueEmbed(element.attr("src"), pageUrl)
+                queueEmbed(element.attr("href"), pageUrl)
+            }
+
+            document.select("a[href]").forEach { element ->
+                val href = element.attr("href").trim()
+                val label = element.text().lowercase()
+
+                if (
+                    href.startsWith("#") ||
+                    href.startsWith("javascript", true) ||
+                    href.contains("youtube.com", true) ||
+                    href.contains("youtu.be", true) ||
+                    label.contains("trailer")
+                ) {
+                    return@forEach
+                }
+
+                if (isLikelyPlayable(href) || isLikelyPlayableText(label)) {
+                    queueEmbed(href, pageUrl)
+                }
+            }
+
+            extractPlayableUrls(html).forEach { raw ->
+                queueEmbed(raw, pageUrl)
+            }
+
+            return html
+        }
+
+        parsePage(data, mainUrl)
+
+        var safety = 0
+        while (embedLinks.isNotEmpty() && safety++ < 80) {
+            val (embed, referer) = embedLinks.removeFirst()
+            if (!visited.add(embed)) continue
+
+            if (isDirectMedia(embed)) {
+                directLinks.add(embed to referer)
+                continue
+            }
+
+            if (isAbyssLike(embed) || isKnownExtractorHost(embed)) {
+                val success = runCatching {
+                    loadExtractor(embed, referer, subtitleCallback, callback)
+                }.getOrDefault(false)
+
+                if (success) found = true
+            }
+
+            val nestedHtml = when {
+                embed.contains("/apidrive.php", true) -> resolveApiDrivePage(embed, referer)
+                shouldCrawlEmbed(embed) -> runCatching { parsePage(embed, referer) }.getOrDefault("")
+                else -> ""
+            }
+
+            if (nestedHtml.isNotBlank()) {
+                extractPlayableUrls(nestedHtml).forEach { raw ->
+                    queueEmbed(raw, embed, embed)
+                }
+            }
+        }
+
+        directLinks.distinct().forEach { (link, referer) ->
             emitDirectLink(
                 link = link,
-                referer = data,
+                referer = referer,
                 callback = callback
             )
             found = true
         }
 
-        embedLinks.distinct().forEach { embed ->
-            val success = loadExtractor(
-                embed,
-                data,
-                subtitleCallback,
-                callback
-            )
-
-            if (success) {
-                found = true
-            } else {
-                resolveNestedLinks(embed, data).forEach { nested ->
-                    val fixed = normalizeUrl(nested, embed)
-                        .replace(".txt", ".m3u8")
-
-                    when {
-                        isAdUrl(fixed) -> Unit
-
-                        isHlsLike(fixed) || fixed.contains(".mp4", true) -> {
-                            emitDirectLink(
-                                link = fixed,
-                                referer = embed,
-                                callback = callback
-                            )
-                            found = true
-                        }
-
-                        fixed.startsWith("http", true) -> {
-                            val nestedSuccess = loadExtractor(
-                                fixed,
-                                embed,
-                                subtitleCallback,
-                                callback
-                            )
-
-                            if (nestedSuccess) found = true
-                        }
-                    }
-                }
-            }
-        }
-
         return found
     }
 
-    private suspend fun resolveNestedLinks(
+    private suspend fun resolveApiDrivePage(
         url: String,
         referer: String
-    ): List<String> {
-        val text = runCatching {
+    ): String {
+        val pages = mutableListOf<String>()
+
+        runCatching {
             app.get(
                 url,
                 headers = headers,
                 referer = referer,
                 timeout = 30L
             ).text.cleanEscaped()
-        }.getOrNull().orEmpty()
+        }.getOrNull()?.let { pages.add(it) }
 
-        if (text.isBlank()) return emptyList()
+        runCatching {
+            app.post(
+                url,
+                data = mapOf("play" to "play"),
+                headers = headers,
+                referer = referer,
+                timeout = 30L
+            ).text.cleanEscaped()
+        }.getOrNull()?.let { pages.add(it) }
 
-        return extractPlayableUrls(text)
+        return pages.joinToString("\n")
+    }
+
+    private fun extractSubtitles(
+        pageUrl: String,
+        html: String,
+        subtitleCallback: (SubtitleFile) -> Unit
+    ) {
+        val candidates = linkedSetOf<String>()
+        candidates.add(pageUrl)
+        Regex("""[?&]sub=([^"'&<>\s]+)""", RegexOption.IGNORE_CASE)
+            .findAll("$pageUrl\n$html")
+            .map { it.groupValues[1] }
+            .forEach { raw ->
+                val decoded = runCatching { URLDecoder.decode(raw, "UTF-8") }.getOrDefault(raw)
+                candidates.add(decoded)
+            }
+
+        candidates
+            .filter { it.contains(".srt", true) || it.contains(".vtt", true) }
+            .map { normalizeUrl(it, pageUrl) }
+            .distinct()
+            .forEach { sub -> subtitleCallback.invoke(SubtitleFile("Indonesia", sub)) }
+    }
+
+    private fun resolveNestedLinks(
+        text: String,
+        baseUrl: String
+    ): List<String> {
+        return extractPlayableUrls(text).map { normalizeUrl(it, baseUrl) }
     }
 
     private fun addCandidate(
@@ -699,10 +778,10 @@ class BioskopKeren : MainAPI() {
         val fixed = normalizeUrl(raw.cleanEscaped(), baseUrl)
             .replace(".txt", ".m3u8")
 
-        if (fixed.isBlank() || isAdUrl(fixed)) return
+        if (fixed.isBlank() || isAdUrl(fixed) || isBadPlayableUrl(fixed)) return
 
         when {
-            isHlsLike(fixed) || fixed.contains(".mp4", true) -> directLinks.add(fixed)
+            isDirectMedia(fixed) -> directLinks.add(fixed)
             fixed.startsWith("http", true) -> embedLinks.add(fixed)
         }
     }
@@ -712,7 +791,7 @@ class BioskopKeren : MainAPI() {
         referer: String,
         callback: (ExtractorLink) -> Unit
     ) {
-        if (isAdUrl(link)) return
+        if (isAdUrl(link) || isBadPlayableUrl(link)) return
 
         callback(
             newExtractorLink(
@@ -729,6 +808,14 @@ class BioskopKeren : MainAPI() {
                 this.quality = getQualityFromName(link).takeIf {
                     it != Qualities.Unknown.value
                 } ?: qualityFromUrl(link)
+                this.headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to referer,
+                    "Origin" to runCatching {
+                        val uri = URI(referer)
+                        "${uri.scheme}://${uri.host}"
+                    }.getOrDefault(mainUrl)
+                )
             }
         )
     }
@@ -742,11 +829,11 @@ class BioskopKeren : MainAPI() {
             RegexOption.IGNORE_CASE
         ).findAll(clean)
             .map { it.value.cleanEscaped().replace(".txt", ".m3u8") }
-            .filterNot { isAdUrl(it) }
+            .filterNot { isAdUrl(it) || isBadPlayableUrl(it) }
             .forEach { urls.add(it) }
 
         Regex(
-            """https?%3A%2F%2F[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.txt)[^"'\\\s<>]*""",
+            """https?%3A%2F%2F[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.txt|apidrive\.php)[^"'\\\s<>]*""",
             RegexOption.IGNORE_CASE
         ).findAll(clean)
             .map {
@@ -755,11 +842,11 @@ class BioskopKeren : MainAPI() {
                 }.getOrDefault(it.value)
             }
             .map { it.cleanEscaped().replace(".txt", ".m3u8") }
-            .filterNot { isAdUrl(it) }
+            .filterNot { isAdUrl(it) || isBadPlayableUrl(it) }
             .forEach { urls.add(it) }
 
         Regex(
-            """(?:file|src|source|url|videoSource|videoUrl|embedUrl|embed_url)\s*[:=]\s*["']([^"']+)["']""",
+            """(?:file|src|source|url|videoSource|videoUrl|embedUrl|embed_url|data-video|data-src)\s*[:=]\s*["']([^"']+)["']""",
             RegexOption.IGNORE_CASE
         ).findAll(clean)
             .mapNotNull { it.groupValues.getOrNull(1) }
@@ -767,18 +854,43 @@ class BioskopKeren : MainAPI() {
             .filter {
                 it.contains(".m3u8", true) ||
                     it.contains(".mp4", true) ||
+                    it.contains("apidrive.php", true) ||
                     isKnownHost(it)
             }
-            .filterNot { isAdUrl(it) }
+            .filterNot { isAdUrl(it) || isBadPlayableUrl(it) }
             .forEach { urls.add(it) }
 
         Regex(
-            """https?://[^"'\\\s<>]+?(?:embed|player|stream|filemoon|streamwish|wishfast|dood|streamtape|vidhide|vidguard|voe|mixdrop|mp4upload|lulustream|lulu|hglink|hgcloud|acefile|krakenfiles|gdrive|drive\.google|ok\.ru|odnoklassniki|terabox|mega)[^"'\\\s<>]*""",
+            """https?://[^"'\\\s<>]+?(?:apidrive\.php|embed|player|stream|filemoon|streamwish|wishfast|dood|streamtape|vidhide|vidguard|voe|mixdrop|mp4upload|lulustream|lulu|hglink|hgcloud|acefile|krakenfiles|gdrive|drive\.google|ok\.ru|odnoklassniki|terabox|mega|abyss|short\.icu)[^"'\\\s<>]*""",
             RegexOption.IGNORE_CASE
         ).findAll(clean)
             .map { it.value.cleanEscaped() }
-            .filterNot { isAdUrl(it) }
+            .filterNot { isAdUrl(it) || isBadPlayableUrl(it) }
             .forEach { urls.add(it) }
+
+        Regex("""const\s+datas\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+            .findAll(clean)
+            .mapNotNull { it.groupValues.getOrNull(1) }
+            .forEach { encoded ->
+                val decoded = runCatching { String(android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)) }.getOrNull()
+                val slug = Regex(""""slug"\s*:\s*"([A-Za-z0-9_-]+)""", RegexOption.IGNORE_CASE)
+                    .find(decoded.orEmpty())
+                    ?.groupValues
+                    ?.getOrNull(1)
+                if (!slug.isNullOrBlank()) {
+                    urls.add("https://short.icu/$slug")
+                    urls.add("https://abyss.to/?v=$slug")
+                    urls.add("https://abysscdn.com/?v=$slug")
+                }
+            }
+
+        Regex("""[?&]v=([A-Za-z0-9_-]{9,})""", RegexOption.IGNORE_CASE)
+            .findAll(clean)
+            .mapNotNull { it.groupValues.getOrNull(1) }
+            .forEach { slug ->
+                urls.add("https://short.icu/$slug")
+                urls.add("https://abyss.to/?v=$slug")
+            }
 
         return urls.toList()
     }
@@ -787,6 +899,11 @@ class BioskopKeren : MainAPI() {
         val value = url.lowercase()
 
         return listOf(
+            "streaming.kebioskop21.pro",
+            "apidrive.php",
+            "abyss.to",
+            "short.icu",
+            "abysscdn",
             "embed",
             "player",
             "stream",
@@ -814,9 +931,37 @@ class BioskopKeren : MainAPI() {
         ).any { value.contains(it) }
     }
 
+    private fun isKnownExtractorHost(url: String): Boolean {
+        val value = url.lowercase()
+        return listOf(
+            "abyss.to",
+            "short.icu",
+            "abysscdn",
+            "filemoon",
+            "streamwish",
+            "wishfast",
+            "dood",
+            "streamtape",
+            "vidhide",
+            "vidguard",
+            "voe",
+            "mixdrop",
+            "mp4upload",
+            "lulustream",
+            "hglink",
+            "hgcloud",
+            "acefile",
+            "krakenfiles",
+            "drive.google",
+            "ok.ru",
+            "odnoklassniki"
+        ).any { value.contains(it) }
+    }
+
     private fun isLikelyPlayable(url: String): Boolean {
         return url.contains(".m3u8", true) ||
             url.contains(".mp4", true) ||
+            url.contains("apidrive.php", true) ||
             isKnownHost(url)
     }
 
@@ -826,10 +971,36 @@ class BioskopKeren : MainAPI() {
             text.contains("nonton") ||
             text.contains("watch") ||
             text.contains("server") ||
+            text.contains("play") ||
             text.contains("360p") ||
             text.contains("480p") ||
             text.contains("720p") ||
             text.contains("1080p")
+    }
+
+    private fun shouldCrawlEmbed(url: String): Boolean {
+        val host = runCatching { URI(url).host.orEmpty().lowercase() }.getOrDefault("")
+        val lower = url.lowercase()
+        return playerHosts.any { host == it || host.endsWith(".$it") } ||
+            lower.contains("/apidrive.php") ||
+            lower.contains("embed") ||
+            lower.contains("player")
+    }
+
+    private fun isDirectMedia(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains(".m3u8") ||
+            lower.contains(".mp4") ||
+            lower.contains("googlevideo.com/videoplayback") ||
+            lower.contains("blogger.googleusercontent.com") ||
+            lower.contains("video-downloads.googleusercontent.com")
+    }
+
+    private fun isAbyssLike(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("abyss.to") ||
+            lower.contains("short.icu") ||
+            lower.contains("abysscdn")
     }
 
     private fun normalizeUrl(
@@ -1004,9 +1175,35 @@ class BioskopKeren : MainAPI() {
             value.contains("preroll") ||
             value.contains("doubleclick") ||
             value.contains("googlesyndication") ||
-            value.contains("ads") ||
+            value.contains("adsbygoogle") ||
             value.contains("banner") ||
-            value.contains("pasang-iklan")
+            value.contains("pasang-iklan") ||
+            value.contains("groggedrotl") ||
+            value.contains("leatmansures") ||
+            value.contains("decafeligiblyhad") ||
+            value.contains("histats") ||
+            value.contains("googletagmanager") ||
+            value.contains("google-analytics") ||
+            value.contains("cloudflareinsights") ||
+            value.contains("pixel.morphify")
+    }
+
+    private fun isBadPlayableUrl(url: String): Boolean {
+        val value = url.lowercase()
+        return value.endsWith(".js") ||
+            value.endsWith(".css") ||
+            value.endsWith(".jpg") ||
+            value.endsWith(".jpeg") ||
+            value.endsWith(".png") ||
+            value.endsWith(".webp") ||
+            value.endsWith(".gif") ||
+            value.endsWith(".svg") ||
+            value.contains("/wp-content/uploads/") && !value.contains(".mp4") && !value.contains(".m3u8") ||
+            value.contains("whatsapp.com") ||
+            value.contains("facebook.com") ||
+            value.contains("twitter.com") ||
+            value.contains("x.com/") ||
+            value.contains("mailto:")
     }
 
     private fun qualityFromUrl(url: String): Int {
