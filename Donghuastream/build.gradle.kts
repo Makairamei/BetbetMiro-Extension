@@ -1,4 +1,4 @@
-version = 4
+version = 5
 
 cloudstream {
     description = "Donghuastream dan SeaTV untuk donghua / Chinese anime."
