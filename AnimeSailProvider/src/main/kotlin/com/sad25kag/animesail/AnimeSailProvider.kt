@@ -27,6 +27,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import java.net.URI
 import java.net.URLDecoder
+import java.net.URLEncoder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -34,6 +35,7 @@ class AnimeSailProvider : MainAPI() {
     override var mainUrl = "https://154.26.137.28"
     override var name = "AnimeSail"
     override val hasMainPage = true
+    override val hasQuickSearch = true
     override var lang = "id"
     override val hasDownloadSupport = true
     private val turnstileInterceptor = TurnstileInterceptor()
@@ -75,15 +77,59 @@ class AnimeSailProvider : MainAPI() {
     override val mainPage = mainPageOf(
         "$mainUrl/rilisan-anime-terbaru/page/" to "Ongoing Anime",
         "$mainUrl/rilisan-donghua-terbaru/page/" to "Ongoing Donghua",
-        "$mainUrl/movie-terbaru/page/" to "Movie"
+        "$mainUrl/movie-terbaru/page/" to "Movie Terbaru",
+        "$mainUrl/daftar-anime/page/" to "Daftar Anime",
+
+        "$mainUrl/genres/action/page/" to "Action",
+        "$mainUrl/genres/adventure/page/" to "Adventure",
+        "$mainUrl/genres/comedy/page/" to "Comedy",
+        "$mainUrl/genres/drama/page/" to "Drama",
+        "$mainUrl/genres/fantasy/page/" to "Fantasy",
+        "$mainUrl/genres/romance/page/" to "Romance",
+        "$mainUrl/genres/school/page/" to "School",
+        "$mainUrl/genres/slice-of-life/page/" to "Slice of Life",
+        "$mainUrl/genres/shounen/page/" to "Shounen",
+        "$mainUrl/genres/shoujo/page/" to "Shoujo",
+        "$mainUrl/genres/seinen/page/" to "Seinen",
+        "$mainUrl/genres/josei/page/" to "Josei",
+        "$mainUrl/genres/isekai/page/" to "Isekai",
+        "$mainUrl/genres/reincarnation/page/" to "Reincarnation",
+        "$mainUrl/genres/supernatural/page/" to "Supernatural",
+        "$mainUrl/genres/super-power/page/" to "Super Power",
+        "$mainUrl/genres/magic/page/" to "Magic",
+        "$mainUrl/genres/mystery/page/" to "Mystery",
+        "$mainUrl/genres/detective/page/" to "Detective",
+        "$mainUrl/genres/police/page/" to "Police",
+        "$mainUrl/genres/sci-fi/page/" to "Sci-Fi",
+        "$mainUrl/genres/mecha/page/" to "Mecha",
+        "$mainUrl/genres/sports/page/" to "Sports",
+        "$mainUrl/genres/music/page/" to "Music",
+        "$mainUrl/genres/historical/page/" to "Historical",
+        "$mainUrl/genres/samurai/page/" to "Samurai",
+        "$mainUrl/genres/martial-arts/page/" to "Martial Arts",
+        "$mainUrl/genres/mythology/page/" to "Mythology",
+        "$mainUrl/genres/urban-fantasy/page/" to "Urban Fantasy",
+        "$mainUrl/genres/harem/page/" to "Harem",
+        "$mainUrl/genres/ecchi/page/" to "Ecchi",
+        "$mainUrl/genres/gore/page/" to "Gore",
+        "$mainUrl/genres/horror/page/" to "Horror",
+        "$mainUrl/genres/thriller/page/" to "Thriller",
+        "$mainUrl/genres/psychological/page/" to "Psychological",
+        "$mainUrl/genres/suspense/page/" to "Suspense",
+        "$mainUrl/genres/parody/page/" to "Parody"
     )
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = request(request.data + page).document
+    override suspend fun getMainPage(page: Int, pageRequest: MainPageRequest): HomePageResponse {
+        val document = request(pageRequest.data + page).document
         val home = document.select("div.listupd article, article").mapNotNull {
             it.toSearchResult()
-        }
-        return newHomePageResponse(request.name, home)
+        }.distinctBy { it.url }
+
+        return newHomePageResponse(
+            pageRequest.name,
+            home,
+            hasNext = home.isNotEmpty()
+        )
     }
 
     private fun getProperAnimeLink(uri: String): String {
@@ -138,8 +184,19 @@ class AnimeSailProvider : MainAPI() {
         if (title.isBlank()) return null
 
         val posterUrl = fixUrlNull(
-            this.selectFirst("div.limit img, img.wp-post-image, img.attachment-post-thumbnail, img")
-                ?.attr("src")
+            this.selectFirst("div.limit img, img.wp-post-image, img.attachment-post-thumbnail, img")?.let { img ->
+                img.attr("abs:data-src").ifBlank {
+                    img.attr("abs:data-lazy-src").ifBlank {
+                        img.attr("abs:src").ifBlank {
+                            img.attr("data-src").ifBlank {
+                                img.attr("data-lazy-src").ifBlank {
+                                    img.attr("src")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         )
         val epNum = Regex("(?i)Episode\\s?(\\d+)").find(rawTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
         val typeText = listOfNotNull(
@@ -156,12 +213,15 @@ class AnimeSailProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val link = "$mainUrl/?s=$query"
-        val document = request(link).document
+        val keyword = query.trim()
+        if (keyword.isBlank()) return emptyList()
+
+        val encoded = URLEncoder.encode(keyword, "UTF-8")
+        val document = request("$mainUrl/?s=$encoded").document
 
         return document.select("div.listupd article, article").mapNotNull {
             it.toSearchResult()
-        }
+        }.distinctBy { it.url }
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -177,7 +237,7 @@ class AnimeSailProvider : MainAPI() {
             val link = fixUrl(it.select("a").attr("href"))
             val name = it.select("a").text()
             val episode =
-                Regex("Episode\\s?(\\d+)").find(name)?.groupValues?.getOrNull(0)?.toIntOrNull()
+                Regex("Episode\\s?(\\d+)").find(name)?.groupValues?.getOrNull(1)?.toIntOrNull()
             newEpisode(link) { this.episode = episode }
         }.reversed()
 
