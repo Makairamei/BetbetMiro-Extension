@@ -1,4 +1,4 @@
-version = 5
+version = 6
 
 cloudstream {
     description = "DramaID - drama Asia subtitle Indonesia."

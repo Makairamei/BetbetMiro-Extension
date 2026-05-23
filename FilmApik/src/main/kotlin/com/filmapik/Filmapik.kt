@@ -30,7 +30,7 @@ class Filmapik : MainAPI() {
     }
 
     override var mainUrl = "https://filmapik.fitness"
-    override var name = "FilmApik🎃"
+    override var name = "FilmApik"
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true

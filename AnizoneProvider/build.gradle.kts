@@ -19,7 +19,6 @@ cloudstream {
 
     tvTypes = listOf("Anime")
 
-
-    // random cc logo i found : me too, how cool
-    //iconUrl = "https://avatarfiles.alphacoders.com/292/thumb-1920-292030.png"
+    // Menggunakan icon asli langsung dari website AniZone
+    iconUrl = "https://anizone.to/favicon.ico"
 }

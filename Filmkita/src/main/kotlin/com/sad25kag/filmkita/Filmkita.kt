@@ -32,7 +32,7 @@ import org.jsoup.nodes.Element
 
 class Filmkita : MainAPI() {
     override var mainUrl = "https://s7.iix.llc"
-    override var name = "Filmkita😐"
+    override var name = "Filmkita"
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true
