@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainPageRequest
-import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SearchResponseList
 import com.lagradost.cloudstream3.SubtitleFile
@@ -227,15 +226,12 @@ class IndoAV : MainAPI() {
         val poster = fixUrlNull(image?.getImageAttr())
             ?.takeIf { !isBadImage(it) }
 
-        val runtime = parseRuntime(text())
-
         return newMovieSearchResponse(
             title,
             href,
             TvType.NSFW
         ) {
             posterUrl = poster
-            runtime?.let { this.duration = it }
         }
     }
 
