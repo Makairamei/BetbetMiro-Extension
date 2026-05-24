@@ -70,12 +70,9 @@ class Gerakin21 : MainAPI() {
         "quality/ongoing/" to "Serial On-Going",
         "quality/end/" to "Serial END",
         "category/serial-indonesia/" to "Serial Indonesia",
-        "category/serial-china/" to "Serial China",
-        "category/serial-korea/" to "Serial Korea",
         "category/serial-thailand/" to "Serial Thailand",
 
         // Film semi rows from the active site menu.
-        "category/barat/" to "Semi Barat",
         "category/brother-musang/" to "Brother Musang",
         "category/indo-lokal/" to "Indo Lokal",
         "category/jav-sub-indo/" to "Jepang JAV",
@@ -93,11 +90,8 @@ class Gerakin21 : MainAPI() {
         "category/drama/" to "Drama",
         "category/fantasy/" to "Fantasy",
         "category/history/" to "History",
-        "category/horor/" to "Horror",
-        "category/horror/" to "Horror Alt",
         "category/mystery/" to "Mystery",
         "category/romance/" to "Romance",
-        "category/sci-fi/" to "Sci-Fi",
         "category/science-fiction/" to "Science Fiction",
         "category/thriller/" to "Thriller",
 
@@ -171,7 +165,7 @@ class Gerakin21 : MainAPI() {
                 .distinctBy { it.url }
                 .take(24)
 
-            if (items.size >= 3) {
+            if (items.size >= 3 && !rowTitle.isBlockedHomeRow()) {
                 rows.add(HomePageList(rowTitle, items, isHorizontalImages = false))
             }
         }
@@ -257,27 +251,27 @@ class Gerakin21 : MainAPI() {
         if (!isProviderUrl(href)) return null
         if (isBlockedUrl(href)) return null
 
-        val image = selectFirst("img") ?: anchor.selectFirst("img")
+        val image = findPosterElement(this, anchor)
         val title = listOf(
+            anchor.attr("title"),
+            anchor.attr("aria-label"),
+            image?.attr("alt"),
             selectFirst("h2")?.text(),
             selectFirst("h3")?.text(),
+            selectFirst("h4")?.text(),
             selectFirst(".title")?.text(),
             selectFirst(".entry-title")?.text(),
             selectFirst(".movie-title")?.text(),
             selectFirst(".film-title")?.text(),
             selectFirst(".jt")?.text(),
-            anchor.attr("title"),
-            anchor.attr("aria-label"),
-            image?.attr("alt"),
             anchor.text()
-        ).firstOrNull {
-            !it.isNullOrBlank() && !it.isUiText()
-        }?.cleanTitle() ?: return null
+        ).mapNotNull { it?.cleanTitle()?.takeIf { clean -> clean.isNotBlank() && !clean.isUiText() } }
+            .firstOrNull()
+            ?: return null
 
         if (title.length < 2) return null
 
-        val poster = fixUrlNull(image?.getImageAttr())
-            ?.takeIf { !isBadImage(it) }
+        val poster = extractPosterUrl(this, anchor) ?: return null
 
         val type = getTypeFromUrl(href, title, text())
 
@@ -689,14 +683,71 @@ class Gerakin21 : MainAPI() {
         ) != null
     }
 
+
+    private fun String.isBlockedHomeRow(): Boolean {
+        val lower = cleanTitle().lowercase()
+        return lower in setOf(
+            "serial china",
+            "serial korea",
+            "semi barat",
+            "horror",
+            "horor",
+            "sci-fi",
+            "science fiction"
+        )
+    }
+
+    private fun findPosterElement(element: Element, anchor: Element): Element? {
+        val candidates = listOfNotNull(
+            element,
+            anchor,
+            element.parent(),
+            element.parent()?.parent(),
+            anchor.parent(),
+            anchor.parent()?.parent()
+        ).distinct()
+
+        candidates.forEach { box ->
+            box.select("img[src], img[data-src], img[data-lazy-src], img[data-original], img[data-img], img[poster], source[srcset], source[data-srcset]")
+                .firstOrNull { img ->
+                    val url = img.getImageAttr().orEmpty()
+                    url.isNotBlank() && !isBadImage(url)
+                }?.let { return it }
+        }
+        return null
+    }
+
+    private fun extractPosterUrl(element: Element, anchor: Element): String? {
+        findPosterElement(element, anchor)?.getImageAttr()?.let { raw ->
+            fixUrlNull(raw)?.takeIf { !isBadImage(it) }?.let { return it }
+        }
+
+        val boxes = listOfNotNull(element, anchor, element.parent(), element.parent()?.parent()).distinct()
+        boxes.forEach { box ->
+            val style = box.attr("style")
+            Regex("""url\((['"]?)(.*?)\1\)""", RegexOption.IGNORE_CASE)
+                .find(style)
+                ?.groupValues
+                ?.getOrNull(2)
+                ?.trim()
+                ?.let { raw -> fixUrlNull(raw)?.takeIf { !isBadImage(it) } }
+                ?.let { return it }
+        }
+
+        return null
+    }
+
     private fun Element.getImageAttr(): String? {
         return when {
             hasAttr("data-src") -> attr("abs:data-src").ifBlank { attr("data-src") }
             hasAttr("data-lazy-src") -> attr("abs:data-lazy-src").ifBlank { attr("data-lazy-src") }
             hasAttr("data-original") -> attr("abs:data-original").ifBlank { attr("data-original") }
             hasAttr("data-img") -> attr("abs:data-img").ifBlank { attr("data-img") }
+            hasAttr("data-image") -> attr("abs:data-image").ifBlank { attr("data-image") }
+            hasAttr("data-poster") -> attr("abs:data-poster").ifBlank { attr("data-poster") }
             hasAttr("poster") -> attr("abs:poster").ifBlank { attr("poster") }
-            hasAttr("srcset") -> attr("abs:srcset").ifBlank { attr("srcset") }.split(",").firstOrNull()?.substringBefore(" ")?.trim()
+            hasAttr("data-srcset") -> attr("abs:data-srcset").ifBlank { attr("data-srcset") }.split(",").lastOrNull()?.substringBefore(" ")?.trim()
+            hasAttr("srcset") -> attr("abs:srcset").ifBlank { attr("srcset") }.split(",").lastOrNull()?.substringBefore(" ")?.trim()
             hasAttr("src") -> attr("abs:src").ifBlank { attr("src") }
             else -> null
         }
@@ -880,17 +931,20 @@ class Gerakin21 : MainAPI() {
             "home", "next", "previous", "prev", "movies", "movie", "tv series",
             "trending", "search", "genre", "country", "year", "tag", "category",
             "watch", "watch now", "tonton", "download", "trailer", "play", "login",
-            "register", "read more", "more", "lihat semua", "nonton", "nonton movie", "nonton film"
+            "register", "read more", "more", "lihat semua", "nonton", "nonton movie", "nonton film",
+            "hd", "sd", "cam", "ts", "hdrip", "bluray", "web-dl", "18+", "uncensored"
         )
     }
 
     private fun String.cleanTitle(): String {
-        return replace(Regex("""\s+-\s+Gerakin21.*$""", RegexOption.IGNORE_CASE), "")
+        return replace(Regex("""(?i)^\s*permalink\s+to\s*:\s*"""), "")
+            .replace(Regex("""\s+-\s+Gerakin21.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+\|\s+Gerakin21.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+Subtitle\s+Indonesia.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+Sub\s+Indo.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+Full\s+Movie.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""^Nonton\s+Film\s+""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""^Nonton\s+Movie\s+""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""^Nonton\s+""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+"""), " ")
             .trim()
@@ -904,10 +958,14 @@ class Gerakin21 : MainAPI() {
 
     private fun isBadImage(url: String): Boolean {
         val lower = url.lowercase()
-        return lower.contains("logo") ||
+        return lower.isBlank() ||
+            lower.startsWith("data:") ||
+            lower.contains("logo") ||
             lower.contains("icon") ||
             lower.contains("avatar") ||
             lower.contains("favicon") ||
+            lower.contains("placeholder") ||
+            lower.contains("no-image") ||
             lower.endsWith(".svg")
     }
 }
