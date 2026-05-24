@@ -86,14 +86,6 @@ class IdlixProvider : MainAPI() {
         "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=war" to "War",
         "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=western" to "Western",
 
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&country=indonesia" to "Indonesia",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&country=korea" to "Korea",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&country=japan" to "Japan",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&country=china" to "China",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&country=thailand" to "Thailand",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&country=usa" to "USA",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&country=united-kingdom" to "United Kingdom",
-
         "$mainUrl/api/browse?page=%d&limit=36&sort=latest&year=2026" to "2026",
         "$mainUrl/api/browse?page=%d&limit=36&sort=latest&year=2025" to "2025",
         "$mainUrl/api/browse?page=%d&limit=36&sort=latest&year=2024" to "2024",
