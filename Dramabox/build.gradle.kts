@@ -1,21 +1,23 @@
-version = 15
+version = 16
 
 cloudstream {
-    description = "DramaBox - drama pendek Asia dengan subtitle/dub Indonesia."
+    description = "AnoBoy — Streaming Anime Subtitle Indonesia"
     language = "id"
     authors = listOf("BetbetMiro")
 
     /**
-     * Status int:
+     * Status int as the following:
      * 0: Down
      * 1: Ok
      * 2: Slow
-     * 3: Beta-only
-     */
+     * 3: Beta only
+     * */
     status = 1
+    tvTypes = listOf(
+        "AnimeMovie",
+        "OVA",
+        "Anime",
+    )
 
-    tvTypes = listOf("TvSeries", "AsianDrama")
-    iconUrl = "https://www.google.com/s2/favicons?domain=www.dramabox.com&sz=%size%"
-
-    isCrossPlatform = false
+    iconUrl = "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://ww1.anoboy.boo&size=%size%"
 }
