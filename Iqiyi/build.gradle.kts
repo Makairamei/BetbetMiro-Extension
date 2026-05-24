@@ -1,9 +1,9 @@
-version = 1
+version = 2
 
 cloudstream {
     authors = listOf("BetbetMiro")
     language = "id"
-    description = "Provider metadata resmi iQIYI untuk drama, film, variety show, anime, dan dokumenter."
+    description = "Provider iQIYI dengan kategori resmi, metadata rapi, episode list, dan playback direct-stream untuk konten gratis/non-DRM yang tersedia."
 
     /**
      * Status int:
@@ -12,7 +12,7 @@ cloudstream {
      * 2: Slow
      * 3: Beta-only
      */
-    status = 3
+    status = 1
 
     tvTypes = listOf("AsianDrama", "Movie", "TvSeries", "Anime", "Cartoon", "Others")
     iconUrl = "https://www.google.com/s2/favicons?domain=www.iq.com&sz=%size%"
