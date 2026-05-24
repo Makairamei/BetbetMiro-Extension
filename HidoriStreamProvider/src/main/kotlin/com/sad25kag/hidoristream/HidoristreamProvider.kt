@@ -37,12 +37,10 @@ import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.net.URI
-import java.net.URLDecoder
 import java.net.URLEncoder
 
 class HidoristreamProvider : MainAPI() {
-    override var mainUrl = "https://hidoristream.my.id"
+    override var mainUrl = "https://v3.hidoristream.online"
     override var name = "HidoriStream"
     override val hasMainPage = true
     override val hasQuickSearch = true
@@ -64,9 +62,7 @@ class HidoristreamProvider : MainAPI() {
             return when {
                 value.contains("movie", true) -> TvType.AnimeMovie
                 value.contains("ova", true) -> TvType.OVA
-                value.contains("ona", true) -> TvType.OVA
                 value.contains("special", true) -> TvType.OVA
-                value.contains("music", true) -> TvType.OVA
                 else -> TvType.Anime
             }
         }
@@ -76,124 +72,52 @@ class HidoristreamProvider : MainAPI() {
 
             return when {
                 value.contains("ongoing", true) -> ShowStatus.Ongoing
-                value.contains("upcoming", true) -> ShowStatus.Ongoing
-                value.contains("hiatus", true) -> ShowStatus.Ongoing
                 else -> ShowStatus.Completed
             }
         }
     }
 
-    private val sourceDomains = listOf(
-        "https://hidoristream.my.id",
-        "https://v4.hidoristream.online",
-        "https://v3.hidoristream.online",
-        "https://v2.hidoristream.online",
-        "https://v1.hidoristream.online",
-        "https://hidoristream.com"
-    )
-
     override val mainPage = mainPageOf(
         "anime/?order=update" to "Latest Update",
-        "anime/?order=latest" to "Latest Added",
-        "anime/?order=popular" to "Popular",
+        "anime/?status=ongoing" to "Ongoing Anime",
+        "anime/?status=completed" to "Completed Anime",
+        "anime/?order=latest" to "Just Added",
+        "anime/?order=popular" to "Most Popular",
         "anime/?order=rating" to "Top Rating",
-        "anime/?order=title" to "A-Z",
-        "anime/?order=title-desc" to "Z-A",
-
-        "anime/?status=ongoing" to "Ongoing",
-        "anime/?status=completed" to "Completed",
-        "anime/?status=upcoming" to "Upcoming",
-        "anime/?status=hiatus" to "Hiatus",
-
-        "anime/?type=tv" to "TV Series",
-        "anime/?type=ova" to "OVA",
         "anime/?type=movie" to "Movie",
+        "anime/?type=ova" to "OVA",
         "anime/?type=special" to "Special",
-        "anime/?type=ona" to "ONA",
-        "anime/?type=bd" to "BD",
-        "anime/?type=music" to "Music",
-        "anime/?type=live-action" to "Live Action",
 
         "anime/?genre=action" to "Action",
-        "anime/?genre=adult-cast" to "Adult Cast",
         "anime/?genre=adventure" to "Adventure",
-        "anime/?genre=anthropomorphic" to "Anthropomorphic",
-        "anime/?genre=avant-garde" to "Avant Garde",
-        "anime/?genre=boys-love" to "Boys Love",
-        "anime/?genre=cgdct" to "CGDCT",
-        "anime/?genre=childcare" to "Childcare",
-        "anime/?genre=combat-sports" to "Combat Sports",
         "anime/?genre=comedy" to "Comedy",
-        "anime/?genre=delinquents" to "Delinquents",
-        "anime/?genre=detective" to "Detective",
         "anime/?genre=drama" to "Drama",
         "anime/?genre=ecchi" to "Ecchi",
-        "anime/?genre=erotica" to "Erotica",
         "anime/?genre=fantasy" to "Fantasy",
-        "anime/?genre=gag-humor" to "Gag Humor",
-        "anime/?genre=girls-love" to "Girls Love",
-        "anime/?genre=gore" to "Gore",
-        "anime/?genre=gourmet" to "Gourmet",
         "anime/?genre=harem" to "Harem",
-        "anime/?genre=high-stakes-game" to "High Stakes Game",
-        "anime/?genre=historical" to "Historical",
         "anime/?genre=horror" to "Horror",
-        "anime/?genre=idols-female" to "Idols Female",
         "anime/?genre=isekai" to "Isekai",
-        "anime/?genre=iyashikei" to "Iyashikei",
-        "anime/?genre=josei" to "Josei",
-        "anime/?genre=kids" to "Kids",
-        "anime/?genre=love-polygon" to "Love Polygon",
-        "anime/?genre=love-status-quo" to "Love Status Quo",
         "anime/?genre=magic" to "Magic",
-        "anime/?genre=mahou-shoujo" to "Mahou Shoujo",
-        "anime/?genre=martial-arts" to "Martial Arts",
         "anime/?genre=mecha" to "Mecha",
-        "anime/?genre=medical" to "Medical",
-        "anime/?genre=military" to "Military",
         "anime/?genre=music" to "Music",
         "anime/?genre=mystery" to "Mystery",
-        "anime/?genre=mythology" to "Mythology",
-        "anime/?genre=organized-crime" to "Organized Crime",
-        "anime/?genre=otaku-culture" to "Otaku Culture",
-        "anime/?genre=parody" to "Parody",
-        "anime/?genre=performing-arts" to "Performing Arts",
-        "anime/?genre=pets" to "Pets",
         "anime/?genre=psychological" to "Psychological",
-        "anime/?genre=racing" to "Racing",
-        "anime/?genre=reincarnation" to "Reincarnation",
-        "anime/?genre=reverse-harem" to "Reverse Harem",
         "anime/?genre=romance" to "Romance",
-        "anime/?genre=romantic-subtext" to "Romantic Subtext",
-        "anime/?genre=samurai" to "Samurai",
         "anime/?genre=school" to "School",
         "anime/?genre=sci-fi" to "Sci-Fi",
         "anime/?genre=seinen" to "Seinen",
         "anime/?genre=shoujo" to "Shoujo",
         "anime/?genre=shounen" to "Shounen",
-        "anime/?genre=showbiz" to "Showbiz",
         "anime/?genre=slice-of-life" to "Slice of Life",
-        "anime/?genre=space" to "Space",
         "anime/?genre=sports" to "Sports",
-        "anime/?genre=strategy-game" to "Strategy Game",
-        "anime/?genre=super-power" to "Super Power",
         "anime/?genre=supernatural" to "Supernatural",
-        "anime/?genre=suspense" to "Suspense",
-        "anime/?genre=team-sports" to "Team Sports",
-        "anime/?genre=thriller" to "Thriller",
-        "anime/?genre=time-travel" to "Time Travel",
-        "anime/?genre=urban-fantasy" to "Urban Fantasy",
-        "anime/?genre=vampire" to "Vampire",
-        "anime/?genre=video-game" to "Video Game",
-        "anime/?genre=villainess" to "Villainess",
-        "anime/?genre=workplace" to "Workplace"
+        "anime/?genre=thriller" to "Thriller"
     )
 
     private val headers = mapOf(
         "User-Agent" to USER_AGENT,
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control" to "no-cache"
+        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
     )
 
     override suspend fun getMainPage(
@@ -201,16 +125,27 @@ class HidoristreamProvider : MainAPI() {
         request: MainPageRequest
     ): HomePageResponse {
         val url = buildPageUrl(request.data, page)
-        val document = fetchDocument(url)
 
-        val items = document.select(cardSelector)
+        val document = app.get(
+            url,
+            headers = headers,
+            timeout = 30L
+        ).document
+
+        val items = document.select("div.listupd article.bs")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
 
         return newHomePageResponse(
             request.name,
             items,
-            hasNext = document.hasNextPage(page) || items.size >= 18
+            hasNext = document.selectFirst(
+                "a.next, " +
+                    "a[rel=next], " +
+                    ".pagination a:contains(Next), " +
+                    "a[href*='page=${page + 1}'], " +
+                    "a[href*='/page/${page + 1}/']"
+            ) != null || items.isNotEmpty()
         )
     }
 
@@ -219,59 +154,41 @@ class HidoristreamProvider : MainAPI() {
         page: Int
     ): String {
         val clean = data.trimStart('/')
-        val base = if (clean.startsWith("http", true)) clean else "$mainUrl/$clean"
-
-        if (page <= 1) return base
 
         return when {
-            base.contains("?page=", true) -> base.replace(Regex("page=\\d+"), "page=$page")
-            base.contains("?") -> "$base&page=$page"
-            base.endsWith("/") -> "${base}page/$page/"
-            else -> "$base/page/$page/"
+            clean.startsWith("http", true) -> {
+                if (page <= 1) clean
+                else if (clean.contains("?")) "$clean&page=$page" else "$clean?page=$page"
+            }
+
+            page <= 1 -> "$mainUrl/$clean"
+
+            clean.contains("?") -> "$mainUrl/$clean&page=$page"
+
+            else -> "$mainUrl/$clean?page=$page"
         }
     }
 
-    private val cardSelector = listOf(
-        "div.listupd article.bs",
-        ".listupd article",
-        ".listupd .bs",
-        ".bsx",
-        "article.bs",
-        "article[itemscope]",
-        ".postbody article",
-        ".postbody .bs",
-        ".result article"
-    ).joinToString(", ")
-
     private fun Element.toSearchResult(): SearchResponse? {
-        val anchor = selectFirst("a[href]") ?: return null
-        val link = anchor.attr("abs:href").ifBlank { anchor.attr("href") }
-        if (link.isBlank()) return null
+        val link = selectFirst("a")?.attr("href") ?: return null
 
-        val title = selectFirst("div.tt, .tt, h2, h3")?.text()?.trim()
-            ?: anchor.attr("title").trim().ifBlank { null }
-            ?: selectFirst("img[alt]")?.attr("alt")?.trim()
-            ?: anchor.text().trim().ifBlank { null }
+        val title = selectFirst("div.tt")?.text()?.trim()
+            ?: selectFirst(".tt")?.text()?.trim()
+            ?: selectFirst("a")?.attr("title")?.trim()
+            ?: selectFirst("img")?.attr("alt")?.trim()
             ?: return null
 
         val cleanTitle = title.cleanTitle()
         if (cleanTitle.length < 2) return null
-        if (cleanTitle.equals("Selanjutnya", true) || cleanTitle.equals("Next", true)) return null
 
         val poster = selectFirst("img")
             ?.getImageAttr()
             ?.let { fixUrlNull(it) }
 
-        val meta = listOf(
-            selectFirst(".typez, .type, .bt .type")?.text(),
-            selectFirst(".status, .bt .status")?.text(),
-            text()
-        ).joinToString(" ")
-
         return newAnimeSearchResponse(
             cleanTitle,
             fixUrl(link),
-            getType(meta.ifBlank { cleanTitle })
+            getType(cleanTitle)
         ) {
             posterUrl = poster
         }
@@ -294,15 +211,24 @@ class HidoristreamProvider : MainAPI() {
             "$mainUrl/page/${page.coerceAtLeast(1)}/?s=$encoded"
         }
 
-        val document = fetchDocument(url)
+        val document = app.get(
+            url,
+            headers = headers,
+            timeout = 30L
+        ).document
 
-        val results = document.select(cardSelector)
+        val results = document.select("div.listupd article.bs")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
 
         return newSearchResponseList(
             results,
-            hasNext = document.hasNextPage(page) || results.size >= 18
+            hasNext = document.selectFirst(
+                "a.next, " +
+                    "a[rel=next], " +
+                    ".pagination a:contains(Next), " +
+                    "a[href*='/page/${page + 1}/']"
+            ) != null || results.isNotEmpty()
         )
     }
 
@@ -315,15 +241,19 @@ class HidoristreamProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = fetchDocument(url)
+        val document = app.get(
+            url,
+            headers = headers,
+            timeout = 30L
+        ).document
 
-        val title = document.selectFirst("h1.entry-title, h1, .entry-title")
+        val title = document.selectFirst("h1.entry-title, h1")
             ?.text()
             ?.cleanTitle()
             ?.takeIf { it.isNotBlank() }
             ?: url.substringAfterLast("/").replace("-", " ").cleanTitle()
 
-        val poster = document.selectFirst("div.bigcontent img, .bigcontent img, .thumb img, .infox img, img.wp-post-image")
+        val poster = document.selectFirst("div.bigcontent img, .bigcontent img, .thumb img, img.wp-post-image")
             ?.getImageAttr()
             ?.let { fixUrlNull(it) }
 
@@ -332,35 +262,27 @@ class HidoristreamProvider : MainAPI() {
                 ".entry-content p, " +
                 ".entry-content, " +
                 ".sinopsis, " +
-                ".synopsis, " +
-                ".desc"
-        ).map { it.text().trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .joinToString("\n")
+                ".synopsis"
+        ).joinToString("\n") { it.text().trim() }
             .trim()
             .takeIf { it.isNotBlank() }
 
-        val infoText = document.select("div.spe span, .spe span, .info-content span, .infox span")
+        val speText = document.select("div.spe span, .spe span")
             .joinToString(" ") { it.text() }
-            .ifBlank { document.text() }
 
         val year = Regex("""\b(19|20)\d{2}\b""")
-            .find(infoText)
+            .find(speText)
             ?.value
             ?.toIntOrNull()
 
-        val duration = parseDuration(infoText)
-        val type = getType(infoText)
-        val status = getStatus(infoText)
+        val duration = parseDuration(speText)
+        val type = getType(speText)
+        val status = getStatus(speText)
 
         val tags = document.select(
             "div.genxed a, " +
                 ".genxed a, " +
-                ".genre-info a, " +
-                ".mgen a, " +
-                "a[href*='/genre/'], " +
-                "a[href*='genre=']"
+                "a[href*='/genre/']"
         ).map { it.text().trim() }
             .filter { it.isNotBlank() }
             .distinct()
@@ -368,21 +290,19 @@ class HidoristreamProvider : MainAPI() {
         val actors = document.select(
             "span:has(b:matchesOwn(Artis:)) a, " +
                 "span:contains(Artis) a, " +
-                ".artist a, " +
-                "a[href*='/cast/']"
+                ".artist a"
         ).map { it.text().trim() }
             .filter { it.isNotBlank() }
-            .distinct()
 
-        val rating = document.selectFirst("div.rating strong, .rating strong, .rtg, .score, span[itemprop=ratingValue]")
+        val rating = document.selectFirst("div.rating strong, .rating strong")
             ?.text()
-            ?.replace("Rating", "", ignoreCase = true)
+            ?.replace("Rating", "")
             ?.trim()
 
-        val trailer = document.selectFirst("div.bixbox.trailer iframe, .trailer iframe, iframe[src*='youtube']")
+        val trailer = document.selectFirst("div.bixbox.trailer iframe, .trailer iframe")
             ?.getIframeAttr()
 
-        val recommendations = document.select(cardSelector)
+        val recommendations = document.select("div.listupd article.bs")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
             .filter { it.url != url }
@@ -391,8 +311,6 @@ class HidoristreamProvider : MainAPI() {
             "div.eplister ul li a[href], " +
                 ".eplister ul li a[href], " +
                 ".episodelist a[href], " +
-                ".episodelist ul li a[href], " +
-                ".eplister a[href], " +
                 "a[href*='episode']"
         ).distinctBy { it.attr("href") }
 
@@ -408,14 +326,12 @@ class HidoristreamProvider : MainAPI() {
             )
         } else {
             episodeElements.reversed().mapIndexed { index, element ->
-                val href = element.attr("abs:href").ifBlank { element.attr("href") }
-                val epNum = extractEpisodeNumber(element.text(), href) ?: index + 1
+                val epNum = extractEpisodeNumber(element.text(), element.attr("href")) ?: index + 1
 
-                newEpisode(fixUrl(href)) {
+                newEpisode(fixUrl(element.attr("href"))) {
                     name = element.text().trim().ifBlank { "Episode $epNum" }.cleanTitle()
                     episode = epNum
                     posterUrl = poster
-                    duration?.let { this.runTime = it }
                 }
             }
         }
@@ -446,38 +362,53 @@ class HidoristreamProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        var html = ""
-        var pageUrl = data
-        var document: Document? = null
+        val response = app.get(
+            data,
+            headers = headers,
+            referer = mainUrl,
+            timeout = 30L
+        )
 
-        candidateUrls(data).forEach { candidate ->
-            if (document != null) return@forEach
+        val document = response.document
+        val html = response.text.cleanEscaped()
 
-            runCatching {
-                app.get(
-                    candidate,
-                    headers = headers,
-                    referer = mainUrl,
-                    timeout = 30L
-                )
-            }.getOrNull()?.let { response ->
-                pageUrl = candidate
-                html = response.text.cleanEscaped()
-                document = response.document
-            }
-        }
-
-        val doc = document ?: return false
         val directLinks = linkedSetOf<String>()
         val embedLinks = linkedSetOf<String>()
 
-        fun addRawLink(rawUrl: String?) {
-            val raw = rawUrl?.trim()?.cleanEscaped().orEmpty()
-            if (raw.isBlank()) return
-            if (raw.startsWith("javascript", true) || raw.startsWith("#")) return
+        document.selectFirst("div.player-embed iframe, .player-embed iframe, iframe")
+            ?.getIframeAttr()
+            ?.let { embedLinks.add(httpsify(it)) }
 
-            val decoded = raw.decodeUrlSafe()
-            val fixed = normalizePlayableUrl(decoded, pageUrl)
+        document.select("select.mirror option[value]:not([disabled]), select option[value]:not([disabled])")
+            .forEach { option ->
+                val value = option.attr("value").trim()
+                if (value.isBlank()) return@forEach
+
+                runCatching {
+                    val decoded = base64Decode(value.replace("\\s".toRegex(), ""))
+                    val iframe = Jsoup.parse(decoded).selectFirst("iframe")
+                    val mirrorUrl = iframe?.getIframeAttr()
+                    if (!mirrorUrl.isNullOrBlank()) {
+                        embedLinks.add(httpsify(mirrorUrl))
+                    }
+                }
+            }
+
+        document.select(
+            "div.dlbox li span.e a[href], " +
+                ".dlbox a[href], " +
+                "a[href*='.m3u8'], " +
+                "a[href*='.mp4'], " +
+                "source[src], " +
+                "video[src]"
+        ).forEach { element ->
+            val raw = element.attr("href")
+                .ifBlank { element.attr("src") }
+                .trim()
+
+            if (raw.isBlank()) return@forEach
+
+            val fixed = fixUrl(raw)
 
             when {
                 fixed.contains(".m3u8", true) || fixed.contains(".mp4", true) -> directLinks.add(fixed)
@@ -485,178 +416,56 @@ class HidoristreamProvider : MainAPI() {
             }
         }
 
-        doc.select(
-            "div.player-embed iframe[src], " +
-                ".player-embed iframe[src], " +
-                "#pembed iframe[src], " +
-                ".embed-responsive iframe[src], " +
-                "iframe[src], " +
-                "iframe[data-src], " +
-                "iframe[data-litespeed-src]"
-        ).forEach { addRawLink(it.getIframeAttr()) }
-
-        doc.select("select.mirror option[value]:not([disabled]), select option[value]:not([disabled]), option[value]")
-            .forEach { option ->
-                val value = option.attr("value").trim()
-                if (value.isBlank()) return@forEach
-
-                addRawLink(value)
-
-                runCatching {
-                    val decodedHtml = base64Decode(value.replace("\\s".toRegex(), ""))
-                    Jsoup.parse(decodedHtml).select("iframe[src], source[src], video[src], a[href]")
-                        .forEach { element ->
-                            addRawLink(
-                                element.getIframeAttr()
-                                    ?: element.attr("src").ifBlank { element.attr("href") }
-                            )
-                        }
-                }
+        extractMediaUrls(html).forEach { link ->
+            when {
+                link.contains(".m3u8", true) || link.contains(".mp4", true) -> directLinks.add(link)
+                link.startsWith("http", true) -> embedLinks.add(link)
             }
-
-        doc.select(
-            "div.dlbox li span.e a[href], " +
-                ".dlbox a[href], " +
-                ".soraddlx a[href], " +
-                ".soraddl a[href], " +
-                ".download-eps a[href], " +
-                ".download a[href], " +
-                ".mirror a[href], " +
-                "a[href*='.m3u8'], " +
-                "a[href*='.mp4'], " +
-                "a[href*='hidoristream'], " +
-                "a[href*='streamwish'], " +
-                "a[href*='hglink'], " +
-                "a[href*='hgcloud'], " +
-                "a[href*='ghbrisk'], " +
-                "a[href*='dhcplay'], " +
-                "a[href*='4meplayer'], " +
-                "a[href*='p2pplay'], " +
-                "a[href*='embed4me'], " +
-                "a[href*='upns'], " +
-                "a[href*='veev'], " +
-                "a[href*='terabox'], " +
-                "a[href*='buzzheavier'], " +
-                "a[href*='gofile'], " +
-                "a[href*='pixeldrain'], " +
-                "source[src], " +
-                "video[src]"
-        ).forEach { element ->
-            addRawLink(
-                element.attr("href")
-                    .ifBlank { element.attr("src") }
-                    .ifBlank { element.attr("data-src") }
-            )
-        }
-
-        extractMediaAndEmbedUrls(html).forEach { addRawLink(it) }
-        extractBase64Embeds(html).forEach { decoded ->
-            Jsoup.parse(decoded).select("iframe[src], source[src], video[src], a[href]")
-                .forEach { element ->
-                    addRawLink(
-                        element.getIframeAttr()
-                            ?: element.attr("src").ifBlank { element.attr("href") }
-                    )
-                }
         }
 
         var found = false
 
-        directLinks.distinct().forEach { link ->
-            emitDirectLink(link, pageUrl, callback)
+        directLinks.forEach { link ->
+            if (link.contains(".m3u8", true)) {
+                generateM3u8(
+                    source = name,
+                    streamUrl = link,
+                    referer = data
+                ).forEach(callback)
+            } else {
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = name,
+                        url = link,
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = data
+                        this.quality = getQualityFromName(link).takeIf {
+                            it != Qualities.Unknown.value
+                        } ?: qualityFromUrl(link)
+                    }
+                )
+            }
+
             found = true
         }
 
-        embedLinks
-            .filterNot { it == pageUrl }
-            .distinct()
-            .take(24)
-            .forEach { embed ->
-                val success = loadExtractor(
-                    embed,
-                    pageUrl,
-                    subtitleCallback,
-                    callback
-                )
+        embedLinks.distinct().forEach { embed ->
+            val success = loadExtractor(
+                embed,
+                data,
+                subtitleCallback,
+                callback
+            )
 
-                if (success) found = true
-            }
+            if (success) found = true
+        }
 
         return found
     }
 
-    private suspend fun fetchDocument(urlOrPath: String): Document {
-        candidateUrls(urlOrPath).forEach { candidate ->
-            runCatching {
-                return app.get(
-                    candidate,
-                    headers = headers,
-                    timeout = 30L
-                ).document
-            }
-        }
-
-        return app.get(urlOrPath, headers = headers, timeout = 30L).document
-    }
-
-    private fun candidateUrls(urlOrPath: String): List<String> {
-        val clean = urlOrPath.trim()
-        if (clean.isBlank()) return emptyList()
-
-        if (!clean.startsWith("http", true)) {
-            val path = "/" + clean.trimStart('/')
-            return sourceDomains.map { it.trimEnd('/') + path }.distinct()
-        }
-
-        val current = runCatching { URI(clean) }.getOrNull() ?: return listOf(clean)
-        val rawPath = current.rawPath?.ifBlank { "/" } ?: "/"
-        val rawQuery = current.rawQuery?.let { "?$it" }.orEmpty()
-        val pathWithQuery = rawPath + rawQuery
-
-        return (listOf(clean) + sourceDomains.map { it.trimEnd('/') + pathWithQuery }).distinct()
-    }
-
-    private fun Document.hasNextPage(page: Int): Boolean {
-        return selectFirst(
-            "a.next, " +
-                "a[rel=next], " +
-                ".pagination a:contains(Next), " +
-                ".hpage a:contains(Next), " +
-                "a[href*='page=${page + 1}'], " +
-                "a[href*='/page/${page + 1}/']"
-        ) != null
-    }
-
-    private fun emitDirectLink(
-        link: String,
-        referer: String,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        if (link.contains(".m3u8", true)) {
-            generateM3u8(
-                source = name,
-                streamUrl = link,
-                referer = referer,
-                headers = headers
-            ).forEach(callback)
-        } else {
-            callback(
-                newExtractorLink(
-                    source = name,
-                    name = name,
-                    url = link,
-                    type = ExtractorLinkType.VIDEO
-                ) {
-                    this.referer = referer
-                    this.quality = getQualityFromName(link).takeIf {
-                        it != Qualities.Unknown.value
-                    } ?: qualityFromUrl(link)
-                }
-            )
-        }
-    }
-
-    private fun extractMediaAndEmbedUrls(html: String): List<String> {
+    private fun extractMediaUrls(html: String): List<String> {
         val links = linkedSetOf<String>()
         val cleaned = html.cleanEscaped()
 
@@ -665,7 +474,7 @@ class HidoristreamProvider : MainAPI() {
             .map { it.value.cleanEscaped() }
             .forEach { links.add(it) }
 
-        Regex("""(?:file|src|source|url|videoUrl|embed|iframe)\s*[:=]\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+        Regex("""(?:file|src|source|url|videoUrl)\s*[:=]\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
             .findAll(cleaned)
             .mapNotNull { it.groupValues.getOrNull(1) }
             .map { it.cleanEscaped() }
@@ -673,68 +482,12 @@ class HidoristreamProvider : MainAPI() {
                 it.contains(".m3u8", true) ||
                     it.contains(".mp4", true) ||
                     it.contains("embed", true) ||
-                    it.contains("player", true) ||
-                    it.contains("hidoristream", true) ||
-                    it.startsWith("http", true)
+                    it.contains("player", true)
             }
-            .forEach { links.add(it) }
-
-        Regex("""<(?:iframe|source|video)[^>]+(?:src|data-src|data-litespeed-src)=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
-            .findAll(cleaned)
-            .mapNotNull { it.groupValues.getOrNull(1) }
-            .map { it.cleanEscaped() }
-            .forEach { links.add(it) }
-
-        Regex("""https?%3A%2F%2F[^"'\\\s<>]+""", RegexOption.IGNORE_CASE)
-            .findAll(cleaned)
-            .map { it.value.decodeUrlSafe() }
+            .map { fixUrl(it) }
             .forEach { links.add(it) }
 
         return links.toList()
-    }
-
-    private fun extractBase64Embeds(html: String): List<String> {
-        val decoded = linkedSetOf<String>()
-
-        Regex("""(?:atob|base64Decode)\(["']([A-Za-z0-9+/=]{24,})["']\)""", RegexOption.IGNORE_CASE)
-            .findAll(html)
-            .mapNotNull { it.groupValues.getOrNull(1) }
-            .forEach { encoded ->
-                runCatching { base64Decode(encoded) }
-                    .getOrNull()
-                    ?.takeIf { it.contains("iframe", true) || it.contains("source", true) }
-                    ?.let { decoded.add(it) }
-            }
-
-        Regex("""["']([A-Za-z0-9+/=]{40,})["']""")
-            .findAll(html)
-            .mapNotNull { it.groupValues.getOrNull(1) }
-            .take(40)
-            .forEach { encoded ->
-                runCatching { base64Decode(encoded) }
-                    .getOrNull()
-                    ?.takeIf { it.contains("iframe", true) || it.contains("source", true) }
-                    ?.let { decoded.add(it) }
-            }
-
-        return decoded.toList()
-    }
-
-    private fun normalizePlayableUrl(url: String, baseUrl: String): String {
-        val clean = url.cleanEscaped()
-        return when {
-            clean.startsWith("http", true) -> clean
-            clean.startsWith("//") -> "https:$clean"
-            clean.startsWith("/") -> {
-                val origin = runCatching {
-                    URI(baseUrl).let { "${it.scheme}://${it.host}" }
-                }.getOrDefault(mainUrl)
-                origin.trimEnd('/') + clean
-            }
-            else -> runCatching {
-                URI(baseUrl).resolve(clean).toString()
-            }.getOrDefault(clean)
-        }
     }
 
     private fun parseDuration(text: String): Int? {
@@ -794,7 +547,6 @@ class HidoristreamProvider : MainAPI() {
 
     private fun qualityFromUrl(url: String): Int {
         return when {
-            url.contains("2160", true) || url.contains("4k", true) -> Qualities.P2160.value
             url.contains("1080", true) -> Qualities.P1080.value
             url.contains("720", true) -> Qualities.P720.value
             url.contains("480", true) -> Qualities.P480.value
@@ -803,16 +555,11 @@ class HidoristreamProvider : MainAPI() {
         }
     }
 
-    private fun String.decodeUrlSafe(): String {
-        return runCatching { URLDecoder.decode(this, "UTF-8") }.getOrDefault(this)
-    }
-
     private fun String.cleanEscaped(): String {
         return this
             .replace("\\/", "/")
             .replace("\\u0026", "&")
             .replace("&amp;", "&")
-            .replace("&#038;", "&")
             .trim()
     }
 

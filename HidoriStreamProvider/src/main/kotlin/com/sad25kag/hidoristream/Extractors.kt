@@ -157,11 +157,6 @@ class Hglink : StreamWishExtractor() {
     override val mainUrl = "https://hglink.to"
 }
 
-class Hgcloud : StreamWishExtractor() {
-    override val name = "Hgcloud"
-    override val mainUrl = "https://hgcloud.to"
-}
-
 class Ghbrisk : StreamWishExtractor() {
     override val name = "Ghbrisk"
     override val mainUrl = "https://ghbrisk.com"
@@ -294,8 +289,6 @@ class Veev : ExtractorApi() {
     }
 
     private fun veevDecode(etext: String): String {
-        if (etext.isEmpty()) return etext
-
         val result = StringBuilder()
         val lut = HashMap<Int, String>()
         var n = 256
@@ -346,7 +339,7 @@ class Veev : ExtractorApi() {
             if (rule == 1) text = text.reversed()
 
             val arr = text.chunked(2)
-                .mapNotNull { it.toIntOrNull(16)?.toByte() }
+                .map { it.toInt(16).toByte() }
                 .toByteArray()
 
             text = arr.toString(Charsets.UTF_8)
@@ -368,54 +361,23 @@ class HidoriStream : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val sources = linkedSetOf<String>()
-
-        if (url.contains(".m3u8", true) || url.contains(".mp4", true)) {
-            sources.add(url)
-        } else {
-            val response = runCatching {
-                app.get(
-                    url,
-                    referer = referer ?: mainUrl,
-                    headers = mapOf("User-Agent" to USER_AGENT)
-                )
-            }.getOrNull() ?: return
-
-            val html = response.text.cleanEscaped()
-
-            extractStreamUrls(html).forEach { sources.add(normalizeUrl(it, url)) }
-
-            response.document.select("iframe[src], source[src], video[src], a[href*='.m3u8'], a[href*='.mp4']")
-                .forEach { element ->
-                    val raw = element.attr("src").ifBlank { element.attr("href") }.trim()
-                    if (raw.isNotBlank()) sources.add(normalizeUrl(raw, url))
+        callback.invoke(
+            newExtractorLink(
+                source = name,
+                name = name,
+                url = url,
+                type = if (url.contains(".m3u8", true)) {
+                    ExtractorLinkType.M3U8
+                } else {
+                    ExtractorLinkType.VIDEO
                 }
-        }
-
-        sources.forEach { link ->
-            if (link.contains(".m3u8", true)) {
-                generateM3u8(
-                    source = name,
-                    streamUrl = link,
-                    referer = referer ?: mainUrl,
-                    headers = mapOf("User-Agent" to USER_AGENT)
-                ).forEach(callback)
-            } else {
-                callback.invoke(
-                    newExtractorLink(
-                        source = name,
-                        name = name,
-                        url = link,
-                        type = ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = referer ?: mainUrl
-                        this.quality = getQualityFromName(link).takeIf {
-                            it != Qualities.Unknown.value
-                        } ?: qualityFromUrl(link)
-                    }
-                )
+            ) {
+                this.referer = referer ?: mainUrl
+                this.quality = getQualityFromName(url).takeIf {
+                    it != Qualities.Unknown.value
+                } ?: Qualities.Unknown.value
             }
-        }
+        )
     }
 }
 
