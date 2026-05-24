@@ -94,99 +94,25 @@ class HidoristreamProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
         "anime/?order=update" to "Latest Update",
-        "anime/?order=latest" to "Latest Added",
-        "anime/?order=popular" to "Popular",
-        "anime/?order=rating" to "Top Rating",
-        "anime/?order=title" to "A-Z",
-        "anime/?order=title-desc" to "Z-A",
-
         "anime/?status=ongoing" to "Ongoing",
         "anime/?status=completed" to "Completed",
-        "anime/?status=upcoming" to "Upcoming",
-        "anime/?status=hiatus" to "Hiatus",
+        "anime/?order=popular" to "Popular",
+        "anime/?order=rating" to "Top Rating",
 
-        "anime/?type=tv" to "TV Series",
-        "anime/?type=ova" to "OVA",
         "anime/?type=movie" to "Movie",
-        "anime/?type=special" to "Special",
-        "anime/?type=ona" to "ONA",
-        "anime/?type=bd" to "BD",
-        "anime/?type=music" to "Music",
-        "anime/?type=live-action" to "Live Action",
+        "group:anime/?type=ova|anime/?type=special" to "OVA & Special",
+        "anime/?type=bd" to "BD / Batch",
 
-        "anime/?genre=action" to "Action",
-        "anime/?genre=adult-cast" to "Adult Cast",
-        "anime/?genre=adventure" to "Adventure",
-        "anime/?genre=anthropomorphic" to "Anthropomorphic",
-        "anime/?genre=avant-garde" to "Avant Garde",
-        "anime/?genre=boys-love" to "Boys Love",
-        "anime/?genre=cgdct" to "CGDCT",
-        "anime/?genre=childcare" to "Childcare",
-        "anime/?genre=combat-sports" to "Combat Sports",
-        "anime/?genre=comedy" to "Comedy",
-        "anime/?genre=delinquents" to "Delinquents",
-        "anime/?genre=detective" to "Detective",
-        "anime/?genre=drama" to "Drama",
-        "anime/?genre=ecchi" to "Ecchi",
-        "anime/?genre=erotica" to "Erotica",
-        "anime/?genre=fantasy" to "Fantasy",
-        "anime/?genre=gag-humor" to "Gag Humor",
-        "anime/?genre=girls-love" to "Girls Love",
-        "anime/?genre=gore" to "Gore",
-        "anime/?genre=gourmet" to "Gourmet",
-        "anime/?genre=harem" to "Harem",
-        "anime/?genre=high-stakes-game" to "High Stakes Game",
-        "anime/?genre=historical" to "Historical",
-        "anime/?genre=horror" to "Horror",
-        "anime/?genre=idols-female" to "Idols Female",
-        "anime/?genre=isekai" to "Isekai",
-        "anime/?genre=iyashikei" to "Iyashikei",
-        "anime/?genre=josei" to "Josei",
-        "anime/?genre=kids" to "Kids",
-        "anime/?genre=love-polygon" to "Love Polygon",
-        "anime/?genre=love-status-quo" to "Love Status Quo",
-        "anime/?genre=magic" to "Magic",
-        "anime/?genre=mahou-shoujo" to "Mahou Shoujo",
-        "anime/?genre=martial-arts" to "Martial Arts",
-        "anime/?genre=mecha" to "Mecha",
-        "anime/?genre=medical" to "Medical",
-        "anime/?genre=military" to "Military",
-        "anime/?genre=music" to "Music",
-        "anime/?genre=mystery" to "Mystery",
-        "anime/?genre=mythology" to "Mythology",
-        "anime/?genre=organized-crime" to "Organized Crime",
-        "anime/?genre=otaku-culture" to "Otaku Culture",
-        "anime/?genre=parody" to "Parody",
-        "anime/?genre=performing-arts" to "Performing Arts",
-        "anime/?genre=pets" to "Pets",
-        "anime/?genre=psychological" to "Psychological",
-        "anime/?genre=racing" to "Racing",
-        "anime/?genre=reincarnation" to "Reincarnation",
-        "anime/?genre=reverse-harem" to "Reverse Harem",
-        "anime/?genre=romance" to "Romance",
-        "anime/?genre=romantic-subtext" to "Romantic Subtext",
-        "anime/?genre=samurai" to "Samurai",
-        "anime/?genre=school" to "School",
-        "anime/?genre=sci-fi" to "Sci-Fi",
-        "anime/?genre=seinen" to "Seinen",
-        "anime/?genre=shoujo" to "Shoujo",
-        "anime/?genre=shounen" to "Shounen",
-        "anime/?genre=showbiz" to "Showbiz",
-        "anime/?genre=slice-of-life" to "Slice of Life",
-        "anime/?genre=space" to "Space",
-        "anime/?genre=sports" to "Sports",
-        "anime/?genre=strategy-game" to "Strategy Game",
-        "anime/?genre=super-power" to "Super Power",
-        "anime/?genre=supernatural" to "Supernatural",
-        "anime/?genre=suspense" to "Suspense",
-        "anime/?genre=team-sports" to "Team Sports",
-        "anime/?genre=thriller" to "Thriller",
-        "anime/?genre=time-travel" to "Time Travel",
-        "anime/?genre=urban-fantasy" to "Urban Fantasy",
-        "anime/?genre=vampire" to "Vampire",
-        "anime/?genre=video-game" to "Video Game",
-        "anime/?genre=villainess" to "Villainess",
-        "anime/?genre=workplace" to "Workplace"
+        "group:anime/?genre=action|anime/?genre=adventure" to "Action & Adventure",
+        "group:anime/?genre=comedy|anime/?genre=slice-of-life" to "Comedy & Slice of Life",
+        "group:anime/?genre=drama|anime/?genre=romance" to "Drama & Romance",
+        "group:anime/?genre=fantasy|anime/?genre=isekai" to "Fantasy & Isekai",
+        "group:anime/?genre=school|anime/?genre=kids" to "School & Kids",
+        "group:anime/?genre=mystery|anime/?genre=thriller|anime/?genre=suspense" to "Mystery & Thriller",
+        "group:anime/?genre=horror|anime/?genre=supernatural" to "Horror & Supernatural",
+        "group:anime/?genre=sci-fi|anime/?genre=mecha|anime/?genre=space" to "Sci-Fi & Mecha",
+        "group:anime/?genre=sports|anime/?genre=team-sports|anime/?genre=combat-sports" to "Sports",
+        "group:anime/?genre=shounen|anime/?genre=seinen|anime/?genre=shoujo|anime/?genre=josei" to "Demographic"
     )
 
     private val headers = mapOf(
@@ -200,18 +126,37 @@ class HidoristreamProvider : MainAPI() {
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        val url = buildPageUrl(request.data, page)
-        val document = fetchDocument(url)
+        val documents = buildPageUrls(request.data, page).mapNotNull { url ->
+            runCatching { fetchDocument(url) }.getOrNull()
+        }
 
-        val items = document.select(cardSelector)
-            .mapNotNull { it.toSearchResult() }
-            .distinctBy { it.url }
+        val items = documents.flatMap { document ->
+            document.select(cardSelector)
+                .mapNotNull { it.toSearchResult() }
+        }.distinctBy { it.url }
 
         return newHomePageResponse(
             request.name,
             items,
-            hasNext = document.hasNextPage(page) || items.size >= 18
+            hasNext = documents.any { it.hasNextPage(page) } || items.size >= 18
         )
+    }
+
+    private fun buildPageUrls(
+        data: String,
+        page: Int
+    ): List<String> {
+        val clean = data.trim()
+
+        return if (clean.startsWith("group:", ignoreCase = true)) {
+            clean.removePrefix("group:")
+                .split("|")
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .map { buildPageUrl(it, page) }
+        } else {
+            listOf(buildPageUrl(clean, page))
+        }
     }
 
     private fun buildPageUrl(

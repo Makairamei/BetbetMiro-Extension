@@ -1,4 +1,4 @@
-version = 7
+version = 8
 
 cloudstream {
     description = "HidoriStream — Streaming Anime Subtitle Indonesia"
