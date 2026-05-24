@@ -776,7 +776,7 @@ class Dramabox : MainAPI() {
             ?.cleanStreamText()
             ?.trim()
             ?.trim('\"', '\'')
-            ?.substringBefore("\\"")
+            ?.substringBefore("\"")
             ?.takeIf { it.isNotBlank() && it.startsWith("http", true) }
             ?: return null
 
