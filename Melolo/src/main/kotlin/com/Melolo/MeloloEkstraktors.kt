@@ -24,7 +24,7 @@ object MasterLinkGenerator {
             source = source,
             name = source,
             url = url,
-            type = INFER_TYPE
+            type = if (url.contains(".m3u8", true)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
         ) {
             this.quality = detectedQuality
             if (referer != null) this.referer = referer

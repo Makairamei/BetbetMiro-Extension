@@ -118,8 +118,8 @@ class Melolo : MainAPI() {
     ): Boolean {
         val ep = tryParseJson<EpisodeData>(data) ?: return false
 
-        if (emitFromCatalogProxy(ep, callback)) return true
-        if (emitFromOfficialPlayerApi(ep, callback)) return true
+        if (emitFromCatalogProxy(ep, subtitleCallback, callback)) return true
+        if (emitFromOfficialPlayerApi(ep, subtitleCallback, callback)) return true
         if (emitFromSplay(ep, subtitleCallback, callback)) return true
 
         logError("Melolo", "All playback strategies failed for book=${ep.bookId}, vid=${ep.vid}, episode=${ep.episode}")
@@ -128,6 +128,7 @@ class Melolo : MainAPI() {
 
     private suspend fun emitFromCatalogProxy(
         ep: EpisodeData,
+        subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         return try {
@@ -139,13 +140,14 @@ class Melolo : MainAPI() {
             logDebug("Melolo", "Proxy video[${ep.vid}] response: ${proxyText.take(300)}")
 
             val proxyResp = tryParseJson<PlayerVideoModelResponse>(proxyText)
-            val proxyUrls = collectPlayerUrls(proxyResp)
+            emitPlayerSubtitles(proxyResp?.data, subtitleCallback)
+            val proxyUrls = collectPlayerUrlEntries(proxyResp)
             if (proxyUrls.isEmpty()) return false
 
-            proxyUrls.forEachIndexed { index, videoUrl ->
+            proxyUrls.forEach { (label, videoUrl) ->
                 emitVideoUrl(
                     url = videoUrl,
-                    label = if (index == 0) "Proxy" else "Proxy Backup",
+                    label = "Proxy $label",
                     referer = "$mainUrl/",
                     callback = callback
                 )
@@ -159,6 +161,7 @@ class Melolo : MainAPI() {
 
     private suspend fun emitFromOfficialPlayerApi(
         ep: EpisodeData,
+        subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val body = """
@@ -211,17 +214,18 @@ class Melolo : MainAPI() {
         logDebug("Melolo", "Direct API[${ep.vid}] response: ${responseText.take(500)}")
 
         val resp = tryParseJson<PlayerVideoModelResponse>(responseText)
-        val videoUrls = collectPlayerUrls(resp)
+        emitPlayerSubtitles(resp?.data, subtitleCallback)
+        val videoUrls = collectPlayerUrlEntries(resp)
 
         if (videoUrls.isEmpty()) {
             logError("Melolo", "No direct API video URLs returned for vid=${ep.vid}. Response: ${responseText.take(500)}")
             return false
         }
 
-        videoUrls.forEachIndexed { index, videoUrl ->
+        videoUrls.forEach { (label, videoUrl) ->
             emitVideoUrl(
                 url = videoUrl,
-                label = if (index == 0) "Official" else "Official Backup",
+                label = "Official $label",
                 referer = "$mainUrl/",
                 callback = callback
             )
@@ -364,15 +368,25 @@ class Melolo : MainAPI() {
     ): Boolean {
         var emitted = 0
 
+        val emittedSubtitleUrls = linkedSetOf<String>()
         episode.subtitles.orEmpty().forEach { subtitle ->
-            val url = subtitle.url ?: return@forEach
-            subtitleCallback(
-                newSubtitleFile(
-                    subtitle.lang?.ifBlank { "Subtitle" } ?: "Subtitle",
-                    url
+            val url = subtitle.url?.takeIf { it.isNotBlank() } ?: return@forEach
+            if (emittedSubtitleUrls.add(url)) {
+                subtitleCallback(
+                    newSubtitleFile(
+                        subtitle.lang?.ifBlank { "Subtitle" } ?: "Subtitle",
+                        url
+                    )
                 )
-            )
+            }
         }
+
+        episode.subtitle_url
+            ?.takeIf { it.isNotBlank() }
+            ?.takeIf { emittedSubtitleUrls.add(it) }
+            ?.let { subtitleUrl ->
+                subtitleCallback(newSubtitleFile("Subtitle", subtitleUrl))
+            }
 
         val directUrls = linkedMapOf<String, String>()
         episode.qualities.orEmpty().forEach { (quality, url) ->
@@ -393,16 +407,54 @@ class Melolo : MainAPI() {
         return emitted > 0
     }
 
-    private fun collectPlayerUrls(resp: PlayerVideoModelResponse?): List<String> {
-        return listOfNotNull(
-            resp?.data?.main_url,
-            resp?.data?.backup_url,
-            resp?.data?.play_url,
-            resp?.data?.video_url
-        ).flatMap { it.split("|", ",") }
-            .map { it.trim() }
-            .filter { it.startsWith("http", true) }
-            .distinct()
+    private suspend fun emitPlayerSubtitles(
+        data: PlayerVideoModelData?,
+        subtitleCallback: (SubtitleFile) -> Unit
+    ) {
+        val emitted = linkedSetOf<String>()
+
+        data?.subtitles.orEmpty().forEach { subtitle ->
+            val url = (subtitle.url ?: subtitle.file ?: subtitle.path)
+                ?.takeIf { it.isNotBlank() }
+                ?: return@forEach
+            val label = subtitle.lang
+                ?: subtitle.label
+                ?: "Subtitle"
+
+            if (emitted.add(url)) {
+                subtitleCallback(newSubtitleFile(label, url))
+            }
+        }
+
+        data?.subtitle_url
+            ?.takeIf { it.isNotBlank() }
+            ?.takeIf { emitted.add(it) }
+            ?.let { subtitleUrl ->
+                subtitleCallback(newSubtitleFile("Subtitle", subtitleUrl))
+            }
+    }
+
+    private fun collectPlayerUrlEntries(resp: PlayerVideoModelResponse?): List<Pair<String, String>> {
+        val entries = linkedMapOf<String, String>()
+
+        fun add(label: String, raw: String?) {
+            raw
+                ?.split("|", ",")
+                ?.map { it.trim() }
+                ?.filter { it.startsWith("http", true) }
+                ?.forEach { url -> entries.putIfAbsent(url, label) }
+        }
+
+        val data = resp?.data
+        add("Main", data?.main_url)
+        add("Backup", data?.backup_url)
+        add("Play", data?.play_url)
+        add("Video", data?.video_url)
+        data?.qualities.orEmpty().forEach { (quality, url) ->
+            add(quality.ifBlank { "Quality" }, url)
+        }
+
+        return entries.map { (url, label) -> label to url }
     }
 
     private suspend fun emitVideoUrl(
@@ -414,12 +466,21 @@ class Melolo : MainAPI() {
         val fixed = url.trim()
         if (!fixed.startsWith("http", true)) return
 
+        if (fixed.contains(".m3u8", true)) {
+            M3u8Helper.generateM3u8(
+                "Melolo $label",
+                fixed,
+                referer
+            ).forEach(callback)
+            return
+        }
+
         callback(
             newExtractorLink(
                 source = name,
                 name = "Melolo $label",
                 url = fixed,
-                type = if (fixed.contains(".m3u8", true)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                type = ExtractorLinkType.VIDEO
             ) {
                 this.quality = getQualityFromName(label).takeIf { it != Qualities.Unknown.value }
                     ?: getQualityFromName(fixed).takeIf { it != Qualities.Unknown.value }
@@ -577,7 +638,18 @@ class Melolo : MainAPI() {
         @JsonProperty("main_url") val main_url: String? = null,
         @JsonProperty("backup_url") val backup_url: String? = null,
         @JsonProperty("play_url") val play_url: String? = null,
-        @JsonProperty("video_url") val video_url: String? = null
+        @JsonProperty("video_url") val video_url: String? = null,
+        @JsonProperty("subtitle_url") val subtitle_url: String? = null,
+        @JsonProperty("subtitles") val subtitles: List<PlayerSubtitle>? = null,
+        @JsonProperty("qualities") val qualities: Map<String, String?>? = null
+    )
+
+    data class PlayerSubtitle(
+        @JsonProperty("lang") val lang: String? = null,
+        @JsonProperty("label") val label: String? = null,
+        @JsonProperty("url") val url: String? = null,
+        @JsonProperty("file") val file: String? = null,
+        @JsonProperty("path") val path: String? = null
     )
 
     data class EpisodeData(
