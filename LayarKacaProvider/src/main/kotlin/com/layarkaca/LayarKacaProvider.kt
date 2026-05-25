@@ -80,7 +80,6 @@ class LayarKacaProvider : MainAPI() {
         "$mainUrl/genre/fantasy/page/" to "Fantasy Movie",
         "$mainUrl/genre/history/page/" to "History Movie",
         "$mainUrl/genre/horror/page/" to "Horror Movie",
-        "$mainUrl/genre/music/page/" to "Music Movie",
         "$mainUrl/genre/mystery/page/" to "Mystery Movie",
         "$mainUrl/genre/romance/page/" to "Romance Movie",
         "$mainUrl/genre/sci-fi/page/" to "Sci-Fi Movie",
@@ -107,24 +106,16 @@ class LayarKacaProvider : MainAPI() {
         "$mainUrl/country/spain/page/" to "Spain",
         "$mainUrl/country/taiwan/page/" to "Taiwan",
         "$mainUrl/country/thailand/page/" to "Thailand",
-        "$mainUrl/country/united-kingdom/page/" to "United Kingdom",
-        "$mainUrl/country/united-states/page/" to "United States",
 
         // Genre series NontonDrama
         "$seriesUrl/genre/action/page/" to "Action Series",
-        "$seriesUrl/genre/action-adventure/page/" to "Action & Adventure Series",
         "$seriesUrl/genre/animation/page/" to "Animation Series",
         "$seriesUrl/genre/comedy/page/" to "Comedy Series",
         "$seriesUrl/genre/crime/page/" to "Crime Series",
         "$seriesUrl/genre/documentary/page/" to "Documentary Series",
         "$seriesUrl/genre/drama/page/" to "Drama Series",
         "$seriesUrl/genre/family/page/" to "Family Series",
-        "$seriesUrl/genre/kids/page/" to "Kids Series",
         "$seriesUrl/genre/mystery/page/" to "Mystery Series",
-        "$seriesUrl/genre/reality/page/" to "Reality Series",
-        "$seriesUrl/genre/sci-fi-fantasy/page/" to "Sci-Fi & Fantasy Series",
-        "$seriesUrl/genre/soap/page/" to "Soap Series",
-        "$seriesUrl/genre/war-politics/page/" to "War & Politics Series"
     )
 
     private val headers = mapOf(
