@@ -35,30 +35,28 @@ class KRX18 : MainAPI() {
 
     override val mainPage = mainPageOf(
         "movies" to "Recently Added",
-        "genre/eng-sub" to "Eng Sub",
-
-        // Country rows from the current KRX18 source menu.
+        "genre/eng-sub" to "English SUB",
         "genre/korea" to "Korea",
+        "genre/china" to "China",
+        "genre/japan" to "Japan",
+        "genre/thailand" to "Thailand",
+        "genre/philippines" to "Philippines",
         "genre/australia" to "Australia",
         "genre/belgium" to "Belgium",
         "genre/canada" to "Canada",
-        "genre/china" to "China",
         "genre/denmark" to "Denmark",
         "genre/france" to "France",
         "genre/germany" to "Germany",
         "genre/indonesia" to "Indonesia",
         "genre/india" to "India",
         "genre/italy" to "Italy",
-        "genre/japan" to "Japan",
         "genre/netherlands" to "Netherlands",
-        "genre/philippines" to "Philippines",
         "genre/poland" to "Poland",
         "genre/russia" to "Russia",
         "genre/singapore" to "Singapore",
         "genre/spain" to "Spain",
         "genre/switzerland" to "Switzerland",
         "genre/taiwan" to "Taiwan",
-        "genre/thailand" to "Thailand",
         "genre/uk" to "UK",
         "genre/usa" to "USA"
     )

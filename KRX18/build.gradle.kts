@@ -1,6 +1,7 @@
 version = 6
 
 cloudstream {
+    description = "KRX18 provider"
     language = "id"
     authors = listOf("sad25kag")
 
