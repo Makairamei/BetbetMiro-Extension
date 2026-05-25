@@ -38,7 +38,7 @@ class GudangFilm : MainAPI() {
     }
 
     override var mainUrl = "https://itoshii-movie.com"
-    override var name = "GudangFilm🎉"
+    override var name = "GudangFilm"
     override val hasMainPage = true
     override val hasQuickSearch = true
     override val hasDownloadSupport = true
