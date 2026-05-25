@@ -1,29 +1,16 @@
-// use an integer for version numbers
-version = 1
-
+version = 3
 
 cloudstream {
     language = "id"
-    // All of these properties are optional, you can safely remove them
+    authors = listOf("sad25kag")
 
-    description = "LayarKaca — Streaming Movie Subtitle Indonesia"
-    authors = listOf("BetbetMiro")
-
-    /**
-     * Status int as the following:
-     * 0: Down
-     * 1: Ok
-     * 2: Slow
-     * 3: Beta only
-     * */
-    status = 1 // will be 3 if unspecified
+    status = 1
     tvTypes = listOf(
         "AsianDrama",
         "TvSeries",
         "Movie",
     )
 
-
+    description = "LayarKaca — provider film dan series subtitle Indonesia dengan kategori LK21/Nontondrama lengkap serta parser API/player yang diperkuat."
     iconUrl = "https://assets.lk21.party/favicons/apple-icon-144x144.png"
-
 }
