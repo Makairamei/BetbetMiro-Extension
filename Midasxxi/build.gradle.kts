@@ -1,19 +1,16 @@
-// use an integer for version numbers
-version = 2
+version = 3
 
 cloudstream {
     language = "id"
-    description = "MidasXXI - Movie dan TV Series subtitle Indonesia"
     authors = listOf("BetbetMiro")
 
     status = 1
-
     tvTypes = listOf(
         "Movie",
         "TvSeries",
-        "AsianDrama",
+        "AsianDrama"
     )
 
-    iconUrl = "https://www.google.com/s2/favicons?domain=ssstik.tv&sz=%size"
-    isCrossPlatform = false
+    iconUrl = "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://ssstik.tv&size=%size%"
+    description = "MidasXXI provider with source-backed movie, series, genre, country, network, and curated rows."
 }
