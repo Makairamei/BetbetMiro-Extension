@@ -1,6 +1,7 @@
-version = 1
+version = 6
 
 cloudstream {
+    description = "Kazefuri"
     language = "id"
     authors = listOf("BetbetMiro")
 

@@ -9,7 +9,7 @@ import java.net.URLEncoder
 
 class KazefuriProvider : MainAPI() {
     override var mainUrl = "https://sv4.kazefuri.cloud"
-    override var name = "Kazefuri🤩"
+    override var name = "Kazefuri"
     override var lang = "id"
     override val hasMainPage = true
     override val hasDownloadSupport = true
@@ -23,8 +23,56 @@ class KazefuriProvider : MainAPI() {
     override val mainPage = mainPageOf(
         "$mainUrl/page/%d/" to "Update Terbaru",
         "$mainUrl/anime/page/%d/?status=&type=&order=update" to "Donghua",
-        "$mainUrl/anime/page/%d/?status=&type=Movie&order=update" to "Movie",
+        "$mainUrl/anime/page/%d/?status=&type=&order=popular" to "Populer",
+        "$mainUrl/anime/page/%d/?status=Ongoing&type=&order=update" to "Ongoing",
+        "$mainUrl/anime/page/%d/?status=Upcoming&type=&order=update" to "Upcoming",
         "$mainUrl/anime/page/%d/?status=Completed&type=&order=update" to "Completed",
+        "$mainUrl/anime/page/%d/?status=Dropped&type=&order=update" to "Donghua Drop",
+        "$mainUrl/anime/page/%d/?status=&type=2d-animation&order=update" to "2D Animation",
+        "$mainUrl/anime/page/%d/?status=&type=3d-animation&order=update" to "3D Animation",
+        "$mainUrl/anime/page/%d/?status=&type=Movie&order=update" to "Movie",
+
+        "$mainUrl/anime/page/%d/?genre=action&status=&type=&order=update" to "Action",
+        "$mainUrl/anime/page/%d/?genre=adventure&status=&type=&order=update" to "Adventure",
+        "$mainUrl/anime/page/%d/?genre=comedy&status=&type=&order=update" to "Comedy",
+        "$mainUrl/anime/page/%d/?genre=crossdressing&status=&type=&order=update" to "Crossdressing",
+        "$mainUrl/anime/page/%d/?genre=cultivation&status=&type=&order=update" to "Cultivation",
+        "$mainUrl/anime/page/%d/?genre=demons&status=&type=&order=update" to "Demons",
+        "$mainUrl/anime/page/%d/?genre=drama&status=&type=&order=update" to "Drama",
+        "$mainUrl/anime/page/%d/?genre=ecchi&status=&type=&order=update" to "Ecchi",
+        "$mainUrl/anime/page/%d/?genre=fantasy&status=&type=&order=update" to "Fantasy",
+        "$mainUrl/anime/page/%d/?genre=friendship&status=&type=&order=update" to "Friendship",
+        "$mainUrl/anime/page/%d/?genre=game&status=&type=&order=update" to "Game",
+        "$mainUrl/anime/page/%d/?genre=gore&status=&type=&order=update" to "Gore",
+        "$mainUrl/anime/page/%d/?genre=gourmet&status=&type=&order=update" to "Gourmet",
+        "$mainUrl/anime/page/%d/?genre=guoman&status=&type=&order=update" to "Guoman",
+        "$mainUrl/anime/page/%d/?genre=harem&status=&type=&order=update" to "Harem",
+        "$mainUrl/anime/page/%d/?genre=historical&status=&type=&order=update" to "Historical",
+        "$mainUrl/anime/page/%d/?genre=horror&status=&type=&order=update" to "Horror",
+        "$mainUrl/anime/page/%d/?genre=isekai&status=&type=&order=update" to "Isekai",
+        "$mainUrl/anime/page/%d/?genre=life&status=&type=&order=update" to "Life",
+        "$mainUrl/anime/page/%d/?genre=magic&status=&type=&order=update" to "Magic",
+        "$mainUrl/anime/page/%d/?genre=martial-arts&status=&type=&order=update" to "Martial Arts",
+        "$mainUrl/anime/page/%d/?genre=mecha&status=&type=&order=update" to "Mecha",
+        "$mainUrl/anime/page/%d/?genre=military&status=&type=&order=update" to "Military",
+        "$mainUrl/anime/page/%d/?genre=music&status=&type=&order=update" to "Music",
+        "$mainUrl/anime/page/%d/?genre=mystery&status=&type=&order=update" to "Mystery",
+        "$mainUrl/anime/page/%d/?genre=psychological&status=&type=&order=update" to "Psychological",
+        "$mainUrl/anime/page/%d/?genre=reincarnation&status=&type=&order=update" to "Reincarnation",
+        "$mainUrl/anime/page/%d/?genre=romance&status=&type=&order=update" to "Romance",
+        "$mainUrl/anime/page/%d/?genre=school&status=&type=&order=update" to "School",
+        "$mainUrl/anime/page/%d/?genre=sci-fi&status=&type=&order=update" to "Sci-Fi",
+        "$mainUrl/anime/page/%d/?genre=shoujo&status=&type=&order=update" to "Shoujo",
+        "$mainUrl/anime/page/%d/?genre=shounen&status=&type=&order=update" to "Shounen",
+        "$mainUrl/anime/page/%d/?genre=slice&status=&type=&order=update" to "Slice",
+        "$mainUrl/anime/page/%d/?genre=slice-of-life&status=&type=&order=update" to "Slice of Life",
+        "$mainUrl/anime/page/%d/?genre=space&status=&type=&order=update" to "Space",
+        "$mainUrl/anime/page/%d/?genre=sports&status=&type=&order=update" to "Sports",
+        "$mainUrl/anime/page/%d/?genre=super-power&status=&type=&order=update" to "Super Power",
+        "$mainUrl/anime/page/%d/?genre=supernatural&status=&type=&order=update" to "Supernatural",
+        "$mainUrl/anime/page/%d/?genre=thriller&status=&type=&order=update" to "Thriller",
+        "$mainUrl/anime/page/%d/?genre=vampire&status=&type=&order=update" to "Vampire",
+        "$mainUrl/anime/page/%d/?genre=youth&status=&type=&order=update" to "Youth",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
