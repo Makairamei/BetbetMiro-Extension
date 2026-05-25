@@ -15,7 +15,7 @@ import java.net.URLEncoder
 class BondageValley : MainAPI() {
     override var mainUrl = "https://bondagevalley.cc"
     override var name = "BondageValley"
-    override var lang = "en"
+    override var lang = "id"
     override val hasMainPage = true
     override val hasQuickSearch = true
     override val hasDownloadSupport = true
