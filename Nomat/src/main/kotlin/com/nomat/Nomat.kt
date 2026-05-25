@@ -23,19 +23,118 @@ class Nomat : MainAPI() {
     }
     override var mainUrl = "https://nomat.site"
     private var directUrl: String? = null
-    override var name = "Nomat🎟"
+    override var name = "Nomat"
     override val hasMainPage = true
     override var lang = "id"
     override val supportedTypes =
             setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
 
  
-    override val mainPage =
-            mainPageOf(
-     "slug/film-terbaru" to "Film Terbaru",
-    "slug/film-terfavorit" to "Film Terfavorit",
-    "slug/film-box-office" to "Film Box Office",
-)
+    override val mainPage = mainPageOf(
+        // Navigasi utama situs sumber
+        "slug/film-terbaru" to "Film Terbaru",
+        "slug/film-terfavorit" to "Film Terfavorit",
+        "slug/film-box-office" to "Box Office",
+        "slug/semua-film" to "Semua Film",
+        "category/genre/serial-tv" to "Serial",
+
+        // Genre film dari filter sumber
+        "category/genre/action" to "Action",
+        "category/genre/adventure" to "Adventure",
+        "category/genre/animasi" to "Animation",
+        "category/genre/biography" to "Biography",
+        "category/genre/comedy" to "Comedy",
+        "category/genre/crime" to "Crime",
+        "category/genre/documentary" to "Documentary",
+        "category/genre/drama" to "Drama",
+        "category/genre/fantasy" to "Fantasy",
+        "category/genre/history" to "History",
+        "category/genre/horror" to "Horror",
+        "category/genre/musical" to "Musical",
+        "category/genre/mystery" to "Mystery",
+        "category/genre/romance" to "Romance",
+        "category/genre/sci-fi" to "Sci-Fi",
+        "category/genre/sport" to "Sport",
+        "category/genre/thriller" to "Thriller",
+        "category/genre/tv-show" to "TV Show",
+        "category/genre/war" to "War",
+
+        // Negara dari filter sumber
+        "category/country/argentina" to "Argentina",
+        "category/country/australia" to "Australia",
+        "category/country/austria" to "Austria",
+        "category/country/belgium" to "Belgium",
+        "category/country/brazil" to "Brazil",
+        "category/country/bulgaria" to "Bulgaria",
+        "category/country/canada" to "Canada",
+        "category/country/china" to "China",
+        "category/country/colombia" to "Colombia",
+        "category/country/croatia" to "Croatia",
+        "category/country/cyprus" to "Cyprus",
+        "category/country/czech-republic" to "Czech Republic",
+        "category/country/denmark" to "Denmark",
+        "category/country/egypt" to "Egypt",
+        "category/country/estonia" to "Estonia",
+        "category/country/finland" to "Finland",
+        "category/country/france" to "France",
+        "category/country/germany" to "Germany",
+        "category/country/greece" to "Greece",
+        "category/country/hong-kong" to "Hong Kong",
+        "category/country/hungary" to "Hungary",
+        "category/country/iceland" to "Iceland",
+        "category/country/india" to "India",
+        "category/country/indonesia" to "Indonesia",
+        "category/country/ireland" to "Ireland",
+        "category/country/israel" to "Israel",
+        "category/country/italy" to "Italy",
+        "category/country/japan" to "Japan",
+        "category/country/jordan" to "Jordan",
+        "category/country/korea" to "Korea",
+        "category/country/latvia" to "Latvia",
+        "category/country/lithuania" to "Lithuania",
+        "category/country/luxembourg" to "Luxembourg",
+        "category/country/malaysia" to "Malaysia",
+        "category/country/malta" to "Malta",
+        "category/country/mexico" to "Mexico",
+        "category/country/netherlands" to "Netherlands",
+        "category/country/new-zealand" to "New Zealand",
+        "category/country/nigeria" to "Nigeria",
+        "category/country/norway" to "Norway",
+        "category/country/philippines" to "Philippines",
+        "category/country/poland" to "Poland",
+        "category/country/portugal" to "Portugal",
+        "category/country/puerto-rico" to "Puerto Rico",
+        "category/country/qatar" to "Qatar",
+        "category/country/romania" to "Romania",
+        "category/country/russian-federation" to "Russian Federation",
+        "category/country/saudi-arabia" to "Saudi Arabia",
+        "category/country/singapore" to "Singapore",
+        "category/country/south-africa" to "South Africa",
+        "category/country/spain" to "Spain",
+        "category/country/sweden" to "Sweden",
+        "category/country/switzerland" to "Switzerland",
+        "category/country/taiwan" to "Taiwan",
+        "category/country/thailand" to "Thailand",
+        "category/country/turkey" to "Turkey",
+        "category/country/uk" to "UK",
+        "category/country/ukraine" to "Ukraine",
+        "category/country/united-arab-emirates" to "United Arab Emirates",
+        "category/country/united-kingdom" to "United Kingdom",
+        "category/country/uruguay" to "Uruguay",
+        "category/country/usa" to "USA",
+        "category/country/venezuela" to "Venezuela",
+        "category/country/viet-nam" to "Viet Nam",
+
+        // Tahun dari filter sumber
+        "category/year/2025" to "2025",
+        "category/year/2024" to "2024",
+        "category/year/2023" to "2023",
+        "category/year/2022" to "2022",
+        "category/year/2021" to "2021",
+        "category/year/2020" to "2020",
+        "category/year/2019" to "2019",
+        "category/year/2018" to "2018"
+    )
 
    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
     val url = "$mainUrl/${request.data}/$page/"
