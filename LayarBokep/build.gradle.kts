@@ -1,9 +1,9 @@
-version = 2
+version = 12
 
 cloudstream {
-    authors = listOf("BetbetMiro")
+    authors = listOf("sad25kag")
     language = "id"
-    description = "Provider CloudStream untuk LayarBokep NSFW"
+    description = "LayarBokep NSFW provider with hardened catalog parsing and playback resolver"
 
     /**
      * Status int as the following:
@@ -16,5 +16,6 @@ cloudstream {
 
     tvTypes = listOf("NSFW")
 
+    isCrossPlatform = false
     iconUrl = "https://layarbokep-mobile.ubuntumysec.workers.dev/favicon.ico"
 }
