@@ -61,6 +61,17 @@ class JAVHDProvider : MainAPI() {
         "/longest/" to "Longest",
         "/watched/" to "Watched",
 
+        "$mainUrl/creampie/recent/%d/?ajax=1" to "Creampie",
+        "$mainUrl/big-tits/recent/%d/?ajax=1" to "Big Tits",
+        "$mainUrl/married-woman/recent/%d/?ajax=1" to "Married Woman",
+        "$mainUrl/beautiful-girl/recent/%d/?ajax=1" to "Beautiful Girl",
+        "$mainUrl/mature-woman/recent/%d/?ajax=1" to "Mature Woman",
+        "$mainUrl/cuckold/recent/%d/?ajax=1" to "Cuckold",
+        "$mainUrl/squirting/recent/%d/?ajax=1" to "Squirting",
+        "$mainUrl/hardcore/recent/%d/?ajax=1" to "Hardcore",
+        "$mainUrl/cosplay/recent/%d/?ajax=1" to "Cosplay",
+        "$mainUrl/massage/recent/%d/?ajax=1" to "Massage",
+
         "$mainUrl/jav-sub/recent/%d/?ajax=1" to "Jav Sub",
         "$mainUrl/jav-sub/popular/year/%d/?ajax=1" to "Jav Sub Popular",
         "$mainUrl/jav-sub/rated/%d/?ajax=1" to "Jav Sub Top Rated",
@@ -72,18 +83,7 @@ class JAVHDProvider : MainAPI() {
         "$mainUrl/reducing-mosaic/recent/%d/?ajax=1" to "Reducing Mosaic",
         "$mainUrl/reducing-mosaic/popular/year/%d/?ajax=1" to "Reducing Mosaic Popular",
         "$mainUrl/amateur/recent/%d/?ajax=1" to "Amateur",
-        "$mainUrl/amateur/popular/year/%d/?ajax=1" to "Amateur Popular",
-
-        "/creampie/" to "Creampie",
-        "/big-tits/" to "Big Tits",
-        "/married-woman/" to "Married Woman",
-        "/beautiful-girl/" to "Beautiful Girl",
-        "/mature-woman/" to "Mature Woman",
-        "/cuckold/" to "Cuckold",
-        "/squirting/" to "Squirting",
-        "/hardcore/" to "Hardcore",
-        "/cosplay/" to "Cosplay",
-        "/massage/" to "Massage"
+        "$mainUrl/amateur/popular/year/%d/?ajax=1" to "Amateur Popular"
     )
 
     private val headers = mapOf(
@@ -408,8 +408,7 @@ class JAVHDProvider : MainAPI() {
         if (fixed.isBlank() || isSkippedPlayerUrl(fixed)) return
 
         when {
-            fixed.contains(".m3u8", true) ||
-                fixed.contains(".mp4", true) ||
+            fixed.contains(".m3u8", true) || fixed.contains(".mp4", true) ||
                 fixed.contains(".webm", true) -> directLinks.add(fixed)
 
             fixed.startsWith("http", true) && isKnownPlayerHost(fixed) -> embedLinks.add(fixed)
@@ -569,27 +568,23 @@ class JAVHDProvider : MainAPI() {
 
     private fun isSkippedPlayerUrl(url: String): Boolean {
         val value = url.lowercase()
-        return value.contains("doubleclick") ||
-            value.contains("googlesyndication") ||
+        return value.contains("doubleclick") || value.contains("googlesyndication") ||
             value.contains("analytics") ||
             value.contains("tracking") ||
             value.contains("ads") ||
             value.contains("banner") ||
             value.contains("facebook.com") ||
             value.contains("twitter.com") ||
-            value.contains("telegram") ||
-            value.contains("mailto:")
+            value.contains("telegram") || value.contains("mailto:")
     }
 
     private fun isBadTitle(value: String): Boolean {
         val text = value.trim().lowercase()
-        return text.isBlank() ||
-            text == "home" ||
+        return text.isBlank() || text == "home" ||
             text == "login" ||
             text == "signup" ||
             text == "next" ||
-            text == "previous" ||
-            text == "download" ||
+            text == "previous" || text == "download" ||
             text == "watch" ||
             text.contains("theporndude")
     }
