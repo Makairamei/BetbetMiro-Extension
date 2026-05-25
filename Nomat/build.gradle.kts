@@ -1,13 +1,9 @@
-// use an integer for version numbers
 version = 6
 
-
 cloudstream {
+    description = "Nomat"
     language = "id"
-    // All of these properties are optional, you can safely remove them
-
-    // description = "Lorem Ipsum"
-     authors = listOf("Duro92")
+    authors = listOf("BetbetMiro")
 
     /**
      * Status int as the following:
@@ -18,11 +14,10 @@ cloudstream {
      * */
     status = 1 // will be 3 if unspecified
     tvTypes = listOf(
+        "AsianDrama",
         "TvSeries",
         "Movie",
-        "Anime",
-        "AsianDrama",
     )
-    isCrossPlatform = false
-    iconUrl = "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://ssstik.tv&size=16"
+
+    iconUrl = "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://nomat.site&size=%size%"
 }
