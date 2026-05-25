@@ -16,7 +16,6 @@ import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.base64Decode
 
-
 class Nomat : MainAPI() {
     companion object {
         var context: android.content.Context? = null
@@ -24,21 +23,18 @@ class Nomat : MainAPI() {
     
     override var mainUrl = "https://nomat.site"
     private var directUrl: String? = null
-    override var name = "Nomat"
+    override var name = "Nomat🎟"
     override val hasMainPage = true
     override var lang = "id"
     override val supportedTypes =
             setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
 
- 
     override val mainPage = mainPageOf(
-        // Kategori Utama (Sesuai Official Nomat)
         "slug/film-baru-terpopuler" to "Film Baru Terpopuler",
         "slug/film-box-office" to "Film Box Office",
         "slug/film-serial-anime" to "Serial Anime",
         "slug/film-serial-tv-korea" to "Serial Drama Korea",
         
-        // Kategori Genre
         "genre/action" to "Action",
         "genre/adventure" to "Adventure",
         "genre/animation" to "Animation",
@@ -52,7 +48,6 @@ class Nomat : MainAPI() {
         "genre/sci-fi" to "Sci-Fi",
         "genre/thriller" to "Thriller",
         
-        // Kategori Negara
         "country/indonesia" to "Indonesia",
         "country/japan" to "Japan",
         "country/korea" to "Korea",
@@ -117,7 +112,8 @@ class Nomat : MainAPI() {
         val plot = document.selectFirst("div.wp-content p")?.text()
         val isTvSeries = url.contains("/series/") || url.contains("/tv/") || document.select(".episodiotitle").isNotEmpty()
         
-        val rating = document.selectFirst("span.dt_rating_vgs")?.text()?.toFloatOrNull()
+        // Perbaikan: Tidak di-convert ke Float karena parameter addScore adalah String?
+        val rating = document.selectFirst("span.dt_rating_vgs")?.text()
         val recommendations = document.select("article.item").mapNotNull { it.toSearchResult() }
 
         if (isTvSeries) {
@@ -175,7 +171,6 @@ class Nomat : MainAPI() {
                 }
             }
             
-            // Tambahan fallback membaca iframe langsung jika ada
             nhDoc.select("iframe[src]").forEach { iframe ->
                 val src = iframe.attr("src")
                 if (src.isNotBlank() && src.startsWith("http")) {
