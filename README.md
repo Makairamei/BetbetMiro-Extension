@@ -174,6 +174,8 @@ Terima kasih untuk:
 
 ---
 
+[![GitHub Status](https://img.shields.io/badge/dynamic/json?label=GitHub%20Status&query=%24.status.description&url=https%3A%2F%2Fwww.githubstatus.com%2Fapi%2Fv2%2Fstatus.json&logo=github&style=flat-square)](https://www.githubstatus.com/)
+
 <div align="center">
 
 ## 🍿 Happy Streaming
