@@ -17,7 +17,7 @@ import org.jsoup.nodes.Element
 
 class OtakudesuProvider : MainAPI() {
     override var mainUrl = "https://otakudesu.best"
-    override var name = "Otakudesu"
+    override var name = "Otakudesu🧶"
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true
@@ -58,50 +58,53 @@ class OtakudesuProvider : MainAPI() {
         "$mainUrl/ongoing-anime/page/" to "Anime Ongoing",
         "$mainUrl/complete-anime/page/" to "Anime Completed",
         
-        // Kategori Genre
-        "$mainUrl/genres/action/page/" to "Action",
-        "$mainUrl/genres/adventure/page/" to "Adventure",
-        "$mainUrl/genres/comedy/page/" to "Comedy",
-        "$mainUrl/genres/demons/page/" to "Demons",
-        "$mainUrl/genres/drama/page/" to "Drama",
-        "$mainUrl/genres/ecchi/page/" to "Ecchi",
-        "$mainUrl/genres/fantasy/page/" to "Fantasy",
-        "$mainUrl/genres/game/page/" to "Game",
-        "$mainUrl/genres/harem/page/" to "Harem",
-        "$mainUrl/genres/historical/page/" to "Historical",
-        "$mainUrl/genres/horror/page/" to "Horror",
-        "$mainUrl/genres/isekai/page/" to "Isekai",
-        "$mainUrl/genres/josei/page/" to "Josei",
-        "$mainUrl/genres/magic/page/" to "Magic",
-        "$mainUrl/genres/martial-arts/page/" to "Martial Arts",
-        "$mainUrl/genres/mecha/page/" to "Mecha",
-        "$mainUrl/genres/military/page/" to "Military",
-        "$mainUrl/genres/music/page/" to "Music",
-        "$mainUrl/genres/mystery/page/" to "Mystery",
-        "$mainUrl/genres/psychological/page/" to "Psychological",
-        "$mainUrl/genres/romance/page/" to "Romance",
-        "$mainUrl/genres/samurai/page/" to "Samurai",
-        "$mainUrl/genres/school/page/" to "School",
-        "$mainUrl/genres/sci-fi/page/" to "Sci-Fi",
-        "$mainUrl/genres/seinen/page/" to "Seinen",
-        "$mainUrl/genres/shoujo/page/" to "Shoujo",
-        "$mainUrl/genres/shoujo-ai/page/" to "Shoujo Ai",
-        "$mainUrl/genres/shounen/page/" to "Shounen",
-        "$mainUrl/genres/slice-of-life/page/" to "Slice of Life",
-        "$mainUrl/genres/space/page/" to "Space",
-        "$mainUrl/genres/sports/page/" to "Sports",
-        "$mainUrl/genres/super-power/page/" to "Super Power",
-        "$mainUrl/genres/supernatural/page/" to "Supernatural",
-        "$mainUrl/genres/thriller/page/" to "Thriller",
-        "$mainUrl/genres/vampire/page/" to "Vampire"
+        // Kategori Genre (Perbaikan: Menggunakan 'genre' bukan 'genres')
+        "$mainUrl/genre/action/page/" to "Action",
+        "$mainUrl/genre/adventure/page/" to "Adventure",
+        "$mainUrl/genre/comedy/page/" to "Comedy",
+        "$mainUrl/genre/demons/page/" to "Demons",
+        "$mainUrl/genre/drama/page/" to "Drama",
+        "$mainUrl/genre/ecchi/page/" to "Ecchi",
+        "$mainUrl/genre/fantasy/page/" to "Fantasy",
+        "$mainUrl/genre/game/page/" to "Game",
+        "$mainUrl/genre/harem/page/" to "Harem",
+        "$mainUrl/genre/historical/page/" to "Historical",
+        "$mainUrl/genre/horror/page/" to "Horror",
+        "$mainUrl/genre/isekai/page/" to "Isekai",
+        "$mainUrl/genre/josei/page/" to "Josei",
+        "$mainUrl/genre/magic/page/" to "Magic",
+        "$mainUrl/genre/martial-arts/page/" to "Martial Arts",
+        "$mainUrl/genre/mecha/page/" to "Mecha",
+        "$mainUrl/genre/military/page/" to "Military",
+        "$mainUrl/genre/music/page/" to "Music",
+        "$mainUrl/genre/mystery/page/" to "Mystery",
+        "$mainUrl/genre/psychological/page/" to "Psychological",
+        "$mainUrl/genre/romance/page/" to "Romance",
+        "$mainUrl/genre/samurai/page/" to "Samurai",
+        "$mainUrl/genre/school/page/" to "School",
+        "$mainUrl/genre/sci-fi/page/" to "Sci-Fi",
+        "$mainUrl/genre/seinen/page/" to "Seinen",
+        "$mainUrl/genre/shoujo/page/" to "Shoujo",
+        "$mainUrl/genre/shoujo-ai/page/" to "Shoujo Ai",
+        "$mainUrl/genre/shounen/page/" to "Shounen",
+        "$mainUrl/genre/slice-of-life/page/" to "Slice of Life",
+        "$mainUrl/genre/space/page/" to "Space",
+        "$mainUrl/genre/sports/page/" to "Sports",
+        "$mainUrl/genre/super-power/page/" to "Super Power",
+        "$mainUrl/genre/supernatural/page/" to "Supernatural",
+        "$mainUrl/genre/thriller/page/" to "Thriller",
+        "$mainUrl/genre/vampire/page/" to "Vampire"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        val document = app.get(request.data + page).document
-        // Menggunakan multiple CSS selectors untuk membaca Layout Ongoing/Completed (div.venz) maupun Layout Genre (ul.chivsrc)
+        // Menambahkan '/' di akhir agar menghindari error redirect pada web Otakudesu
+        val url = "${request.data}$page/" 
+        val document = app.get(url).document
+        
+        // Membaca dari kedua layout web Otakudesu (.venz untuk utama, .chivsrc untuk genre)
         val home = document.select("div.venz > ul > li, ul.chivsrc > li").mapNotNull {
             it.toSearchResult()
         }
@@ -109,12 +112,13 @@ class OtakudesuProvider : MainAPI() {
     }
 
     private fun Element.toSearchResult(): AnimeSearchResponse? {
-        // Menyesuaikan pencarian Title & URL agar bisa membaca struktur Venz dan Chivsrc sekaligus
         val titleElement = this.selectFirst("h2.jdlflm, h2 > a") ?: return null
         val title = titleElement.text().trim()
-        val href = this.selectFirst("a")?.attr("href") ?: return null
-        val posterUrl = this.selectFirst("div.thumbz > img, img")?.attr("src")?.toString()
-        val epNum = this.selectFirst("div.epz")?.ownText()?.replace(Regex("\\D"), "")?.trim()?.toIntOrNull()
+        val href = this.selectFirst("a[href]")?.attr("href") ?: return null
+        
+        // Perbaikan pembacaan poster agar muncul
+        val posterUrl = this.selectFirst("img")?.attr("src")?.toString()
+        val epNum = this.selectFirst("div.epz")?.text()?.replace(Regex("\\D"), "")?.trim()?.toIntOrNull()
 
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
