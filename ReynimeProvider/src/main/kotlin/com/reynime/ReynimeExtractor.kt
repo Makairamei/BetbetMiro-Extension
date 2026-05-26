@@ -12,15 +12,6 @@ import com.lagradost.cloudstream3.utils.getPacked
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.reynime.ReynimeUtils.cleanEscaped
-import com.reynime.ReynimeUtils.decodeBase64Payloads
-import com.reynime.ReynimeUtils.encode
-import com.reynime.ReynimeUtils.extractEpisodeNumber
-import com.reynime.ReynimeUtils.isDirectVideoUrl
-import com.reynime.ReynimeUtils.isSubtitleUrl
-import com.reynime.ReynimeUtils.normalizeUrl
-import com.reynime.ReynimeUtils.parsePlaybackData
-import com.reynime.ReynimeUtils.shouldSkipUrl
 import org.jsoup.nodes.Document
 import java.net.URI
 
@@ -32,7 +23,7 @@ object ReynimeExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val playback = parsePlaybackData(data, mainUrl)
+        val playback = ReynimeUtils.parsePlaybackData(data, mainUrl)
         val pageUrl = playback.pageUrl
         val directLinks = linkedSetOf<String>()
         val embedLinks = linkedSetOf<String>()
@@ -49,7 +40,7 @@ object ReynimeExtractor {
             collectCandidatesFromDocument(response.document, candidate, mainUrl, directLinks, embedLinks)
             collectCandidatesFromText(response.text, candidate, mainUrl, directLinks, embedLinks, subtitleCallback)
 
-            decodeBase64Payloads(response.text).forEach { decoded ->
+            ReynimeUtils.decodeBase64Payloads(response.text).forEach { decoded ->
                 collectCandidatesFromText(decoded, candidate, mainUrl, directLinks, embedLinks, subtitleCallback)
             }
 
@@ -112,7 +103,7 @@ object ReynimeExtractor {
         if (!playback.seriesId.isNullOrBlank()) {
             val records = probe("$mainUrl/backend/api/episodes.php?series_id=${playback.seriesId}&limit=1000&_t=${System.currentTimeMillis()}")
             val selected = records.filter { record ->
-                val recordEpisode = record.episodeNumber?.let { extractEpisodeNumber(it) } ?: extractEpisodeNumber(record.title)
+                val recordEpisode = record.episodeNumber?.let { ReynimeUtils.extractEpisodeNumber(it) } ?: ReynimeUtils.extractEpisodeNumber(record.title)
                 playback.episodeNumber.isNullOrBlank() || record.episodeNumber == playback.episodeNumber || recordEpisode?.toString() == playback.episodeNumber
             }
             selected.forEach { record ->
@@ -128,7 +119,7 @@ object ReynimeExtractor {
             }
         }
 
-        return urls.map { it.cleanEscaped().trim() }.distinct()
+        return urls.map { ReynimeUtils.cleanEscaped(it).trim() }.distinct()
     }
 
     private fun buildPlaybackCandidates(playback: ReynimePlaybackData, mainUrl: String): List<String> {
@@ -201,7 +192,7 @@ object ReynimeExtractor {
         embedLinks: MutableSet<String>,
         subtitleCallback: (SubtitleFile) -> Unit
     ) {
-        val clean = text.cleanEscaped()
+        val clean = ReynimeUtils.cleanEscaped(text)
         extractSubtitles(clean, baseUrl, mainUrl, subtitleCallback)
 
         Regex("""https?:\\?/\\?/[^\"'\\\s<>]+""", RegexOption.IGNORE_CASE)
@@ -225,25 +216,17 @@ object ReynimeExtractor {
             val objects = mutableListOf<org.json.JSONObject>()
             ReynimeParser.collectJsonObjects(root, objects)
             objects.forEach { obj ->
-                ReynimeParser.run {
-                    ReynimeParser.backendVideoKeys.mapNotNull { obj.stringValue(it) }
-                        .forEach { addCandidate(it, baseUrl, mainUrl, directLinks, embedLinks) }
-                    obj.stringValue("dailymotion", "dailymotion_id", "dailymotionId", "dm", "dm_id", "dmId")
-                        ?.let { normalizeDailyMotion(it) }
-                        ?.let(embedLinks::add)
-                    obj.stringValue("rumble", "rumble_url", "rumbleUrl", "rumble_embed", "rumbleEmbed")
-                        ?.let { addCandidate(it, baseUrl, mainUrl, directLinks, embedLinks) }
-                }
+                ReynimeParser.backendVideoKeys.mapNotNull { key -> obj.stringValue(key) }
+                    .forEach { addCandidate(it, baseUrl, mainUrl, directLinks, embedLinks) }
+                obj.stringValue("dailymotion", "dailymotion_id", "dailymotionId", "dm", "dm_id", "dmId")
+                    ?.let { normalizeDailyMotion(it) }
+                    ?.let(embedLinks::add)
+                obj.stringValue("rumble", "rumble_url", "rumbleUrl", "rumble_embed", "rumbleEmbed")
+                    ?.let { addCandidate(it, baseUrl, mainUrl, directLinks, embedLinks) }
             }
         }
 
         Regex("""(?:dailymotion(?:_id|Id)?|dm(?:_id|Id)?|video)\s*[\"':=]+\s*[\"']?(x[0-9a-zA-Z]+)""", RegexOption.IGNORE_CASE)
-            .findAll(clean)
-            .map { it.groupValues[1] }
-            .distinct()
-            .forEach { embedLinks.add("https://www.dailymotion.com/embed/video/$it") }
-
-        Regex("""(?:video=|/video/)(x[0-9a-zA-Z]+)""", RegexOption.IGNORE_CASE)
             .findAll(clean)
             .map { it.groupValues[1] }
             .distinct()
@@ -258,19 +241,9 @@ object ReynimeExtractor {
     ) {
         Regex("""https?:\\?/\\?/[^\"'\\\s<>]+\.(?:srt|vtt|ass)(?:\?[^\"'\\\s<>]*)?""", RegexOption.IGNORE_CASE)
             .findAll(text)
-            .map { normalizeUrl(it.value.replace("\\/", "/"), baseUrl, mainUrl) }
+            .map { ReynimeUtils.normalizeUrl(it.value.replace("\\/", "/"), baseUrl, mainUrl) }
             .distinct()
-            .forEach { url ->
-                subtitleCallback.invoke(newSubtitleFile("Indonesian", url))
-            }
-
-        Regex("""[\"'](?:subtitle|sub|captions?|tracks?|file)[\"']\s*:\s*[\"']([^\"']+\.(?:srt|vtt|ass)(?:\?[^\"']*)?)[\"']""", RegexOption.IGNORE_CASE)
-            .findAll(text)
-            .map { normalizeUrl(it.groupValues[1], baseUrl, mainUrl) }
-            .distinct()
-            .forEach { url ->
-                subtitleCallback.invoke(newSubtitleFile("Indonesian", url))
-            }
+            .forEach { url -> subtitleCallback.invoke(newSubtitleFile("Indonesian", url)) }
     }
 
     private fun addCandidate(
@@ -280,15 +253,14 @@ object ReynimeExtractor {
         directLinks: MutableSet<String>,
         embedLinks: MutableSet<String>
     ) {
-        val normalized = normalizeUrl(raw, baseUrl, mainUrl)
-        if (normalized.isBlank() || shouldSkipUrl(normalized)) return
+        val normalized = ReynimeUtils.normalizeUrl(raw, baseUrl, mainUrl)
+        if (normalized.isBlank() || ReynimeUtils.shouldSkipUrl(normalized)) return
         val lower = normalized.lowercase()
-        if (lower.contains("/series/") || lower.contains("/browse") || lower.contains("/login") || lower.contains("/register")) return
         if (lower.contains("/backend/api/episodes.php") || lower.contains("/api/episodes")) return
-        if (normalized.isSubtitleUrl()) return
+        if (ReynimeUtils.isSubtitleUrl(normalized)) return
 
         when {
-            normalized.isDirectVideoUrl() -> directLinks.add(normalized)
+            ReynimeUtils.isDirectVideoUrl(normalized) -> directLinks.add(normalized)
             isProbablyEmbed(normalized, mainUrl) -> embedLinks.add(normalized)
         }
     }
@@ -307,7 +279,7 @@ object ReynimeExtractor {
     }
 
     private fun prioritizeEmbeds(links: Collection<String>, mainUrl: String): List<String> = links
-        .filterNot { shouldSkipUrl(it) }
+        .filterNot { ReynimeUtils.shouldSkipUrl(it) }
         .distinct()
         .sortedWith(compareBy<String> { hostPriority(it, mainUrl) }.thenBy { it.length })
 
@@ -345,7 +317,7 @@ object ReynimeExtractor {
         val response = runCatching { app.get(embed, headers = apiHeaders(headers), referer = referer, timeout = 12L) }.getOrNull() ?: return emptyList()
         collectCandidatesFromDocument(response.document, embed, mainUrl, direct, nested)
         collectCandidatesFromText(response.text, embed, mainUrl, direct, nested, subtitleCallback)
-        decodeBase64Payloads(response.text).forEach { decoded ->
+        ReynimeUtils.decodeBase64Payloads(response.text).forEach { decoded ->
             collectCandidatesFromText(decoded, embed, mainUrl, direct, nested, subtitleCallback)
         }
         runCatching {
@@ -353,12 +325,19 @@ object ReynimeExtractor {
         }.getOrNull()?.let { unpacked ->
             collectCandidatesFromText(unpacked, embed, mainUrl, direct, nested, subtitleCallback)
         }
-        return direct.toList()
+        nested.take(6).forEach { nestedUrl ->
+            val nestedResponse = runCatching {
+                app.get(nestedUrl, headers = apiHeaders(headers), referer = embed, timeout = 12L)
+            }.getOrNull() ?: return@forEach
+            collectCandidatesFromDocument(nestedResponse.document, nestedUrl, mainUrl, direct, linkedSetOf())
+            collectCandidatesFromText(nestedResponse.text, nestedUrl, mainUrl, direct, linkedSetOf(), subtitleCallback)
+        }
+        return direct.toList().distinct()
     }
 
     private suspend fun emitDirectLink(url: String, referer: String, callback: (ExtractorLink) -> Unit): Boolean {
-        val clean = url.cleanEscaped().trim()
-        if (clean.isBlank() || shouldSkipUrl(clean)) return false
+        val clean = ReynimeUtils.cleanEscaped(url).trim()
+        if (clean.isBlank() || ReynimeUtils.shouldSkipUrl(clean)) return false
         val quality = getQualityFromName(Regex("""(2160|1440|1080|720|480|360|240)p?""", RegexOption.IGNORE_CASE).find(clean)?.groupValues?.getOrNull(1) ?: "")
             .takeIf { it > 0 } ?: Qualities.Unknown.value
 
@@ -395,11 +374,11 @@ object ReynimeExtractor {
         return runCatching {
             val uri = URI(url)
             "${uri.scheme}://${uri.host}"
-        }.getOrDefault(url.substringBefore("/", url))
+        }.getOrDefault(url)
     }
 
     private fun normalizeDailyMotion(value: String): String? {
-        val clean = value.cleanEscaped().trim()
+        val clean = ReynimeUtils.cleanEscaped(value).trim()
         if (clean.isBlank()) return null
         Regex("""x[0-9a-zA-Z]+""").find(clean)?.groupValues?.getOrNull(0)?.let { id ->
             return "https://www.dailymotion.com/embed/video/$id"
@@ -425,8 +404,8 @@ object ReynimeExtractor {
 
         val results = linkedSetOf<String>()
         queries.forEach { query ->
-            val url = "https://www.dailymotion.com/search/${encode(query)}/videos"
-            val raw = runCatching { app.get(url, headers = headers, referer = mainUrl, timeout = 10L).text }.getOrNull().orEmpty().cleanEscaped()
+            val url = "https://www.dailymotion.com/search/${ReynimeUtils.encode(query)}/videos"
+            val raw = runCatching { app.get(url, headers = headers, referer = mainUrl, timeout = 10L).text }.getOrNull().orEmpty()
             Regex("""/(?:embed/)?video/(x[0-9a-zA-Z]+)""", RegexOption.IGNORE_CASE)
                 .findAll(raw)
                 .map { it.groupValues[1] }
