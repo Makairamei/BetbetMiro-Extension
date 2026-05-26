@@ -1,4 +1,4 @@
-package com.indo
+package com.rebahin
 
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
