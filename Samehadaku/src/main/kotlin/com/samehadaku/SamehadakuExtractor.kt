@@ -69,10 +69,10 @@ object SamehadakuExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val ajaxUrls = listOf(
-            "$mainUrl/wp-admin/admin-ajax.php",
-            "${SamehadakuSeeds.DIRECT_URL}/wp-admin/admin-ajax.php"
-        ).distinct()
+        val ajaxUrls = SamehadakuSeeds.mirrors
+            .plus(mainUrl)
+            .map { it.trimEnd('/') + "/wp-admin/admin-ajax.php" }
+            .distinct()
         ajaxUrls.forEach { ajaxUrl ->
             val ajaxResponse = runCatching {
                 app.post(
@@ -122,23 +122,7 @@ object SamehadakuExtractor {
         runCatching {
             loadExtractor(clean, referer, subtitleCallback) { link ->
                 found = true
-                if (qualityName.isNullOrBlank()) {
-                    callback.invoke(link)
-                } else {
-                    callback.invoke(
-                        newExtractorLink(
-                            link.source,
-                            link.name,
-                            link.url,
-                            link.type
-                        ) {
-                            this.referer = link.referer
-                            this.quality = qualityName.fixQuality().takeIf { it > 0 } ?: link.quality
-                            this.headers = link.headers
-                            this.extractorData = link.extractorData
-                        }
-                    )
-                }
+                callback.invoke(link)
             }
         }
         if (found) return true
@@ -278,7 +262,7 @@ object SamehadakuExtractor {
         return direct.toList()
     }
 
-    private fun collectSubtitles(
+    private suspend fun collectSubtitles(
         text: String,
         baseUrl: String,
         mainUrl: String,

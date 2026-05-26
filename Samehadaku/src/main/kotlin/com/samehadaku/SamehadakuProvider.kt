@@ -21,6 +21,7 @@ import com.samehadaku.SamehadakuUtils.buildPageUrl
 import com.samehadaku.SamehadakuUtils.encode
 import com.samehadaku.SamehadakuUtils.headers
 import com.samehadaku.SamehadakuUtils.logSafe
+import com.samehadaku.SamehadakuUtils.originOf
 
 class SamehadakuProvider : MainAPI() {
     override var mainUrl = SamehadakuSeeds.MAIN_URL
@@ -34,24 +35,36 @@ class SamehadakuProvider : MainAPI() {
         *SamehadakuSeeds.mainPage.map { it.data to it.name }.toTypedArray()
     )
 
+    private fun mirrorUrls(url: String): List<String> {
+        if (!url.startsWith("http", true)) return SamehadakuSeeds.mirrors.map { it.trimEnd('/') + "/" + url.trimStart('/') }
+        val origin = originOf(url)
+        return SamehadakuSeeds.mirrors
+            .plus(origin)
+            .map { mirror -> url.replaceFirst(origin, mirror.trimEnd('/')) }
+            .distinct()
+    }
+
     private suspend fun safeGet(
         url: String,
         referer: String? = "$mainUrl/",
         retries: Int = 2
     ): com.lagradost.nicehttp.NiceResponse? {
         var last: Throwable? = null
-        repeat(retries.coerceAtLeast(1)) { attempt ->
-            try {
-                return app.get(
-                    url,
-                    referer = referer,
-                    headers = headers,
-                    timeout = 30L
-                )
-            } catch (throwable: Throwable) {
-                last = throwable
-                if (attempt < retries - 1) {
-                    kotlinx.coroutines.delay(500L * (attempt + 1))
+        val candidates = mirrorUrls(url)
+        candidates.forEachIndexed { candidateIndex, candidateUrl ->
+            repeat(retries.coerceAtLeast(1)) { attempt ->
+                try {
+                    return app.get(
+                        candidateUrl,
+                        referer = referer,
+                        headers = headers,
+                        timeout = 30L
+                    )
+                } catch (throwable: Throwable) {
+                    last = throwable
+                    if (candidateIndex == candidates.lastIndex && attempt < retries - 1) {
+                        kotlinx.coroutines.delay(500L * (attempt + 1))
+                    }
                 }
             }
         }
@@ -65,7 +78,7 @@ class SamehadakuProvider : MainAPI() {
         val document = safeGet(pageUrl)?.document ?: return newHomePageResponse(emptyList())
         val mode = category?.mode ?: SamehadakuCategoryMode.Listing
         val isPaged = category?.paged ?: true
-        val results = SamehadakuParser.parseByMode(document, pageUrl, mainUrl, mode)
+        val results = SamehadakuParser.parseByMode(this, document, pageUrl, mainUrl, mode)
 
         return if (results.isNotEmpty()) {
             newHomePageResponse(listOf(HomePageList(request.name, results, isPaged)))
@@ -79,7 +92,7 @@ class SamehadakuProvider : MainAPI() {
         for (page in 1..5) {
             val path = if (page <= 1) "$mainUrl/?s=${encode(query)}" else "$mainUrl/page/$page/?s=${encode(query)}"
             val document = safeGet(path)?.document ?: break
-            val pageResults = SamehadakuParser.parseListing(document, path, mainUrl)
+            val pageResults = SamehadakuParser.parseListing(this, document, path, mainUrl)
             if (pageResults.isEmpty()) break
             pageResults.forEach { results[it.url] = it }
         }
@@ -96,8 +109,8 @@ class SamehadakuProvider : MainAPI() {
 
         val document = if (entryUrl == url) firstResponse.document else safeGet(entryUrl)?.document ?: return null
         val meta = SamehadakuParser.parseMeta(document, entryUrl, mainUrl) ?: return null
-        val episodes = SamehadakuParser.parseEpisodes(document, entryUrl, mainUrl)
-        val recommendations = SamehadakuParser.parseRecommendations(document, entryUrl, mainUrl)
+        val episodes = SamehadakuParser.parseEpisodes(this, document, entryUrl, mainUrl)
+        val recommendations = SamehadakuParser.parseRecommendations(this, document, entryUrl, mainUrl)
 
         return newAnimeLoadResponse(meta.title, entryUrl, meta.type) {
             engName = meta.title

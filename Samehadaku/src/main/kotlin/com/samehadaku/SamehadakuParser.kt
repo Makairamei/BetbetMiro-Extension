@@ -2,6 +2,7 @@ package com.samehadaku
 
 import com.lagradost.cloudstream3.AnimeSearchResponse
 import com.lagradost.cloudstream3.Episode
+import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.addSub
 import com.lagradost.cloudstream3.newAnimeSearchResponse
@@ -16,64 +17,67 @@ import org.jsoup.nodes.Element
 
 object SamehadakuParser {
     fun parseByMode(
+        api: MainAPI,
         document: Document,
         baseUrl: String,
         mainUrl: String,
         mode: SamehadakuCategoryMode
     ): List<SearchResponse> {
         return when (mode) {
-            SamehadakuCategoryMode.HomeLatest -> parseLatest(document, baseUrl, mainUrl)
-            SamehadakuCategoryMode.HomeTop -> parseHomeTop(document, baseUrl, mainUrl)
-            SamehadakuCategoryMode.HomeMovie -> parseProjectMovie(document, baseUrl, mainUrl)
-            SamehadakuCategoryMode.Schedule -> parseSchedule(document, baseUrl, mainUrl).ifEmpty { parseListing(document, baseUrl, mainUrl) }
-            SamehadakuCategoryMode.Listing -> parseListing(document, baseUrl, mainUrl)
+            SamehadakuCategoryMode.HomeLatest -> parseLatest(api, document, baseUrl, mainUrl)
+            SamehadakuCategoryMode.HomeTop -> parseHomeTop(api, document, baseUrl, mainUrl)
+            SamehadakuCategoryMode.HomeMovie -> parseProjectMovie(api, document, baseUrl, mainUrl)
+            SamehadakuCategoryMode.Schedule -> parseSchedule(api, document, baseUrl, mainUrl).ifEmpty { parseListing(api, document, baseUrl, mainUrl) }
+            SamehadakuCategoryMode.Listing -> parseListing(api, document, baseUrl, mainUrl)
         }
     }
 
-    fun parseLatest(document: Document, baseUrl: String, mainUrl: String): List<SearchResponse> {
+    fun parseLatest(api: MainAPI, document: Document, baseUrl: String, mainUrl: String): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
         document.select("div.post-show ul li, .post-show li, main#main div.animepost, div.animepost, article.post").forEach { element ->
-            element.toSearchResult(baseUrl, mainUrl)?.let { results[it.url] = it }
+            element.toSearchResult(api, baseUrl, mainUrl)?.let { results[it.url] = it }
         }
-        return results.values.toList().ifEmpty { parseListing(document, baseUrl, mainUrl) }
+        return results.values.toList().ifEmpty { parseListing(api, document, baseUrl, mainUrl) }
     }
 
-    fun parseHomeTop(document: Document, baseUrl: String, mainUrl: String): List<SearchResponse> {
+    fun parseHomeTop(api: MainAPI, document: Document, baseUrl: String, mainUrl: String): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
         document.select("section:contains(Top 10) li, div:contains(Top 10 minggu ini) li, aside li, .topten li, .top-list li").forEach { element ->
-            element.toSearchResult(baseUrl, mainUrl)?.let { results[it.url] = it }
+            element.toSearchResult(api, baseUrl, mainUrl)?.let { results[it.url] = it }
         }
         if (results.isEmpty()) {
-            document.select("a[href*=/anime/]").filter { it.text().contains("TOP", true) || it.parent()?.text()?.contains("TOP", true) == true }
-                .forEach { element -> element.toSearchResult(baseUrl, mainUrl)?.let { results[it.url] = it } }
+            document.select("a[href*=/anime/]")
+                .filter { it.text().contains("TOP", true) || it.parent()?.text()?.contains("TOP", true) == true }
+                .forEach { element -> element.toSearchResult(api, baseUrl, mainUrl)?.let { results[it.url] = it } }
         }
         return results.values.take(20)
     }
 
-    fun parseProjectMovie(document: Document, baseUrl: String, mainUrl: String): List<SearchResponse> {
+    fun parseProjectMovie(api: MainAPI, document: Document, baseUrl: String, mainUrl: String): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
         val blocks = document.select("div.widget_senction:contains(Project Movie), section:contains(Project Movie), div:contains(Project Movie Samehadaku)")
         blocks.forEach { block ->
             block.select("div.animepost, article, li, .bsx, a[href*=/anime/]").forEach { element ->
-                element.toSearchResult(baseUrl, mainUrl)?.let { results[it.url] = it }
+                element.toSearchResult(api, baseUrl, mainUrl)?.let { results[it.url] = it }
             }
         }
         if (results.isEmpty()) {
-            document.select("a[href*=/anime/]").filter { it.parent()?.text()?.contains("Genres:", true) == true }
-                .forEach { element -> element.toSearchResult(baseUrl, mainUrl)?.let { results[it.url] = it } }
+            document.select("a[href*=/anime/]")
+                .filter { it.parent()?.text()?.contains("Genres:", true) == true }
+                .forEach { element -> element.toSearchResult(api, baseUrl, mainUrl)?.let { results[it.url] = it } }
         }
         return results.values.take(24)
     }
 
-    fun parseSchedule(document: Document, baseUrl: String, mainUrl: String): List<SearchResponse> {
+    fun parseSchedule(api: MainAPI, document: Document, baseUrl: String, mainUrl: String): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
         document.select("div.animepost, article, li, .schedule-list li, .listupd article, a[href*=/anime/], a[href*=-episode-]").forEach { element ->
-            element.toSearchResult(baseUrl, mainUrl)?.let { results[it.url] = it }
+            element.toSearchResult(api, baseUrl, mainUrl)?.let { results[it.url] = it }
         }
         return results.values.toList()
     }
 
-    fun parseListing(document: Document, baseUrl: String, mainUrl: String): List<SearchResponse> {
+    fun parseListing(api: MainAPI, document: Document, baseUrl: String, mainUrl: String): List<SearchResponse> {
         val selectors = listOf(
             "div.post-show ul li",
             "main#main div.animepost",
@@ -90,12 +94,12 @@ object SamehadakuParser {
         )
         val results = linkedMapOf<String, SearchResponse>()
         selectors.forEach { selector ->
-            document.select(selector).mapNotNull { it.toSearchResult(baseUrl, mainUrl) }.forEach { item ->
+            document.select(selector).mapNotNull { it.toSearchResult(api, baseUrl, mainUrl) }.forEach { item ->
                 results[item.url] = item
             }
         }
         if (results.isEmpty()) {
-            document.select("a[href*=/anime/], a[href*=-episode-]").mapNotNull { it.toSearchResult(baseUrl, mainUrl) }.forEach { item ->
+            document.select("a[href*=/anime/], a[href*=-episode-]").mapNotNull { it.toSearchResult(api, baseUrl, mainUrl) }.forEach { item ->
                 results[item.url] = item
             }
         }
@@ -146,7 +150,7 @@ object SamehadakuParser {
         )
     }
 
-    fun parseEpisodes(document: Document, baseUrl: String, mainUrl: String): List<Episode> {
+    fun parseEpisodes(api: MainAPI, document: Document, baseUrl: String, mainUrl: String): List<Episode> {
         val selectors = listOf(
             "div.lstepsiode.listeps ul li",
             "div.listeps ul li",
@@ -169,20 +173,20 @@ object SamehadakuParser {
                     baseUrl,
                     mainUrl
                 ).takeIf { it.isNotBlank() }
-                episodes[link] = newEpisode(link) {
+                episodes[link] = api.newEpisode(link, initializer = {
                     this.name = title.takeIf { it.isNotBlank() }
                     this.episode = episode
                     this.posterUrl = poster
-                }
+                })
             }
         }
         return episodes.values.sortedWith(compareBy<Episode> { it.episode ?: Int.MAX_VALUE }.thenBy { it.name ?: "" })
     }
 
-    fun parseRecommendations(document: Document, baseUrl: String, mainUrl: String): List<SearchResponse> {
+    fun parseRecommendations(api: MainAPI, document: Document, baseUrl: String, mainUrl: String): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
         document.select("aside#sidebar ul li, aside#sidebar li, .recommended li, .related li, .rekomendasi li, .animepost")
-            .mapNotNull { it.toSearchResult(baseUrl, mainUrl) }
+            .mapNotNull { it.toSearchResult(api, baseUrl, mainUrl) }
             .forEach { results[it.url] = it }
         return results.values.take(20)
     }
@@ -203,7 +207,7 @@ object SamehadakuParser {
         return null
     }
 
-    fun Element.toSearchResult(baseUrl: String, mainUrl: String): AnimeSearchResponse? {
+    fun Element.toSearchResult(api: MainAPI, baseUrl: String, mainUrl: String): AnimeSearchResponse? {
         val anchor = when {
             tagName() == "a" && attr("href").isNotBlank() -> this
             else -> selectFirst("a[href*=/anime/], a[href*=-episode-], h2 a[href], h3 a[href], a[href]") ?: return null
@@ -230,10 +234,10 @@ object SamehadakuParser {
         ).takeIf { it.isNotBlank() }
         val type = SamehadakuUtils.getType(text())
         val episode = parseEpisodeNumber(selectFirst(".dtla, .eps, .epx, .episode, span, author")?.text() ?: text())
-        return newAnimeSearchResponse(title, href, type) {
+        return api.newAnimeSearchResponse(title, href, type, initializer = {
             posterUrl = poster
             addSub(episode)
-        }
+        })
     }
 
     private fun extractInfo(text: String, key: String): String? {

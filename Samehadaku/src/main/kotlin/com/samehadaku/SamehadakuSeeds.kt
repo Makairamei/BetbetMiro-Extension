@@ -1,9 +1,16 @@
 package com.samehadaku
 
 object SamehadakuSeeds {
-    const val MAIN_URL = "https://v2.samehadaku.how"
-    const val DIRECT_URL = "https://samehadaku.care"
-    const val BATCH_URL = "https://v1.samehadaku.how/batch/"
+    const val MAIN_URL = "https://samehadaku.care"
+    const val LEGACY_URL = "https://v2.samehadaku.how"
+    const val LEGACY_BATCH_URL = "https://v1.samehadaku.how"
+    const val BATCH_URL = "$MAIN_URL/batch/"
+
+    val mirrors = listOf(
+        MAIN_URL,
+        LEGACY_URL,
+        LEGACY_BATCH_URL
+    )
 
     val websiteGenres = listOf(
         "Fantasy" to "fantasy",
@@ -19,9 +26,9 @@ object SamehadakuSeeds {
         "Sci-Fi" to "sci-fi",
         "Seinen" to "seinen",
         "Reincarnation" to "reincarnation",
-        "Super Power" to "super-power",
         "Historical" to "historical",
         "Mystery" to "mystery",
+        "Super Power" to "super-power",
         "Harem" to "harem",
         "Slice of Life" to "slice-of-life",
         "Ecchi" to "ecchi",
