@@ -7,6 +7,6 @@ import com.lagradost.cloudstream3.plugins.Plugin
 @CloudstreamPlugin
 class SamehadakuPlugin : Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(Samehadaku())
+        registerMainAPI(SamehadakuProvider())
     }
 }

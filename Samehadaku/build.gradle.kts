@@ -1,9 +1,9 @@
-version = 28
+version = 29
 
 cloudstream {
     language = "id"
     authors = listOf("BetbetMiro")
-    description = "Samehadaku provider split into plugin, provider, models, seeds, parser, extractor, and utils with website-matched categories and resilient video extraction."
+    description = "Samehadaku provider with split structure, website-matched categories, resilient listing parser, detail parser, and playback resolver."
 
     status = 1
 
