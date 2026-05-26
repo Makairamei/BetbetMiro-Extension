@@ -49,16 +49,14 @@ class ReynimeProvider : MainAPI() {
         TvType.OVA
     )
 
-    // Kategori dibuat dari struktur sumber yang terlihat langsung di halaman Reynime:
-    // Featured, Update Terbaru, Ongoing Series, Completed Series, dan filter All/Anime/Donghua.
     override val mainPage = mainPageOf(
-        "home:featured" to "Featured",
-        "browse?sort=updated" to "Update Terbaru",
-        "browse" to "Daftar Donghua",
-        "browse?status=Ongoing" to "Ongoing Series",
-        "browse?status=Completed" to "Completed Series",
-        "browse?type=Anime" to "Anime",
-        "browse?type=Donghua" to "Donghua"
+        "featured" to "Featured",
+        "updated" to "Update Terbaru",
+        "all" to "Daftar Donghua",
+        "ongoing" to "Ongoing Series",
+        "completed" to "Completed Series",
+        "anime" to "Anime",
+        "donghua" to "Donghua"
     )
 
     private val headers = mapOf(
@@ -68,248 +66,163 @@ class ReynimeProvider : MainAPI() {
         "Referer" to mainUrl
     )
 
-    private data class SeedSeries(
+    private data class SourceSeries(
         val id: Int,
         val title: String,
         val slug: String,
-        val status: String = "Ongoing",
-        val mediaKind: String = "Donghua",
-        val type: TvType = TvType.Anime,
-        val genres: Set<String> = emptySet(),
-        val latestEpisode: Int = 1,
         val poster: String,
-        val score: String? = null,
-        val description: String? = null,
-        val featured: Boolean = false
+        val kind: String = "Donghua",
+        val status: String = "Ongoing",
+        val type: TvType = TvType.Anime,
+        val latestEpisode: Int = 1,
+        val year: Int? = null,
+        val score: Double? = null,
+        val genres: Set<String> = emptySet(),
+        val description: String = "Streaming Donghua subtitle Indonesia di Reynime.",
+        val featured: Boolean = false,
+        val updated: Boolean = false
     )
 
-    // Source-backed fallback dari daftar yang terlihat langsung di halaman Reynime.
-    // Ini dipakai hanya ketika halaman/API sumber kosong karena SPA/client-side render atau request diblokir.
-    private val seedSeries = listOf(
-        SeedSeries(1, "Battle Through The Heavens Season 5", "battle-through-the-heavens-season-5", "Ongoing", "Donghua", TvType.Anime, setOf("action", "adventure", "fantasy", "martial arts", "xuanhuan", "donghua"), 200, "https://cdn.myanimelist.net/images/anime/1457/152289l.jpg", "9.20", "Season kelima dari Doupo Cangqiong.", true),
-        SeedSeries(11, "Renegade Immortal", "renegade-immortal", "Ongoing", "Donghua", TvType.Anime, setOf("action", "adventure", "fantasy", "martial arts", "xianxia", "donghua"), 142, "https://cdn.myanimelist.net/images/anime/1289/149708l.jpg", "7.80", "Wang Lin berjalan di jalan menuju menjadi abadi nyata.", true),
-        SeedSeries(29, "Tales of Herding Gods", "tales-of-herding-gods", "Ongoing", "Donghua", TvType.Anime, setOf("action", "adventure", "fantasy", "martial arts", "xianxia", "donghua"), 84, "https://cdn.myanimelist.net/images/anime/1324/150012l.jpg", "8.80", "Qin Mu tumbuh di desa para lansia penyandang cacat dan menghadapi bahaya Daxu.", true),
-        SeedSeries(4, "Perfect World", "perfect-world", "Ongoing", "Donghua", TvType.Anime, setOf("action", "adventure", "fantasy", "martial arts", "xuanhuan", "donghua"), 200, "https://cdn.myanimelist.net/images/anime/1809/153679l.jpg", "8.00", "Shi Hao, jenius yang diberkati langit, menempuh perjalanan untuk mengguncang dunia.", true),
-        SeedSeries(3, "Soul Land 2: The Peerless Tang Clan", "soul-land-2-the-peerless-tang-clan", "Ongoing", "Donghua", TvType.Anime, setOf("action", "adventure", "fantasy", "martial arts", "donghua"), 100, "https://cdn.myanimelist.net/images/anime/1985/150594l.jpg", "8.40", "Generasi baru Shrek berusaha membangun kembali Tang Clan.", true),
+    private val sourceSeries = listOf(
+        SourceSeries(1, "Battle Through The Heavens Season 5", "battle-through-the-heaven-s5", "https://cdn.myanimelist.net/images/anime/1457/152289l.jpg", "Donghua", "Ongoing", TvType.Anime, 200, 2022, 9.20, setOf("action", "adventure", "fantasy", "martial-arts", "xuanhuan", "donghua"), "Season kelima dari Doupo Cangqiong.", true, true),
+        SourceSeries(11, "Renegade Immortal", "renegade-immortal", "https://cdn.myanimelist.net/images/anime/1289/149708l.jpg", "Donghua", "Ongoing", TvType.Anime, 142, 2023, 7.80, setOf("action", "adventure", "fantasy", "martial-arts", "xianxia", "donghua"), "Wang Lin menembus kurangnya bakat dan berjalan menuju jalan abadi sejati.", true, true),
+        SourceSeries(29, "Tales of Herding Gods", "tales-of-herding-gods", "https://cdn.myanimelist.net/images/anime/1324/150012l.jpg", "Donghua", "Ongoing", TvType.Anime, 84, 2024, 8.80, setOf("action", "adventure", "fantasy", "martial-arts", "xianxia", "donghua"), "Qin Mu tumbuh di desa lansia penyandang cacat dan menghadapi bahaya Daxu.", true, true),
+        SourceSeries(4, "Perfect World", "perfect-world", "https://cdn.myanimelist.net/images/anime/1809/153679l.jpg", "Donghua", "Ongoing", TvType.Anime, 200, 2021, 8.00, setOf("action", "adventure", "fantasy", "martial-arts", "xuanhuan", "donghua"), "Shi Hao, jenius yang diberkati langit, menempuh perjalanan untuk mengguncang dunia.", true, false),
+        SourceSeries(3, "Soul Land 2: The Peerless Tang Clan", "soul-land-2-the-peerless-tang-clan", "https://cdn.myanimelist.net/images/anime/1985/150594l.jpg", "Donghua", "Ongoing", TvType.Anime, 100, 2023, 8.40, setOf("action", "adventure", "fantasy", "martial-arts", "donghua"), "Generasi baru Shrek berusaha membangun kembali Tang Clan.", true, false),
 
-        SeedSeries(26, "Martial Master", "martial-master", "Ongoing", "Donghua", TvType.Anime, setOf("action", "fantasy", "martial arts", "donghua"), 660, "https://cdn.myanimelist.net/images/anime/1738/107609l.jpg", "7.80"),
-        SeedSeries(84, "Sword and Fairy 3", "sword-and-fairy-3", "Ongoing", "Donghua", TvType.Anime, setOf("action", "adventure", "fantasy", "donghua"), 24, "https://cdn.myanimelist.net/images/anime/1567/154040l.jpg"),
-        SeedSeries(24, "Peerless Battle Spirit", "peerless-battle-spirit", "Ongoing", "Donghua", TvType.Anime, setOf("action", "fantasy", "martial arts", "donghua"), 179, "https://cdn.myanimelist.net/images/anime/1290/150120l.jpg", "7.80"),
-        SeedSeries(12, "Swallowed Star 4th Season", "swallowed-star-4th-season", "Ongoing", "Donghua", TvType.Anime, setOf("action", "adventure", "sci-fi", "donghua"), 225, "https://cdn.myanimelist.net/images/anime/1335/138907l.jpg", "7.80"),
-        SeedSeries(136, "Walking the Way All Alone", "walking-the-way-all-alone", "Ongoing", "Donghua", TvType.Anime, setOf("action", "adventure", "fantasy", "donghua"), 9, "https://myanimelist.net/images/anime/1648/156622l.jpg"),
-        SeedSeries(139, "Stellar Transformation 7th Season", "stellar-transformation-7th-season", "Completed", "Donghua", TvType.Anime, setOf("action", "adventure", "fantasy", "donghua"), 12, "https://myanimelist.net/images/anime/1147/156957l.jpg"),
-        SeedSeries(83, "Beyond Time's Gaze", "beyond-times-gaze", "Ongoing", "Donghua", TvType.Anime, setOf("fantasy", "romance", "mystery", "supernatural", "donghua"), 23, "https://cdn.myanimelist.net/images/anime/1628/153418l.jpg"),
+        SourceSeries(26, "Martial Master", "martial-master", "https://cdn.myanimelist.net/images/anime/1738/107609l.jpg", "Donghua", "Ongoing", TvType.Anime, 660, 2020, 7.80, setOf("action", "fantasy", "martial-arts", "donghua"), updated = true),
+        SourceSeries(84, "Sword and Fairy 3", "sword-and-fairy-3", "https://cdn.myanimelist.net/images/anime/1567/154040l.jpg", "Donghua", "Ongoing", TvType.Anime, 24, 2025, null, setOf("action", "adventure", "fantasy", "donghua"), updated = true),
+        SourceSeries(24, "Peerless Battle Spirit", "peerless-battle-spirit", "https://cdn.myanimelist.net/images/anime/1290/150120l.jpg", "Donghua", "Ongoing", TvType.Anime, 179, 2024, 7.80, setOf("action", "fantasy", "martial-arts", "donghua"), updated = true),
+        SourceSeries(12, "Swallowed Star 4th Season", "swallowed-star-4th-season", "https://cdn.myanimelist.net/images/anime/1335/138907l.jpg", "Donghua", "Ongoing", TvType.Anime, 225, 2023, 7.80, setOf("action", "adventure", "sci-fi", "donghua"), updated = true),
+        SourceSeries(136, "Walking the Way All Alone", "walking-the-way-all-alone", "https://cdn.myanimelist.net/images/anime/1648/156622l.jpg", "Donghua", "Ongoing", TvType.Anime, 9, 2026, null, setOf("action", "adventure", "fantasy", "donghua"), updated = true),
+        SourceSeries(83, "Beyond Time's Gaze", "beyond-times-gaze", "https://cdn.myanimelist.net/images/anime/1628/153418l.jpg", "Donghua", "Ongoing", TvType.Anime, 23, 2025, null, setOf("fantasy", "romance", "mystery", "supernatural", "donghua"), updated = true),
 
-        SeedSeries(138, "Coiling Dragon", "coiling-dragon", "Ongoing", "Donghua", TvType.Anime, setOf("action", "adventure", "fantasy", "donghua"), 6, "https://myanimelist.net/images/anime/1578/156842.jpg"),
-        SeedSeries(137, "Ever Night", "ever-night", "Ongoing", "Donghua", TvType.Anime, setOf("action", "adventure", "fantasy", "donghua"), 6, "https://myanimelist.net/images/anime/1021/156293l.jpg"),
-        SeedSeries(120, "Against the Gods 2nd Season", "against-the-gods-2nd-season", "Ongoing", "Donghua", TvType.Anime, setOf("action", "fantasy", "martial arts", "donghua"), 38, "https://myanimelist.net/images/anime/1125/156004l.jpg"),
-        SeedSeries(118, "In Search of Gods", "in-search-of-gods", "Ongoing", "Donghua", TvType.Anime, setOf("action", "fantasy", "donghua"), 11, "https://myanimelist.net/images/anime/1433/156264l.jpg"),
-        SeedSeries(116, "Azure Legacy 3", "azure-legacy-3", "Ongoing", "Donghua", TvType.Anime, setOf("action", "fantasy", "donghua"), 78, "https://myanimelist.net/images/anime/1742/153462l.jpg"),
-        SeedSeries(115, "Maou no Musume wa Yasashisugiru!!", "maou-no-musume-wa-yasashisugiru", "Ongoing", "Anime", TvType.Anime, setOf("comedy", "fantasy", "anime"), 10, "https://myanimelist.net/images/anime/1160/154083l.jpg"),
-        SeedSeries(114, "Yuusha Party ni Kawaii Ko ga Ita node, Kokuhaku shitemita.", "yuusha-party-ni-kawaii-ko-ga-ita-node-kokuhaku-shitemita", "Ongoing", "Anime", TvType.Anime, setOf("comedy", "fantasy", "romance", "anime"), 9, "https://myanimelist.net/images/anime/1573/152828l.jpg"),
-        SeedSeries(113, "Mayonaka Heart Tune", "mayonaka-heart-tune", "Ongoing", "Anime", TvType.Anime, setOf("comedy", "romance", "anime"), 9, "https://myanimelist.net/images/anime/1769/152823l.jpg"),
-        SeedSeries(112, "Isekai no Sata wa Shachiku Shidai", "isekai-no-sata-wa-shachiku-shidai", "Ongoing", "Anime", TvType.Anime, setOf("fantasy", "isekai", "anime"), 9, "https://myanimelist.net/images/anime/1510/153806l.jpg"),
+        SourceSeries(138, "Coiling Dragon", "coiling-dragon", "https://cdn.myanimelist.net/images/anime/1578/156842.jpg", "Donghua", "Ongoing", TvType.Anime, 6, 2026, null, setOf("action", "adventure", "fantasy", "donghua")),
+        SourceSeries(137, "Ever Night", "ever-night", "https://cdn.myanimelist.net/images/anime/1021/156293l.jpg", "Donghua", "Ongoing", TvType.Anime, 6, 2026, null, setOf("action", "adventure", "fantasy", "donghua")),
+        SourceSeries(120, "Against the Gods 2nd Season", "against-the-gods-2nd-season", "https://cdn.myanimelist.net/images/anime/1125/156004l.jpg", "Donghua", "Ongoing", TvType.Anime, 38, 2026, null, setOf("action", "fantasy", "martial-arts", "donghua")),
+        SourceSeries(118, "In Search of Gods", "in-search-of-gods", "https://cdn.myanimelist.net/images/anime/1433/156264l.jpg", "Donghua", "Ongoing", TvType.Anime, 11, 2026, null, setOf("action", "fantasy", "donghua")),
+        SourceSeries(116, "Azure Legacy 3", "azure-legacy-3", "https://cdn.myanimelist.net/images/anime/1742/153462l.jpg", "Donghua", "Ongoing", TvType.Anime, 78, 2026, null, setOf("action", "fantasy", "donghua")),
+        SourceSeries(115, "Maou no Musume wa Yasashisugiru!!", "maou-no-musume-wa-yasashisugiru", "https://cdn.myanimelist.net/images/anime/1160/154083l.jpg", "Anime", "Ongoing", TvType.Anime, 10, 2026, null, setOf("comedy", "fantasy", "anime")),
+        SourceSeries(114, "Yuusha Party ni Kawaii Ko ga Ita node, Kokuhaku shitemita.", "yuusha-party-ni-kawaii-ko-ga-ita-node-kokuhaku-shitemita", "https://cdn.myanimelist.net/images/anime/1573/152828l.jpg", "Anime", "Ongoing", TvType.Anime, 9, 2026, null, setOf("comedy", "fantasy", "romance", "anime")),
+        SourceSeries(113, "Mayonaka Heart Tune", "mayonaka-heart-tune", "https://cdn.myanimelist.net/images/anime/1769/152823l.jpg", "Anime", "Ongoing", TvType.Anime, 9, 2026, null, setOf("comedy", "romance", "anime")),
+        SourceSeries(112, "Isekai no Sata wa Shachiku Shidai", "isekai-no-sata-wa-shachiku-shidai", "https://cdn.myanimelist.net/images/anime/1510/153806l.jpg", "Anime", "Ongoing", TvType.Anime, 9, 2026, null, setOf("fantasy", "isekai", "anime")),
 
-        SeedSeries(119, "Shrouding the Heavens: The Imperial Path", "shrouding-the-heavens-the-imperial-path", "Completed", "Donghua", TvType.AnimeMovie, setOf("action", "adventure", "fantasy", "martial arts", "xianxia", "donghua"), 1, "https://myanimelist.net/images/anime/1017/156548l.jpg"),
-        SeedSeries(74, "Long Hun", "long-hun", "Completed", "Donghua", TvType.Anime, setOf("action", "fantasy", "donghua"), 8, "https://cdn.myanimelist.net/images/anime/1878/153807l.jpg", "8.50"),
-        SeedSeries(71, "Wu Dong Qian Kun 6th Season", "wu-dong-qian-kun-6th-season", "Completed", "Donghua", TvType.Anime, setOf("action", "fantasy", "martial arts", "donghua"), 12, "https://cdn.myanimelist.net/images/anime/1937/151456l.jpg", "9.00"),
-        SeedSeries(70, "Back as Immortal Lord", "back-as-immortal-lord", "Completed", "Donghua", TvType.Anime, setOf("action", "fantasy", "donghua"), 16, "https://cdn.myanimelist.net/images/anime/1109/153446l.jpg"),
-        SeedSeries(68, "Eternal Sword Emperor", "eternal-sword-emperor", "Completed", "Donghua", TvType.Anime, setOf("action", "fantasy", "martial arts", "donghua"), 40, "https://cdn.myanimelist.net/images/anime/1794/151549l.jpg", "7.80"),
-        SeedSeries(65, "Legend of the Misty Sword Immortal", "legend-of-the-misty-sword-immortal", "Completed", "Donghua", TvType.Anime, setOf("action", "fantasy", "martial arts", "donghua"), 40, "https://cdn.myanimelist.net/images/anime/1600/151290l.jpg", "7.50"),
-        SeedSeries(64, "Throne of Ten Thousand Swords", "throne-of-ten-thousand-swords", "Completed", "Donghua", TvType.Anime, setOf("action", "fantasy", "martial arts", "wuxia", "donghua"), 40, "https://cdn.myanimelist.net/images/anime/1098/151287l.webp", "7.80"),
-        SeedSeries(63, "Long March to the Stars", "long-march-to-the-stars", "Completed", "Donghua", TvType.Anime, setOf("action", "adventure", "sci-fi", "donghua"), 4, "https://cdn.myanimelist.net/images/anime/1273/151289l.jpg", "8.20"),
-        SeedSeries(62, "Zi Chuan 2nd Season", "zi-chuan-2nd-season", "Completed", "Donghua", TvType.Anime, setOf("action", "fantasy", "donghua"), 43, "https://cdn.myanimelist.net/images/anime/1186/151163l.jpg", "8.20")
+        SourceSeries(139, "Stellar Transformation 7th Season", "stellar-transformation-7th-season", "https://cdn.myanimelist.net/images/anime/1147/156957l.jpg", "Donghua", "Completed", TvType.Anime, 12, 2026, null, setOf("action", "adventure", "fantasy", "donghua"), updated = true),
+        SourceSeries(119, "Shrouding the Heavens: The Imperial Path", "shrouding-the-heavens-the-imperial-path", "https://cdn.myanimelist.net/images/anime/1017/156548l.jpg", "Donghua", "Completed", TvType.AnimeMovie, 1, 2026, null, setOf("action", "adventure", "fantasy", "martial-arts", "xianxia", "donghua")),
+        SourceSeries(74, "Long Hun", "long-hun", "https://cdn.myanimelist.net/images/anime/1878/153807l.jpg", "Donghua", "Completed", TvType.Anime, 8, 2025, 8.50, setOf("action", "fantasy", "donghua")),
+        SourceSeries(71, "Wu Dong Qian Kun 6th Season", "wu-dong-qian-kun-6th-season", "https://cdn.myanimelist.net/images/anime/1937/151456l.jpg", "Donghua", "Completed", TvType.Anime, 12, 2025, 9.00, setOf("action", "fantasy", "martial-arts", "donghua")),
+        SourceSeries(70, "Back as Immortal Lord", "back-as-immortal-lord", "https://cdn.myanimelist.net/images/anime/1109/153446l.jpg", "Donghua", "Completed", TvType.Anime, 16, 2025, null, setOf("action", "fantasy", "donghua")),
+        SourceSeries(68, "Eternal Sword Emperor", "eternal-sword-emperor", "https://cdn.myanimelist.net/images/anime/1794/151549l.jpg", "Donghua", "Completed", TvType.Anime, 40, 2025, 7.80, setOf("action", "fantasy", "martial-arts", "donghua")),
+        SourceSeries(65, "Legend of the Misty Sword Immortal", "legend-of-the-misty-sword-immortal", "https://cdn.myanimelist.net/images/anime/1600/151290l.jpg", "Donghua", "Completed", TvType.Anime, 40, 2025, 7.50, setOf("action", "fantasy", "martial-arts", "donghua")),
+        SourceSeries(64, "Throne of Ten Thousand Swords", "throne-of-ten-thousand-swords", "https://cdn.myanimelist.net/images/anime/1098/151287l.webp", "Donghua", "Completed", TvType.Anime, 40, 2025, 7.80, setOf("action", "fantasy", "martial-arts", "wuxia", "donghua")),
+        SourceSeries(63, "Long March to the Stars", "long-march-to-the-stars", "https://cdn.myanimelist.net/images/anime/1273/151289l.jpg", "Donghua", "Completed", TvType.Anime, 4, 2025, 8.20, setOf("action", "adventure", "sci-fi", "donghua")),
+        SourceSeries(62, "Zi Chuan 2nd Season", "zi-chuan-2nd-season", "https://cdn.myanimelist.net/images/anime/1186/151163l.jpg", "Donghua", "Completed", TvType.Anime, 43, 2025, 8.20, setOf("action", "fantasy", "donghua"))
     )
 
-    private fun seedUrl(seed: SeedSeries): String = "$mainUrl/series/${seed.id}"
+    private fun seriesUrl(item: SourceSeries): String = "$mainUrl/series/${item.id}"
+    private fun legacySeriesUrl(item: SourceSeries): String = "$mainUrl/series/${item.id}/${item.slug}"
 
-    private fun SeedSeries.toSeedSearchResponse(): SearchResponse {
-        return newAnimeSearchResponse(title, seedUrl(this), type) {
-            posterUrl = this@toSeedSearchResponse.poster
-            score = this@toSeedSearchResponse.score?.toDoubleOrNull()?.let { com.lagradost.cloudstream3.Score.from10(it) }
+    private fun SourceSeries.toSearchResponse(): SearchResponse {
+        return newAnimeSearchResponse(title, seriesUrl(this), type) {
+            posterUrl = poster
+            score = this@toSearchResponse.score?.let { com.lagradost.cloudstream3.Score.from10(it) }
         }
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val fetched = fetchCatalog(request.data, page)
-            .distinctBy { it.url }
+        val live = if (page == 1) fetchSourceCatalog(request.data) else emptyList()
+        val items = live.ifEmpty { sourceItemsFor(request.data) }
             .filter { it.name.isNotBlank() && !isBadTitle(it.name) }
-        val items = fetched.ifEmpty { fallbackItemsFor(request.data) }
             .distinctBy { it.url }
-            .filter { it.name.isNotBlank() && !isBadTitle(it.name) }
-
-        return newHomePageResponse(
-            request.name,
-            items,
-            hasNext = fetched.isNotEmpty() && page < 10
-        )
+        return newHomePageResponse(request.name, items, hasNext = false)
     }
 
-    private suspend fun fetchCatalog(data: String, page: Int): List<SearchResponse> {
+    private fun sourceItemsFor(data: String): List<SearchResponse> {
+        val items = when (data.lowercase()) {
+            "featured" -> sourceSeries.filter { it.featured }
+            "updated" -> sourceSeries.filter { it.updated }
+            "ongoing" -> sourceSeries.filter { it.status.equals("Ongoing", true) }
+            "completed" -> sourceSeries.filter { it.status.equals("Completed", true) }
+            "anime" -> sourceSeries.filter { it.kind.equals("Anime", true) }
+            "donghua", "all" -> sourceSeries.filter { it.kind.equals("Donghua", true) }
+            else -> sourceSeries
+        }
+        return items.ifEmpty { sourceSeries }.map { it.toSearchResponse() }
+    }
+
+    private suspend fun fetchSourceCatalog(data: String): List<SearchResponse> {
+        val urls = when (data.lowercase()) {
+            "featured" -> listOf(mainUrl)
+            "updated" -> listOf("$mainUrl/browse?sort=updated")
+            "ongoing" -> listOf("$mainUrl/browse?status=Ongoing")
+            "completed" -> listOf("$mainUrl/browse?status=Completed")
+            "anime" -> listOf("$mainUrl/browse?type=Anime")
+            "donghua", "all" -> listOf("$mainUrl/browse?type=Donghua", "$mainUrl/browse")
+            else -> listOf("$mainUrl/browse")
+        }
+
         val results = linkedMapOf<String, SearchResponse>()
-
-        buildSourceCandidates(data, page).forEach { url ->
-            val response = runCatching {
-                app.get(url, headers = headers, referer = mainUrl, timeout = 12L)
-            }.getOrNull() ?: return@forEach
-
+        urls.forEach { url ->
+            val response = runCatching { app.get(url, headers = headers, referer = mainUrl, timeout = 8L) }.getOrNull() ?: return@forEach
             val raw = response.text.cleanEscaped()
-            parseApiCards(raw, url).forEach { results[it.url] = it }
+            parseMarkdownLikeCards(raw).forEach { results[it.url] = it }
             parseHtmlCards(response.document).forEach { results[it.url] = it }
-            parseHtmlCards(Jsoup.parse(raw)).forEach { results[it.url] = it }
             parseRawSeriesLinks(raw).forEach { results[it.url] = it }
         }
-
-        return results.values.toList()
+        return results.values
+            .filter { !isBadTitle(it.name) }
+            .filterNot { it.name.equals("Beranda", true) || it.name.equals("Donghua Terbaru", true) }
+            .toList()
     }
 
-    private fun buildSourceCandidates(data: String, page: Int): List<String> {
-        val clean = data.trim('/').trim()
-        if (clean.startsWith("home:")) return listOf(mainUrl)
-        val query = clean.substringAfter("?", "")
-        val apiQuery = when {
-            query.isNotBlank() -> query
-            clean == "browse" -> ""
-            else -> clean
-        }
-
-        val apiSort = when {
-            clean.contains("sort=updated", true) -> "sort=updated"
-            clean.contains("sort=popular", true) -> "sort=popular"
-            clean.contains("sort=latest", true) -> "sort=latest"
-            clean.contains("status=", true) -> query
-            clean.contains("type=", true) -> query
-            clean.contains("genre=", true) -> query
-            else -> apiQuery
-        }
-
-        val candidates = linkedSetOf<String>()
-        fun addWithPage(base: String) {
-            candidates.add(if (base.contains("?")) "$base&page=$page" else "$base?page=$page")
-        }
-
-        if (clean.contains("sort=updated", true)) {
-            addWithPage("$mainUrl/api/episodes?sort=latest")
-            addWithPage("$mainUrl/api/updates")
-            addWithPage("$mainUrl/api/watch")
-            addWithPage("$mainUrl/$clean")
-        }
-
-        addWithPage("$mainUrl/api/series${if (apiSort.isNotBlank()) "?$apiSort" else ""}")
-        addWithPage("$mainUrl/api/browse${if (apiSort.isNotBlank()) "?$apiSort" else ""}")
-        addWithPage("$mainUrl/browse${if (query.isNotBlank()) "?$query" else ""}")
-        addWithPage("$mainUrl/$clean")
-        addWithPage("$mainUrl/browse")
-        addWithPage("$mainUrl/api/series")
-        return candidates.toList()
-    }
-
-    private fun fallbackItemsFor(data: String): List<SearchResponse> {
-        val clean = data.lowercase()
-        val queryValue = runCatching {
-            URLDecoder.decode(clean.substringAfter("=", ""), "UTF-8")
-        }.getOrDefault(clean.substringAfter("=", "")).lowercase()
-
-        val filtered = when {
-            clean.contains("home:featured") -> seedSeries.filter { it.featured }
-            clean.contains("sort=updated") -> seedSeries.filter { it.id in setOf(26, 84, 24, 12, 136, 11, 29, 139, 83, 1) }
-            clean.contains("status=ongoing") -> seedSeries.filter { it.status.equals("Ongoing", true) }
-            clean.contains("status=completed") -> seedSeries.filter { it.status.equals("Completed", true) }
-            clean.contains("type=anime") -> seedSeries.filter { it.mediaKind.equals("Anime", true) }
-            clean.contains("type=donghua") || clean == "browse" -> seedSeries.filter { it.mediaKind.equals("Donghua", true) }
-            clean.contains("type=movie") -> seedSeries.filter { it.type == TvType.AnimeMovie }
-            clean.contains("type=ova") -> seedSeries.filter { it.type == TvType.OVA }
-            clean.contains("genre=") -> seedSeries.filter { queryValue in it.genres.map { genre -> genre.lowercase() } }
-            clean.contains("sort=popular") -> seedSeries.filter { it.featured }.ifEmpty { seedSeries.take(10) }
-            else -> seedSeries
-        }
-        return (if (filtered.isNotEmpty()) filtered else seedSeries.take(10)).map { it.toSeedSearchResponse() }
-    }
-
-    private fun parseApiCards(text: String, baseUrl: String): List<SearchResponse> {
+    private fun parseMarkdownLikeCards(text: String): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
         val clean = text.cleanEscaped()
-
-        Regex("""\{[^{}]*(?:title|name|slug|poster|cover|image|thumbnail|watch_url|series_id|episode)[^{}]*\}""", RegexOption.IGNORE_CASE)
-            .findAll(clean)
-            .forEach { match ->
-                val block = match.value
-                val title = listOfNotNull(
-                    extractJsonString(block, "title"),
-                    extractJsonString(block, "name"),
-                    extractJsonString(block, "seriesTitle"),
-                    extractJsonString(block, "anime_title")
-                ).firstOrNull { it.isNotBlank() && !isBadTitle(it) }?.cleanTitle() ?: return@forEach
-
-                val id = extractJsonValue(block, "id")
-                    ?: extractJsonValue(block, "seriesId")
-                    ?: extractJsonValue(block, "series_id")
-                val slug = extractJsonString(block, "slug")
-                    ?: title.slugify()
-                val rawUrl = listOfNotNull(
-                    extractJsonString(block, "url"),
-                    extractJsonString(block, "href"),
-                    extractJsonString(block, "link"),
-                    extractJsonString(block, "watch_url"),
-                    extractJsonString(block, "series_url")
-                ).firstOrNull { it.isNotBlank() }
-
-                val href = when {
-                    rawUrl != null -> normalizeUrl(rawUrl, baseUrl)
-                    id != null -> "$mainUrl/series/$id/$slug"
-                    slug.contains("/series/", true) -> normalizeUrl(slug, baseUrl)
-                    else -> "$mainUrl/series/$slug"
-                }
-
-                if (!href.startsWith(mainUrl) || isBlockedCatalogUrl(href)) return@forEach
-
-                val poster = listOfNotNull(
-                    extractJsonString(block, "poster"),
-                    extractJsonString(block, "cover"),
-                    extractJsonString(block, "image"),
-                    extractJsonString(block, "thumbnail"),
-                    extractJsonString(block, "thumb")
-                ).firstOrNull { it.isNotBlank() }?.let { normalizeUrl(it, baseUrl) }
-
-                results[href] = newAnimeSearchResponse(title, href, getTypeFromText("$title $href")) {
+        Regex(
+            """\[!\[([^\]]+)\]\(([^)]+)\)[\s\S]{0,500}?\]\((https?://reynime\.my\.id/series/\d+[^)]*|/series/\d+[^)]*)\)""",
+            RegexOption.IGNORE_CASE
+        ).findAll(clean).forEach { match ->
+            val title = match.groupValues[1].cleanTitle()
+            val poster = normalizePoster(match.groupValues[2])
+            val href = normalizeUrl(match.groupValues[3], mainUrl).substringBefore("?")
+            if (!isBadTitle(title) && href.startsWith(mainUrl) && !isBlockedCatalogUrl(href)) {
+                results[href] = newAnimeSearchResponse(title, href, findTypeFromSeedOrText(href, title)) {
                     posterUrl = poster
                 }
             }
-
+        }
         return results.values.toList()
     }
 
     private fun parseHtmlCards(document: Document): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
-        document.select(
-            "article:has(a):has(img), .card:has(a):has(img), .series-card:has(a), .anime-card:has(a), " +
-                ".grid a[href*='/series/'], a[href*='/series/']:has(img), a[href*='/watch/']:has(img), " +
-                "a[href*='/series/']"
-        ).forEach { element ->
-            element.toSearchResult()?.let { results[it.url] = it }
-        }
+        document.select("a[href*='/series/']:has(img), article:has(a[href*='/series/']):has(img), .card:has(a[href*='/series/']):has(img)")
+            .forEach { element ->
+                element.toSearchResult()?.let { result -> results[result.url] = result }
+            }
         return results.values.toList()
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val anchor = if (this.`is`("a[href]")) this else selectFirst("a[href*='/series/'], a[href*='/watch/'], a[href]") ?: return null
-        val rawHref = anchor.attr("href").trim()
-        val href = fixUrlNull(rawHref)?.let { normalizeUrl(it, mainUrl) } ?: return null
+        val anchor = if (this.`is`("a[href]")) this else selectFirst("a[href*='/series/']") ?: return null
+        val href = normalizeUrl(anchor.attr("href"), mainUrl).substringBefore("?")
         if (!href.startsWith(mainUrl) || isBlockedCatalogUrl(href)) return null
 
         val image = selectFirst("img") ?: anchor.selectFirst("img")
-        val poster = image?.getImageAttr()?.let { normalizeUrl(it, href) }
-
         val title = listOf(
-            selectFirst("h1, h2, h3, .title, .name, .font-semibold, .text-lg, .text-xl")?.text(),
+            image?.attr("alt"),
             anchor.attr("title"),
             anchor.attr("aria-label"),
-            image?.attr("alt"),
-            anchor.text(),
-            href.substringAfterLast("/").replace("-", " ")
+            selectFirst("h1,h2,h3,.title,.name,.font-semibold,.text-lg,.text-xl")?.text(),
+            anchor.text()
         ).firstOrNull { !it.isNullOrBlank() && !isBadTitle(it) }?.cleanTitle() ?: return null
 
-        return newAnimeSearchResponse(title, href, getTypeFromText("$title $href")) {
+        if (title.equals("Beranda", true) || title.equals("Donghua Terbaru", true)) return null
+
+        val poster = image?.getImageAttr()?.let { normalizePoster(normalizeUrl(it, href)) }
+            ?: findSeedFromUrl(href)?.poster
+
+        return newAnimeSearchResponse(title, href, findTypeFromSeedOrText(href, title)) {
             posterUrl = poster
         }
     }
@@ -317,21 +230,24 @@ class ReynimeProvider : MainAPI() {
     private fun parseRawSeriesLinks(text: String): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
         val clean = text.cleanEscaped()
-        Regex("""(?:href|url|to)=['\"]([^'\"]*/(?:series|watch)/[^'\"]+)['\"]|['\"]([^'\"]*/(?:series|watch)/[^'\"]+)['\"]""", RegexOption.IGNORE_CASE)
+        Regex("""(?:href|url|to)=['\"]([^'\"]*/series/\d+[^'\"]*)['\"]|['\"]([^'\"]*/series/\d+[^'\"]*)['\"]""", RegexOption.IGNORE_CASE)
             .findAll(clean)
             .forEach { match ->
                 val raw = match.groupValues.drop(1).firstOrNull { it.isNotBlank() } ?: return@forEach
-                val href = normalizeUrl(raw, mainUrl)
+                val href = normalizeUrl(raw, mainUrl).substringBefore("?")
                 if (!href.startsWith(mainUrl) || isBlockedCatalogUrl(href)) return@forEach
-                val nearby = clean.substring((match.range.first - 800).coerceAtLeast(0), (match.range.last + 1000).coerceAtMost(clean.length))
+                val nearby = clean.substring((match.range.first - 900).coerceAtLeast(0), (match.range.last + 1300).coerceAtMost(clean.length))
+                val seed = findSeedFromUrl(href)
                 val title = listOfNotNull(
-                    extractJsonString(nearby, "title"),
-                    extractJsonString(nearby, "name"),
+                    seed?.title,
+                    Regex("""!\[([^\]]+)\]\(""", RegexOption.IGNORE_CASE).find(nearby)?.groupValues?.getOrNull(1),
                     Regex("""(?:alt|title)=['\"]([^'\"]+)['\"]""", RegexOption.IGNORE_CASE).find(nearby)?.groupValues?.getOrNull(1),
-                    href.substringAfterLast("/").replace("-", " ")
+                    extractJsonString(nearby, "title"),
+                    extractJsonString(nearby, "name")
                 ).firstOrNull { it.isNotBlank() && !isBadTitle(it) }?.cleanTitle() ?: return@forEach
-                val poster = findImageNear(nearby)?.let { normalizeUrl(it, href) }
-                results[href] = newAnimeSearchResponse(title, href, getTypeFromText("$title $href")) { posterUrl = poster }
+                if (title.equals("Beranda", true) || title.equals("Donghua Terbaru", true)) return@forEach
+                val poster = findImageNear(nearby)?.let { normalizePoster(normalizeUrl(it, href)) } ?: seed?.poster
+                results[href] = newAnimeSearchResponse(title, href, seed?.type ?: findTypeFromSeedOrText(href, title)) { posterUrl = poster }
             }
         return results.values.toList()
     }
@@ -344,103 +260,75 @@ class ReynimeProvider : MainAPI() {
         val encoded = URLEncoder.encode(keyword, "UTF-8")
         val results = linkedMapOf<String, SearchResponse>()
         listOf(
-            "$mainUrl/api/search?q=$encoded",
-            "$mainUrl/api/series?search=$encoded",
-            "$mainUrl/api/series?q=$encoded",
             "$mainUrl/browse?search=$encoded",
             "$mainUrl/search?q=$encoded",
-            "$mainUrl/?s=$encoded"
+            "$mainUrl/api/series?search=$encoded",
+            "$mainUrl/api/search?q=$encoded"
         ).forEach { url ->
-            val response = runCatching { app.get(url, headers = headers, referer = mainUrl, timeout = 12L) }.getOrNull() ?: return@forEach
-            parseApiCards(response.text.cleanEscaped(), url).forEach { results[it.url] = it }
+            val response = runCatching { app.get(url, headers = headers, referer = mainUrl, timeout = 8L) }.getOrNull() ?: return@forEach
+            parseMarkdownLikeCards(response.text).forEach { results[it.url] = it }
             parseHtmlCards(response.document).forEach { results[it.url] = it }
-            parseRawSeriesLinks(response.text.cleanEscaped()).forEach { results[it.url] = it }
+            parseRawSeriesLinks(response.text).forEach { results[it.url] = it }
         }
         if (results.isNotEmpty()) return results.values.toList()
-        return seedSeries.filter { it.title.contains(keyword, true) || it.slug.contains(keyword.slugify(), true) }
-            .map { it.toSeedSearchResponse() }
+        return sourceSeries.filter {
+            it.title.contains(keyword, true) || it.slug.contains(keyword.slugify(), true)
+        }.ifEmpty { sourceSeries.take(8) }.map { it.toSearchResponse() }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val pageUrl = normalizeUrl(url, mainUrl).substringBefore("#")
-        val response = runCatching { app.get(pageUrl, headers = headers, referer = mainUrl, timeout = 15L) }.getOrNull()
+        val pageUrl = normalizeUrl(url, mainUrl).substringBefore("#").substringBefore("?")
         val seed = findSeedFromUrl(pageUrl)
-        if (response == null) return fallbackLoad(pageUrl, seed)
+        val response = runCatching { app.get(pageUrl, headers = headers, referer = mainUrl, timeout = 10L) }.getOrNull()
+        val html = response?.text?.cleanEscaped().orEmpty()
+        val document = response?.document ?: Jsoup.parse("")
 
-        val document = response.document
-        val html = response.text.cleanEscaped()
-        val title = listOf(
+        val title = listOfNotNull(
             seed?.title,
             extractJsonString(html, "title"),
             extractJsonString(html, "name"),
             document.selectFirst("meta[property=og:title]")?.attr("content"),
-            document.selectFirst("h1, .text-2xl, .text-3xl, .font-bold, .font-semibold")?.text(),
-            pageUrl.substringAfterLast("/").replace("-", " ")
-        ).firstOrNull { !it.isNullOrBlank() && !isBadTitle(it) }?.cleanTitle() ?: name
+            document.selectFirst("h1, .text-2xl, .text-3xl, .font-bold, .font-semibold")?.text()
+        ).firstOrNull { it.isNotBlank() && !isBadTitle(it) }
+            ?.cleanTitle()
+            ?: pageUrl.substringAfterLast("/").replace("-", " ").cleanTitle().ifBlank { name }
 
-        val poster = listOf(
+        val poster = listOfNotNull(
+            seed?.poster,
             extractJsonString(html, "poster"),
             extractJsonString(html, "cover"),
             extractJsonString(html, "image"),
             document.selectFirst("meta[property=og:image]")?.attr("content"),
-            document.selectFirst("img[alt*='$title'], img.h-full, img.w-full, .poster img, .cover img, img")?.getImageAttr(),
-            seed?.poster
-        ).firstOrNull { !it.isNullOrBlank() }?.let { normalizeUrl(it, pageUrl) }
-            ?: seed?.poster
-            ?: "https://cdn.myanimelist.net/images/anime/1457/152289l.jpg"
+            document.selectFirst("img[alt*='${title.take(24)}'], img.h-full, img.w-full, .poster img, .cover img, img")?.getImageAttr()
+        ).firstOrNull { it.isNotBlank() }?.let { normalizePoster(normalizeUrl(it, pageUrl)) }
 
-        val description = listOf(
+        val description = listOfNotNull(
             seed?.description,
             extractJsonString(html, "description"),
             extractJsonString(html, "synopsis"),
             extractJsonString(html, "overview"),
             document.selectFirst("meta[name=description]")?.attr("content"),
             document.selectFirst(".synopsis, .description, .desc, article p, main p")?.text()
-        ).firstOrNull { !it.isNullOrBlank() && it.length > 20 && !isBadTitle(it) }?.cleanTitle()
+        ).firstOrNull { it.isNotBlank() && it.length > 20 && !isBadTitle(it) }?.cleanTitle()
 
         val tags = document.select("a[href*='genre'], a[href*='tag'], .genre a, .genres a, .tags a")
             .map { it.text().trim() }
             .filter { it.isNotBlank() && !isBadTitle(it) }
             .distinct()
-            .ifEmpty { seed?.genres?.map { it.cleanTitle() }.orEmpty() }
+            .ifEmpty { seed?.genres?.map { it.replace('-', ' ').cleanTitle() }.orEmpty() }
+            .ifEmpty { listOf(seed?.kind ?: "Donghua") }
 
         val episodes = parseEpisodes(document, html, pageUrl, poster)
-            .ifEmpty { fallbackEpisodes(pageUrl, seed, title, poster, description) }
+            .ifEmpty { fallbackEpisodes(pageUrl, seed, poster, description) }
 
-        return newAnimeLoadResponse(title, pageUrl, seed?.type ?: getTypeFromText("$title ${tags.joinToString(" ")} $pageUrl")) {
+        return newAnimeLoadResponse(title, seed?.let { seriesUrl(it) } ?: pageUrl, seed?.type ?: findTypeFromSeedOrText(pageUrl, title)) {
             engName = title
             posterUrl = poster
             backgroundPosterUrl = poster
             plot = description ?: "Streaming Donghua subtitle Indonesia di Reynime."
             this.tags = tags
             this.episodes = hashMapOf(DubStatus.Subbed to episodes)
-            recommendations = parseHtmlCards(document).filter { it.url != pageUrl }.distinctBy { it.url }
-        }
-    }
-
-    private suspend fun fallbackLoad(url: String, seed: SeedSeries? = findSeedFromUrl(url)): LoadResponse {
-        val title = seed?.title ?: url.substringAfterLast("/").replace("-", " ").cleanTitle().ifBlank { name }
-        val poster = seed?.poster ?: "https://cdn.myanimelist.net/images/anime/1457/152289l.jpg"
-        val episodes = fallbackEpisodes(seed?.let { seedUrl(it) } ?: url, seed, title, poster, "Streaming Donghua subtitle Indonesia di Reynime.")
-        return newAnimeLoadResponse(title, seed?.let { seedUrl(it) } ?: url, seed?.type ?: TvType.Anime) {
-            engName = title
-            posterUrl = poster
-            backgroundPosterUrl = poster
-            plot = "Streaming Donghua subtitle Indonesia di Reynime."
-            tags = seed?.genres?.map { it.cleanTitle() } ?: listOf("Donghua")
-            this.episodes = hashMapOf(DubStatus.Subbed to episodes)
-        }
-    }
-
-    private fun fallbackEpisodes(baseUrl: String, seed: SeedSeries?, title: String, poster: String?, description: String?): List<Episode> {
-        val latest = seed?.latestEpisode?.coerceAtLeast(1) ?: 1
-        return (1..latest).map { ep ->
-            newEpisode("${baseUrl.substringBefore("#")}#episode-$ep") {
-                name = "Episode $ep"
-                episode = ep
-                posterUrl = poster
-                this.description = description
-            }
+            recommendations = sourceSeries.filter { it.id != seed?.id }.take(12).map { it.toSearchResponse() }
         }
     }
 
@@ -448,27 +336,11 @@ class ReynimeProvider : MainAPI() {
         val results = linkedMapOf<String, Episode>()
         document.select("a[href*='/watch/'], a[href*='/episode/'], a[href*='/stream/'], button[data-url], [data-url*='/watch/']")
             .forEachIndexed { index, element ->
-                val raw = element.attr("href").ifBlank { element.attr("data-url") }.ifBlank { element.attr("data-href") }.trim()
-                val href = normalizeUrl(raw, pageUrl)
+                val raw = element.attr("href").ifBlank { element.attr("data-url") }.ifBlank { element.attr("data-href") }
+                val href = normalizeUrl(raw, pageUrl).substringBefore("?")
                 if (!href.startsWith(mainUrl) || isBlockedCatalogUrl(href)) return@forEachIndexed
                 val label = element.text().ifBlank { element.attr("title") }.cleanTitle()
-                val ep = extractEpisodeNumber(label, href) ?: index + 1
-                results[href] = newEpisode(href) {
-                    name = label.ifBlank { "Episode $ep" }
-                    episode = ep
-                    posterUrl = poster
-                }
-            }
-
-        Regex("""[\"'](?:url|href|watch_url|episode_url)[\"']\s*:\s*[\"']([^\"']*/(?:watch|episode|stream)/[^\"']+)[\"']""", RegexOption.IGNORE_CASE)
-            .findAll(html)
-            .forEachIndexed { index, match ->
-                val href = normalizeUrl(match.groupValues[1], pageUrl)
-                if (!href.startsWith(mainUrl) || isBlockedCatalogUrl(href)) return@forEachIndexed
-                val nearby = html.substring((match.range.first - 600).coerceAtLeast(0), (match.range.last + 800).coerceAtMost(html.length))
-                val label = listOfNotNull(extractJsonString(nearby, "title"), extractJsonString(nearby, "name"), extractJsonString(nearby, "episode"))
-                    .firstOrNull { it.isNotBlank() }?.cleanTitle().orEmpty()
-                val ep = extractEpisodeNumber(label, href) ?: index + 1
+                val ep = extractEpisodeNumber(label, href) ?: (index + 1)
                 results[href] = newEpisode(href) {
                     name = label.ifBlank { "Episode $ep" }
                     episode = ep
@@ -477,21 +349,37 @@ class ReynimeProvider : MainAPI() {
             }
 
         Regex("""\bEP\s*(\d{1,4})\b|\bEpisode\s*(\d{1,4})\b""", RegexOption.IGNORE_CASE)
-            .findAll(document.text())
+            .findAll("$html ${document.text()}")
             .mapNotNull { it.groupValues.drop(1).firstOrNull { number -> number.isNotBlank() }?.toIntOrNull() }
             .distinct()
             .sorted()
             .forEach { ep ->
-                val epUrl = "$pageUrl#episode-$ep"
-                if (!results.containsKey(epUrl)) {
-                    results[epUrl] = newEpisode(epUrl) {
-                        name = "Episode $ep"
-                        episode = ep
-                        posterUrl = poster
-                    }
+                val seed = findSeedFromUrl(pageUrl)
+                val data = seed?.let { watchUrl(it, ep) } ?: "$pageUrl#episode-$ep"
+                results[data] = newEpisode(data) {
+                    name = "Episode $ep"
+                    episode = ep
+                    posterUrl = poster
                 }
             }
         return results.values.sortedBy { it.episode ?: Int.MAX_VALUE }
+    }
+
+    private fun fallbackEpisodes(pageUrl: String, seed: SourceSeries?, poster: String?, description: String?): List<Episode> {
+        val latest = seed?.latestEpisode?.coerceAtLeast(1) ?: 1
+        return (1..latest).map { ep ->
+            val data = seed?.let { watchUrl(it, ep) } ?: "$pageUrl#episode-$ep"
+            newEpisode(data) {
+                name = if (latest == 1 && seed?.type == TvType.AnimeMovie) "Movie" else "Episode $ep"
+                episode = ep
+                posterUrl = poster
+                this.description = description
+            }
+        }
+    }
+
+    private fun watchUrl(seed: SourceSeries, episode: Int): String {
+        return "$mainUrl/watch/${seed.id}/$episode#series=${seed.id}&episode=$episode&slug=${seed.slug}"
     }
 
     override suspend fun loadLinks(
@@ -501,87 +389,92 @@ class ReynimeProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val requestedUrl = normalizeUrl(data, mainUrl)
-        val pageUrl = requestedUrl.substringBefore("#")
-        val episodeNumber = Regex("""#episode-(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
+        val id = Regex("""(?:/watch/|/series/)(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
+            ?: Regex("""series=(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
+        val episode = Regex("""/watch/\d+/(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
+            ?: Regex("""episode=(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
+            ?: Regex("""#episode-(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
+        val seed = id?.toIntOrNull()?.let { value -> sourceSeries.firstOrNull { it.id == value } }
+        val pageUrl = seed?.let { seriesUrl(it) } ?: requestedUrl.substringBefore("#")
 
         val directLinks = linkedSetOf<String>()
         val embedLinks = linkedSetOf<String>()
 
-        buildWatchCandidates(pageUrl, episodeNumber).forEach { url ->
-            val response = runCatching { app.get(url, headers = headers, referer = mainUrl, timeout = 12L) }.getOrNull() ?: return@forEach
+        buildPlaybackCandidates(pageUrl, seed, episode).forEach { url ->
+            val response = runCatching { app.get(url, headers = headers, referer = pageUrl, timeout = 10L) }.getOrNull() ?: return@forEach
             val raw = response.text.cleanEscaped()
             collectCandidatesFromDocument(response.document, url, directLinks, embedLinks)
             extractPlayableUrls(raw).forEach { addCandidate(it, url, directLinks, embedLinks) }
             extractSubtitles(raw, url, subtitleCallback)
-            decodeBase64Payloads(raw).forEach { decoded ->
-                extractPlayableUrls(decoded).forEach { addCandidate(it, url, directLinks, embedLinks) }
-            }
-            runCatching { if (!getPacked(raw).isNullOrEmpty()) getAndUnpack(raw) else null }
-                .getOrNull()
-                ?.cleanEscaped()
+            decodeBase64Payloads(raw).forEach { decoded -> extractPlayableUrls(decoded).forEach { addCandidate(it, url, directLinks, embedLinks) } }
+            runCatching { if (!getPacked(raw).isNullOrEmpty()) getAndUnpack(raw) else null }.getOrNull()?.cleanEscaped()
                 ?.let { unpacked -> extractPlayableUrls(unpacked).forEach { addCandidate(it, url, directLinks, embedLinks) } }
         }
 
         var found = false
         prioritizeEmbeds(embedLinks).take(12).forEach { embed ->
-            if (runCatching { loadExtractor(embed, pageUrl, subtitleCallback, callback) }.getOrDefault(false)) {
-                found = true
-            }
+            if (runCatching { loadExtractor(embed, pageUrl, subtitleCallback, callback) }.getOrDefault(false)) found = true
             resolveNestedLinks(embed, pageUrl).forEach { nested ->
                 if (emitDirectLink(nested, embed, callback)) found = true
             }
         }
-
         directLinks.forEach { link ->
             if (emitDirectLink(link, pageUrl, callback)) found = true
         }
-
         return found
     }
 
-    private fun buildWatchCandidates(pageUrl: String, episodeNumber: String?): List<String> {
-        val ids = linkedSetOf<String>()
-        runCatching { URI(pageUrl).path.trim('/').split('/').filter { it.isNotBlank() } }
-            .getOrDefault(emptyList())
-            .forEach { part -> if (part.length in 1..80) ids.add(part) }
-        episodeNumber?.let { ids.add(it) }
-
-        val candidates = linkedSetOf(pageUrl)
-        ids.take(8).forEach { id ->
-            val enc = URLEncoder.encode(id, "UTF-8")
-            candidates.add("$mainUrl/api/watch/$enc")
-            candidates.add("$mainUrl/api/episode/$enc")
-            candidates.add("$mainUrl/api/episodes/$enc")
-            candidates.add("$mainUrl/api/stream/$enc")
-            candidates.add("$mainUrl/api/video/$enc")
-            candidates.add("$mainUrl/watch/$enc")
+    private fun buildPlaybackCandidates(pageUrl: String, seed: SourceSeries?, episode: String?): List<String> {
+        val candidates = linkedSetOf<String>()
+        candidates.add(pageUrl)
+        seed?.let {
+            candidates.add(seriesUrl(it))
+            candidates.add(legacySeriesUrl(it))
+            episode?.let { ep ->
+                candidates.add("$mainUrl/watch/${it.id}/$ep")
+                candidates.add("$mainUrl/watch/${it.id}?episode=$ep")
+                candidates.add("$mainUrl/watch?series=${it.id}&episode=$ep")
+                candidates.add("$mainUrl/api/watch/${it.id}/$ep")
+                candidates.add("$mainUrl/api/watch?series=${it.id}&episode=$ep")
+                candidates.add("$mainUrl/api/stream?series=${it.id}&episode=$ep")
+                candidates.add("$mainUrl/api/episode?series=${it.id}&episode=$ep")
+                candidates.add("$mainUrl/api/episodes?series=${it.id}&episode=$ep")
+                candidates.add("$mainUrl/api/video?series=${it.id}&episode=$ep")
+            }
         }
         return candidates.toList()
     }
 
     private fun collectCandidatesFromDocument(document: Document, baseUrl: String, directLinks: MutableSet<String>, embedLinks: MutableSet<String>) {
-        document.select("meta[property=og:video], meta[property=og:video:url], meta[property=og:video:secure_url], meta[name=twitter:player], iframe[src], iframe[data-src], video[src], video source[src], source[src], embed[src], object[data], a[href], [data-url], [data-src], [data-video], [data-file], [data-embed], [data-iframe]")
-            .forEach { element ->
-                val raw = element.attr("content")
-                    .ifBlank { element.attr("data-video") }
-                    .ifBlank { element.attr("data-file") }
-                    .ifBlank { element.attr("data-url") }
-                    .ifBlank { element.attr("data-embed") }
-                    .ifBlank { element.attr("data-iframe") }
-                    .ifBlank { element.attr("data-src") }
-                    .ifBlank { element.attr("data") }
-                    .ifBlank { element.attr("src") }
-                    .ifBlank { element.attr("href") }
-                addCandidate(raw, baseUrl, directLinks, embedLinks)
-            }
+        document.select(
+            "meta[property=og:video], meta[property=og:video:url], meta[property=og:video:secure_url], meta[name=twitter:player], " +
+                "iframe[src], iframe[data-src], video[src], video source[src], source[src], embed[src], object[data], a[href], " +
+                "[data-url], [data-src], [data-video], [data-file], [data-embed], [data-iframe], [data-player]"
+        ).forEach { element ->
+            val raw = element.attr("content")
+                .ifBlank { element.attr("data-player") }
+                .ifBlank { element.attr("data-video") }
+                .ifBlank { element.attr("data-file") }
+                .ifBlank { element.attr("data-url") }
+                .ifBlank { element.attr("data-embed") }
+                .ifBlank { element.attr("data-iframe") }
+                .ifBlank { element.attr("data-src") }
+                .ifBlank { element.attr("data") }
+                .ifBlank { element.attr("src") }
+                .ifBlank { element.attr("href") }
+            addCandidate(raw, baseUrl, directLinks, embedLinks)
+        }
     }
 
     private suspend fun resolveNestedLinks(url: String, referer: String): List<String> {
         if (shouldSkipUrl(url)) return emptyList()
-        val response = runCatching { app.get(url, headers = headers, referer = referer, timeout = 12L) }.getOrNull() ?: return emptyList()
+        val response = runCatching { app.get(url, headers = headers, referer = referer, timeout = 10L) }.getOrNull() ?: return emptyList()
         val results = linkedSetOf<String>()
         val text = response.text.cleanEscaped()
-        collectCandidatesFromDocument(response.document, url, results, results)
+        val direct = linkedSetOf<String>()
+        val embed = linkedSetOf<String>()
+        collectCandidatesFromDocument(response.document, url, direct, embed)
+        results.addAll(direct)
         results.addAll(extractPlayableUrls(text))
         runCatching { if (!getPacked(text).isNullOrEmpty()) getAndUnpack(text) else null }
             .getOrNull()
@@ -609,14 +502,23 @@ class ReynimeProvider : MainAPI() {
                     source = name,
                     streamUrl = link,
                     referer = referer,
-                    headers = mapOf("User-Agent" to USER_AGENT, "Referer" to referer, "Origin" to mainUrl)
+                    headers = mapOf(
+                        "User-Agent" to USER_AGENT,
+                        "Referer" to referer,
+                        "Origin" to mainUrl
+                    )
                 ).forEach(callback)
                 true
             }.getOrDefault(false)
             if (generated) return true
         }
         callback(
-            newExtractorLink(name, name, link, if (isHlsLike(link)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
+            newExtractorLink(
+                name,
+                name,
+                link,
+                if (isHlsLike(link)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+            ) {
                 this.referer = referer
                 this.quality = qualityFromUrl(link).takeIf { it != Qualities.Unknown.value } ?: Qualities.P720.value
             }
@@ -626,11 +528,13 @@ class ReynimeProvider : MainAPI() {
 
     private suspend fun extractSubtitles(text: String, baseUrl: String, subtitleCallback: (SubtitleFile) -> Unit) {
         val clean = text.cleanEscaped()
-        Regex("""[\"'](?:label|lang|language)[\"']\s*:\s*[\"']([^\"']+)[\"'][^{}]{0,300}[\"'](?:file|url|src|path)[\"']\s*:\s*[\"']([^\"']+\.(?:vtt|srt|ass)[^\"']*)[\"']""", RegexOption.IGNORE_CASE)
-            .findAll(clean).forEach { match ->
-                val url = normalizeUrl(match.groupValues[2], baseUrl)
-                if (!shouldSkipUrl(url)) subtitleCallback(newSubtitleFile(normalizeSubtitleLabel(match.groupValues[1]), url))
-            }
+        Regex(
+            """[\"'](?:label|lang|language)[\"']\s*:\s*[\"']([^\"']+)[\"'][^{}]{0,300}[\"'](?:file|url|src|path)[\"']\s*:\s*[\"']([^\"']+\.(?:vtt|srt|ass)[^\"']*)[\"']""",
+            RegexOption.IGNORE_CASE
+        ).findAll(clean).forEach { match ->
+            val url = normalizeUrl(match.groupValues[2], baseUrl)
+            if (!shouldSkipUrl(url)) subtitleCallback(newSubtitleFile(normalizeSubtitleLabel(match.groupValues[1]), url))
+        }
         Regex("""https?://[^\"'\\\s<>]+?\.(?:vtt|srt|ass)(?:\?[^\"'\\\s<>]*)?""", RegexOption.IGNORE_CASE)
             .findAll(clean).forEach { match ->
                 val url = match.value.cleanEscaped()
@@ -651,18 +555,21 @@ class ReynimeProvider : MainAPI() {
             }
         }
         Regex("""https?%3A%2F%2F[^\"'\\\s<>]+?(?:\.m3u8|\.mp4|\.webm|\.mkv|\.txt|embed|player|stream)[^\"'\\\s<>]*""", RegexOption.IGNORE_CASE)
-            .findAll(clean).map { runCatching { URLDecoder.decode(it.value, "UTF-8") }.getOrDefault(it.value) }
+            .findAll(clean)
+            .map { runCatching { URLDecoder.decode(it.value, "UTF-8") }.getOrDefault(it.value) }
             .map { it.cleanEscaped().replace(".txt", ".m3u8") }
             .filterNot { isBadMediaUrl(it) || shouldSkipUrl(it) }
             .forEach { urls.add(it) }
         Regex("""(?:file|src|source|url|video|videoUrl|video_url|stream|streamUrl|stream_url|hls|hlsUrl|hls_url|embed|embedUrl|embed_url)\s*[:=]\s*[\"']([^\"']+)[\"']""", RegexOption.IGNORE_CASE)
-            .findAll(clean).mapNotNull { it.groupValues.getOrNull(1) }
+            .findAll(clean)
+            .mapNotNull { it.groupValues.getOrNull(1) }
             .map { it.cleanEscaped().replace(".txt", ".m3u8") }
             .filter { isDirectVideo(it) || isLikelyEmbed(it) }
             .filterNot { isBadMediaUrl(it) || shouldSkipUrl(it) }
             .forEach { urls.add(it) }
         Regex("""https?://[^\"'\\\s<>]+?(?:embed|player|stream|watch|video|filemoon|streamwish|wishfast|dood|streamtape|vidhide|vidguard|voe|mixdrop|mp4upload|ok\.ru|dailymotion|rumble)[^\"'\\\s<>]*""", RegexOption.IGNORE_CASE)
-            .findAll(clean).map { it.value.cleanEscaped() }
+            .findAll(clean)
+            .map { it.value.cleanEscaped() }
             .filterNot { isBadMediaUrl(it) || shouldSkipUrl(it) }
             .forEach { urls.add(it) }
         return urls.toList()
@@ -671,17 +578,25 @@ class ReynimeProvider : MainAPI() {
     private fun decodeBase64Payloads(text: String): List<String> {
         val results = linkedSetOf<String>()
         Regex("""[\"']([A-Za-z0-9+/=]{40,})[\"']""")
-            .findAll(text).mapNotNull { it.groupValues.getOrNull(1) }.take(30).forEach { token ->
-                runCatching { String(Base64.getDecoder().decode(token), Charsets.UTF_8) }.getOrNull()
+            .findAll(text)
+            .mapNotNull { it.groupValues.getOrNull(1) }
+            .take(30)
+            .forEach { token ->
+                runCatching { String(Base64.getDecoder().decode(token), Charsets.UTF_8) }
+                    .getOrNull()
                     ?.takeIf { it.contains("http", true) || it.contains("iframe", true) || it.contains("m3u8", true) }
                     ?.let { results.add(it.cleanEscaped()) }
             }
         return results.toList()
     }
 
-    private fun findSeedFromUrl(url: String): SeedSeries? {
+    private fun findSeedFromUrl(url: String): SourceSeries? {
         val value = url.lowercase()
-        return seedSeries.firstOrNull { value.contains("/series/${it.id}") || value.contains(it.slug.lowercase()) }
+        return sourceSeries.firstOrNull { value.contains("/series/${it.id}") || value.contains(it.slug.lowercase()) }
+    }
+
+    private fun findTypeFromSeedOrText(url: String, text: String): TvType {
+        return findSeedFromUrl(url)?.type ?: getTypeFromText(text)
     }
 
     private fun findImageNear(text: String): String? {
@@ -690,17 +605,21 @@ class ReynimeProvider : MainAPI() {
             .find(clean)?.groupValues?.getOrNull(1)?.let { return it }
         Regex("""[\"'](?:poster|cover|image|thumbnail|thumb|src)[\"']\s*:\s*[\"']([^\"']+?\.(?:jpg|jpeg|png|webp|avif)(?:\?[^\"']*)?)[\"']""", RegexOption.IGNORE_CASE)
             .find(clean)?.groupValues?.getOrNull(1)?.let { return it }
+        Regex("""!\[[^\]]*\]\(([^)]+?\.(?:jpg|jpeg|png|webp|avif)(?:\?[^)]*)?)\)""", RegexOption.IGNORE_CASE)
+            .find(clean)?.groupValues?.getOrNull(1)?.let { return it }
         return null
     }
 
     private fun extractJsonString(text: String, key: String): String? {
         return Regex("""[\"']${Regex.escape(key)}[\"']\s*:\s*[\"']((?:\\.|[^\"'\\])*)[\"']""", RegexOption.IGNORE_CASE)
-            .find(text)?.groupValues?.getOrNull(1)?.replace("\\/", "/")?.replace("\\u0026", "&")?.replace("\\\"", "\"")?.replace("\\n", " ")?.trim()
-    }
-
-    private fun extractJsonValue(text: String, key: String): String? {
-        return Regex("""[\"']${Regex.escape(key)}[\"']\s*:\s*[\"']?([A-Za-z0-9_-]+)[\"']?""", RegexOption.IGNORE_CASE)
-            .find(text)?.groupValues?.getOrNull(1)?.trim()
+            .find(text)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.replace("\\/", "/")
+            ?.replace("\\u0026", "&")
+            ?.replace("\\\"", "\"")
+            ?.replace("\\n", " ")
+            ?.trim()
     }
 
     private fun normalizeUrl(url: String, baseUrl: String): String {
@@ -714,7 +633,15 @@ class ReynimeProvider : MainAPI() {
         }
     }
 
-    private fun prioritizeEmbeds(links: Collection<String>): List<String> = links.filterNot { isBadMediaUrl(it) || shouldSkipUrl(it) }.distinct().sortedWith(compareBy<String> { hostPriority(it) }.thenBy { it.length })
+    private fun normalizePoster(url: String): String {
+        return url.replace("https://myanimelist.net/images/", "https://cdn.myanimelist.net/images/")
+            .replace("http://", "https://")
+    }
+
+    private fun prioritizeEmbeds(links: Collection<String>): List<String> = links
+        .filterNot { isBadMediaUrl(it) || shouldSkipUrl(it) }
+        .distinct()
+        .sortedWith(compareBy<String> { hostPriority(it) }.thenBy { it.length })
 
     private fun hostPriority(url: String): Int {
         val value = url.lowercase()
@@ -767,9 +694,9 @@ class ReynimeProvider : MainAPI() {
 
     private fun isBlockedCatalogUrl(url: String): Boolean {
         val path = runCatching { URI(url).path.trim('/').lowercase() }.getOrDefault(url.lowercase())
-        return path.isBlank() || path == "series" || path == "browse" || path.startsWith("genre") || path.startsWith("tag") ||
-            path.startsWith("search") || path.startsWith("login") || path.startsWith("register") || path.startsWith("privacy") ||
-            path.startsWith("contact") || path.startsWith("api")
+        return path.isBlank() || path == "series" || path == "browse" || path == "anime" || path == "donghua" ||
+            path.startsWith("genre") || path.startsWith("tag") || path.startsWith("search") || path.startsWith("login") ||
+            path.startsWith("register") || path.startsWith("privacy") || path.startsWith("contact") || path.startsWith("api")
     }
 
     private fun getTypeFromText(text: String): TvType = when {
@@ -808,12 +735,24 @@ class ReynimeProvider : MainAPI() {
 
     private fun isBadTitle(title: String): Boolean {
         val value = title.lowercase().trim()
-        return value.isBlank() || value == "home" || value == "login" || value == "register" || value == "search" ||
-            value == "genre" || value == "watch" || value == "episode" || value == "episodes" || value.contains("tentang reynime") ||
+        return value.isBlank() || value == "home" || value == "beranda" || value == "login" || value == "register" ||
+            value == "search" || value == "genre" || value == "watch" || value == "episode" || value == "episodes" ||
+            value == "donghua terbaru" || value.contains("join telegram") || value.contains("tentang reynime") ||
             value.contains("aktifkan javascript") || value.contains("nonton donghua sub indo gratis")
     }
 
-    private fun String.cleanEscaped(): String = this.replace("\\/", "/").replace("\\u0026", "&").replace("&amp;", "&").trim()
-    private fun String.cleanTitle(): String = this.replace("\\\"", "\"").replace("\\/", "/").replace(Regex("""\s+[-|]\s+Reynime\s*$""", RegexOption.IGNORE_CASE), "").replace(Regex("""\s+"""), " ").trim()
+    private fun String.cleanEscaped(): String = this
+        .replace("\\/", "/")
+        .replace("\\u0026", "&")
+        .replace("&amp;", "&")
+        .trim()
+
+    private fun String.cleanTitle(): String = this
+        .replace("\\\"", "\"")
+        .replace("\\/", "/")
+        .replace(Regex("""\s+[-|]\s+Reynime\s*$""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\s+"""), " ")
+        .trim()
+
     private fun String.slugify(): String = lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 }
