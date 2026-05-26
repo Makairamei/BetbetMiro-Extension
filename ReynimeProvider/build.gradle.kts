@@ -1,9 +1,9 @@
-version = 21
+version = 22
 
 cloudstream {
     language = "id"
     authors = listOf("BetbetMiro")
-    description = "Reynime provider with seed-first metadata, deterministic episodes, staged playback resolver and split backend collector, strict series-scoped backend parsing, emergency Dailymotion fallback, and resilient extraction for HLS, MP4, Rumble, and nested embeds."
+    description = "Reynime provider split into plugin, provider, models, seeds, parser, extractor and utils with seed-first catalog, backend episode probing, and resilient playback extraction."
 
     status = 1
 
