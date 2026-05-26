@@ -1,9 +1,9 @@
-version = 9
+version = 10
 
 cloudstream {
     language = "id"
     authors = listOf("BetbetMiro")
-    description = "Reynime provider using source-backed Reynime homepage rows with real posters and resilient browse/watch playback parsing."
+    description = "Reynime provider using source-backed Reynime homepage rows with real posters and compile-safe browse/watch playback parsing."
 
     status = 1
 

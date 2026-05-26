@@ -127,7 +127,6 @@ class ReynimeProvider : MainAPI() {
         return newAnimeSearchResponse(title, seedUrl(this), type) {
             posterUrl = this@toSeedSearchResponse.poster
             score = this@toSeedSearchResponse.score?.toDoubleOrNull()?.let { com.lagradost.cloudstream3.Score.from10(it) }
-            addSub(this@toSeedSearchResponse.latestEpisode)
         }
     }
 
