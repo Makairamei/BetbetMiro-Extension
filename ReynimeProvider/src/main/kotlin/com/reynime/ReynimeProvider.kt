@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.Episode
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
-import com.lagradost.cloudstream3.LoadResponse.Companion.addEpisodes
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainPageRequest
@@ -389,7 +388,7 @@ class ReynimeProvider : MainAPI() {
             backgroundPosterUrl = poster
             plot = description
             this.tags = tags
-            addEpisodes(DubStatus.Subbed, episodes)
+            this.episodes = hashMapOf(DubStatus.Subbed to episodes)
             addActors(actors)
             addTrailer(trailer)
             this.recommendations = recommendations
