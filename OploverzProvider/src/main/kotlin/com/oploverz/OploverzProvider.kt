@@ -203,6 +203,7 @@ class OploverzProvider : MainAPI() {
     }
 
     private fun Series.toSearchResult(): AnimeSearchResponse {
+        val seriesScore = score
         return newAnimeSearchResponse(
             title ?: "",
             "$mainUrl/series/${slug}",
@@ -210,7 +211,7 @@ class OploverzProvider : MainAPI() {
         ) {
             this.otherName = japaneseTitle
             this.posterUrl = poster
-            this.score = Score.from10(score)
+            this.score = Score.from10(seriesScore)
             addSub(totalEpisodes)
         }
     }

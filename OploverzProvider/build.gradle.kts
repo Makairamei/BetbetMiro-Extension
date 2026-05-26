@@ -1,9 +1,9 @@
-version = 32
+version = 33
 
 cloudstream {
     language = "id"
     authors = listOf("BetbetMiro")
-    description = "Movieon21 provider for tv.movieon21.mov with homepage categories, search, metadata, direct playback, iframe fallback, and download-host extraction."
+    description = "Oploverz provider for anime.oploverz.ac with source-backed anime categories, metadata, episode loading, and Oploverz host extraction."
 
     /**
      * Status int as the following:
@@ -15,9 +15,11 @@ cloudstream {
     status = 1
 
     tvTypes = listOf(
-        "Movie"
+        "Anime",
+        "AnimeMovie",
+        "OVA"
     )
 
     isCrossPlatform = false
-    iconUrl = "https://www.google.com/s2/favicons?domain=tv.movieon21.mov&sz=%size%"
+    iconUrl = "https://www.google.com/s2/favicons?domain=anime.oploverz.ac&sz=%size%"
 }
