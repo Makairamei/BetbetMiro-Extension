@@ -1,9 +1,9 @@
-version = 11
+version = 12
 
 cloudstream {
     language = "id"
     authors = listOf("BetbetMiro")
-    description = "Reynime provider rebuilt around source-backed homepage rows, real poster data, /series detail routes, and hardened watch/API playback probing."
+    description = "Reynime v12 provider with source-backed categories/detail pages and backend episode API playback for Rumble, HLS, MP4, and Dailymotion sources."
 
     status = 1
 

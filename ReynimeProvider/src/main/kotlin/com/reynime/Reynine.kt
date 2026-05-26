@@ -27,9 +27,13 @@ import com.lagradost.cloudstream3.utils.getPacked
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.plugins.BasePlugin
+import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.json.JSONArray
+import org.json.JSONObject
 import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -55,8 +59,18 @@ class ReynimeProvider : MainAPI() {
         "all" to "Daftar Donghua",
         "ongoing" to "Ongoing Series",
         "completed" to "Completed Series",
+        "donghua" to "Donghua",
         "anime" to "Anime",
-        "donghua" to "Donghua"
+        "genre:action" to "Action",
+        "genre:adventure" to "Adventure",
+        "genre:fantasy" to "Fantasy",
+        "genre:martial-arts" to "Martial Arts",
+        "genre:xuanhuan" to "Xuanhuan",
+        "genre:xianxia" to "Xianxia",
+        "genre:wuxia" to "Wuxia",
+        "genre:sci-fi" to "Sci-Fi",
+        "genre:romance" to "Romance",
+        "genre:comedy" to "Comedy"
     )
 
     private val headers = mapOf(
@@ -65,6 +79,13 @@ class ReynimeProvider : MainAPI() {
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer" to mainUrl
     )
+
+    private fun apiHeaders(): Map<String, String> {
+        return headers + mapOf(
+            "Accept" to "application/json,text/plain,text/html,*/*",
+            "X-Requested-With" to "XMLHttpRequest"
+        )
+    }
 
     private data class SourceSeries(
         val id: Int,
@@ -81,6 +102,14 @@ class ReynimeProvider : MainAPI() {
         val description: String = "Streaming Donghua subtitle Indonesia di Reynime.",
         val featured: Boolean = false,
         val updated: Boolean = false
+    )
+
+    private data class ApiEpisode(
+        val id: Int,
+        val episode: Int,
+        val title: String? = null,
+        val poster: String? = null,
+        val description: String? = null
     )
 
     private val sourceSeries = listOf(
@@ -138,33 +167,44 @@ class ReynimeProvider : MainAPI() {
     }
 
     private fun sourceItemsFor(data: String): List<SearchResponse> {
-        val items = when (data.lowercase()) {
-            "featured" -> sourceSeries.filter { it.featured }
-            "updated" -> sourceSeries.filter { it.updated }
-            "ongoing" -> sourceSeries.filter { it.status.equals("Ongoing", true) }
-            "completed" -> sourceSeries.filter { it.status.equals("Completed", true) }
-            "anime" -> sourceSeries.filter { it.kind.equals("Anime", true) }
-            "donghua", "all" -> sourceSeries.filter { it.kind.equals("Donghua", true) }
+        val key = data.lowercase()
+        val items = when {
+            key == "featured" -> sourceSeries.filter { it.featured }
+            key == "updated" -> sourceSeries.filter { it.updated }
+            key == "ongoing" -> sourceSeries.filter { it.status.equals("Ongoing", true) }
+            key == "completed" -> sourceSeries.filter { it.status.equals("Completed", true) }
+            key == "anime" -> sourceSeries.filter { it.kind.equals("Anime", true) }
+            key == "donghua" || key == "all" -> sourceSeries.filter { it.kind.equals("Donghua", true) }
+            key.startsWith("genre:") -> {
+                val genre = key.substringAfter("genre:")
+                sourceSeries.filter { item -> item.genres.any { it.equals(genre, true) } }
+            }
             else -> sourceSeries
         }
         return items.ifEmpty { sourceSeries }.map { it.toSearchResponse() }
     }
 
     private suspend fun fetchSourceCatalog(data: String): List<SearchResponse> {
-        val urls = when (data.lowercase()) {
-            "featured" -> listOf(mainUrl)
-            "updated" -> listOf("$mainUrl/browse?sort=updated")
-            "ongoing" -> listOf("$mainUrl/browse?status=Ongoing")
-            "completed" -> listOf("$mainUrl/browse?status=Completed")
-            "anime" -> listOf("$mainUrl/browse?type=Anime")
-            "donghua", "all" -> listOf("$mainUrl/browse?type=Donghua", "$mainUrl/browse")
-            else -> listOf("$mainUrl/browse")
+        val key = data.lowercase()
+        val urls = when {
+            key == "featured" -> listOf(mainUrl)
+            key == "updated" -> listOf("$mainUrl/browse?sort=updated", "$mainUrl/backend/api/series.php?sort=updated&limit=60")
+            key == "ongoing" -> listOf("$mainUrl/browse?status=Ongoing", "$mainUrl/backend/api/series.php?status=Ongoing&limit=60")
+            key == "completed" -> listOf("$mainUrl/browse?status=Completed", "$mainUrl/backend/api/series.php?status=Completed&limit=60")
+            key == "anime" -> listOf("$mainUrl/browse?type=Anime", "$mainUrl/backend/api/series.php?type=Anime&limit=60")
+            key == "donghua" || key == "all" -> listOf("$mainUrl/browse?type=Donghua", "$mainUrl/browse", "$mainUrl/backend/api/series.php?type=Donghua&limit=60")
+            key.startsWith("genre:") -> {
+                val genre = key.substringAfter("genre:")
+                listOf("$mainUrl/browse?genre=$genre", "$mainUrl/genre/$genre", "$mainUrl/tag/$genre", "$mainUrl/backend/api/series.php?genre=$genre&limit=60")
+            }
+            else -> listOf("$mainUrl/browse", "$mainUrl/backend/api/series.php?limit=60")
         }
 
         val results = linkedMapOf<String, SearchResponse>()
         urls.forEach { url ->
             val response = runCatching { app.get(url, headers = headers, referer = mainUrl, timeout = 8L) }.getOrNull() ?: return@forEach
             val raw = response.text.cleanEscaped()
+            parseApiSeriesCards(raw).forEach { results[it.url] = it }
             parseMarkdownLikeCards(raw).forEach { results[it.url] = it }
             parseHtmlCards(response.document).forEach { results[it.url] = it }
             parseRawSeriesLinks(raw).forEach { results[it.url] = it }
@@ -266,6 +306,7 @@ class ReynimeProvider : MainAPI() {
             "$mainUrl/api/search?q=$encoded"
         ).forEach { url ->
             val response = runCatching { app.get(url, headers = headers, referer = mainUrl, timeout = 8L) }.getOrNull() ?: return@forEach
+            parseApiSeriesCards(response.text).forEach { results[it.url] = it }
             parseMarkdownLikeCards(response.text).forEach { results[it.url] = it }
             parseHtmlCards(response.document).forEach { results[it.url] = it }
             parseRawSeriesLinks(response.text).forEach { results[it.url] = it }
@@ -284,22 +325,23 @@ class ReynimeProvider : MainAPI() {
         val document = response?.document ?: Jsoup.parse("")
 
         val title = listOfNotNull(
-            seed?.title,
             extractJsonString(html, "title"),
             extractJsonString(html, "name"),
             document.selectFirst("meta[property=og:title]")?.attr("content"),
-            document.selectFirst("h1, .text-2xl, .text-3xl, .font-bold, .font-semibold")?.text()
+            document.selectFirst("h1, .text-2xl, .text-3xl, .font-bold, .font-semibold")?.text(),
+            seed?.title
         ).firstOrNull { it.isNotBlank() && !isBadTitle(it) }
             ?.cleanTitle()
             ?: pageUrl.substringAfterLast("/").replace("-", " ").cleanTitle().ifBlank { name }
 
         val poster = listOfNotNull(
-            seed?.poster,
             extractJsonString(html, "poster"),
             extractJsonString(html, "cover"),
             extractJsonString(html, "image"),
+            extractJsonString(html, "thumbnail"),
             document.selectFirst("meta[property=og:image]")?.attr("content"),
-            document.selectFirst("img[alt*='${title.take(24)}'], img.h-full, img.w-full, .poster img, .cover img, img")?.getImageAttr()
+            document.selectFirst("img[alt*='${title.take(24)}'], img.h-full, img.w-full, .poster img, .cover img, img")?.getImageAttr(),
+            seed?.poster
         ).firstOrNull { it.isNotBlank() }?.let { normalizePoster(normalizeUrl(it, pageUrl)) }
 
         val description = listOfNotNull(
@@ -318,7 +360,8 @@ class ReynimeProvider : MainAPI() {
             .ifEmpty { seed?.genres?.map { it.replace('-', ' ').cleanTitle() }.orEmpty() }
             .ifEmpty { listOf(seed?.kind ?: "Donghua") }
 
-        val episodes = parseEpisodes(document, html, pageUrl, poster)
+        val episodes = seed?.let { fetchApiEpisodes(it.id, poster, description) }.orEmpty()
+            .ifEmpty { parseEpisodes(document, html, pageUrl, poster) }
             .ifEmpty { fallbackEpisodes(pageUrl, seed, poster, description) }
 
         return newAnimeLoadResponse(title, seed?.let { seriesUrl(it) } ?: pageUrl, seed?.type ?: findTypeFromSeedOrText(pageUrl, title)) {
@@ -330,6 +373,24 @@ class ReynimeProvider : MainAPI() {
             this.episodes = hashMapOf(DubStatus.Subbed to episodes)
             recommendations = sourceSeries.filter { it.id != seed?.id }.take(12).map { it.toSearchResponse() }
         }
+    }
+
+    private suspend fun fetchApiEpisodes(seriesId: Int, poster: String?, description: String?): List<Episode> {
+        val text = runCatching {
+            app.get(episodeListApi(seriesId), headers = apiHeaders(), referer = "$mainUrl/series/$seriesId", timeout = 12L).text
+        }.getOrNull().orEmpty()
+
+        return parseApiEpisodeList(text)
+            .distinctBy { it.id }
+            .sortedBy { it.episode }
+            .map { item ->
+                newEpisode(watchUrl(item.id, seriesId, item.episode)) {
+                    name = item.title?.cleanTitle()?.takeIf { it.isNotBlank() } ?: "Episode ${item.episode}"
+                    episode = item.episode
+                    posterUrl = item.poster?.let { normalizePoster(normalizeUrl(it, mainUrl)) } ?: poster
+                    this.description = item.description ?: description
+                }
+            }
     }
 
     private fun parseEpisodes(document: Document, html: String, pageUrl: String, poster: String?): List<Episode> {
@@ -382,6 +443,15 @@ class ReynimeProvider : MainAPI() {
         return "$mainUrl/watch/${seed.id}/$episode#series=${seed.id}&episode=$episode&slug=${seed.slug}"
     }
 
+    private fun watchUrl(episodeId: Int, seriesId: Int? = null, episode: Int? = null): String {
+        val meta = listOfNotNull(
+            seriesId?.let { "series=$it" },
+            episode?.let { "episode=$it" },
+            "episode_id=$episodeId"
+        ).joinToString("&")
+        return "$mainUrl/watch/$episodeId#$meta"
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -389,16 +459,27 @@ class ReynimeProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val requestedUrl = normalizeUrl(data, mainUrl)
-        val id = Regex("""(?:/watch/|/series/)(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
-            ?: Regex("""series=(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
-        val episode = Regex("""/watch/\d+/(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
-            ?: Regex("""episode=(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
+        val syntheticWatch = Regex("""/watch/(\d+)/(\d+)""").find(requestedUrl)
+        val directWatchEpisodeId = Regex("""/watch/(\d+)(?:[/?#]|$)""").find(requestedUrl)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.takeIf { syntheticWatch == null }
+            ?: Regex("""(?:episode_id|api_id|id)=(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
+        val seriesId = syntheticWatch?.groupValues?.getOrNull(1)
+            ?: Regex("""/series/(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
+            ?: Regex("""series(?:_id)?=(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
+        val episode = syntheticWatch?.groupValues?.getOrNull(2)
+            ?: Regex("""episode(?:_number)?=(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
             ?: Regex("""#episode-(\d+)""").find(requestedUrl)?.groupValues?.getOrNull(1)
-        val seed = id?.toIntOrNull()?.let { value -> sourceSeries.firstOrNull { it.id == value } }
+        val seed = seriesId?.toIntOrNull()?.let { value -> sourceSeries.firstOrNull { it.id == value } }
         val pageUrl = seed?.let { seriesUrl(it) } ?: requestedUrl.substringBefore("#")
 
         val directLinks = linkedSetOf<String>()
         val embedLinks = linkedSetOf<String>()
+
+        collectBackendEpisodeUrls(seriesId, episode, directWatchEpisodeId, pageUrl).forEach { url ->
+            addCandidate(url, mainUrl, directLinks, embedLinks)
+        }
 
         buildPlaybackCandidates(pageUrl, seed, episode).forEach { url ->
             val response = runCatching { app.get(url, headers = headers, referer = pageUrl, timeout = 10L) }.getOrNull() ?: return@forEach
@@ -424,6 +505,14 @@ class ReynimeProvider : MainAPI() {
         return found
     }
 
+    private fun episodeListApi(seriesId: Int): String {
+        return "$mainUrl/backend/api/episodes.php?series_id=$seriesId&limit=500&_t=${System.currentTimeMillis()}"
+    }
+
+    private fun episodeDetailApi(id: String): String {
+        return "$mainUrl/backend/api/episodes.php?id=$id&_t=${System.currentTimeMillis()}"
+    }
+
     private fun buildPlaybackCandidates(pageUrl: String, seed: SourceSeries?, episode: String?): List<String> {
         val candidates = linkedSetOf<String>()
         candidates.add(pageUrl)
@@ -444,6 +533,211 @@ class ReynimeProvider : MainAPI() {
         }
         return candidates.toList()
     }
+    private data class BackendEpisodeRecord(
+        val id: String?,
+        val seriesId: String?,
+        val episodeNumber: String?,
+        val urls: List<String>
+    )
+
+    private suspend fun collectBackendEpisodeUrls(
+        seriesId: String?,
+        episodeNumber: String?,
+        episodeId: String?,
+        referer: String
+    ): List<String> {
+        val urls = linkedSetOf<String>()
+        val idsToProbe = linkedSetOf<String>()
+
+        suspend fun probe(url: String): List<BackendEpisodeRecord> {
+            val response = runCatching { app.get(url, headers = apiHeaders(), referer = referer, timeout = 10L) }.getOrNull() ?: return emptyList()
+            return parseBackendEpisodeRecords(response.text)
+        }
+
+        episodeId?.let { id ->
+            probe("$mainUrl/backend/api/episodes.php?id=$id&_t=${System.currentTimeMillis()}").forEach { record ->
+                record.urls.forEach(urls::add)
+            }
+        }
+
+        if (!seriesId.isNullOrBlank()) {
+            val records = probe("$mainUrl/backend/api/episodes.php?series_id=$seriesId&limit=1000&_t=${System.currentTimeMillis()}")
+            val selected = records.filter { record ->
+                episodeNumber.isNullOrBlank() || record.episodeNumber == episodeNumber
+            }
+            selected.forEach { record ->
+                record.urls.forEach(urls::add)
+                record.id?.let(idsToProbe::add)
+            }
+        }
+
+        episodeId?.let { idsToProbe.remove(it) }
+        idsToProbe.take(4).forEach { id ->
+            probe("$mainUrl/backend/api/episodes.php?id=$id&_t=${System.currentTimeMillis()}").forEach { record ->
+                record.urls.forEach(urls::add)
+            }
+        }
+
+        return urls
+            .map { it.cleanEscaped().trim() }
+            .filter { it.startsWith("http", true) || it.startsWith("//") }
+            .distinct()
+    }
+
+    private fun parseBackendEpisodeRecords(text: String): List<BackendEpisodeRecord> {
+        val clean = text.cleanEscaped()
+        return Regex("""\{[^{}]*}""")
+            .findAll(clean)
+            .map { it.value }
+            .mapNotNull { obj ->
+                val id = extractJsonValue(obj, "id")
+                val seriesId = extractJsonValue(obj, "series_id")
+                val episodeNumber = extractJsonValue(obj, "episode_number")
+                val urls = backendVideoKeys.mapNotNull { key -> extractJsonValue(obj, key) }
+                    .map { it.cleanEscaped().trim() }
+                    .filter { it.contains("http", true) || it.startsWith("//") }
+                    .distinct()
+                if (id == null && episodeNumber == null && urls.isEmpty()) null else BackendEpisodeRecord(id, seriesId, episodeNumber, urls)
+            }
+            .toList()
+    }
+
+    private fun parseApiSeriesCards(text: String): List<SearchResponse> {
+        val clean = text.cleanEscaped().trim()
+        if (clean.isBlank() || !(clean.startsWith("[") || clean.startsWith("{"))) return emptyList()
+        val results = linkedMapOf<String, SearchResponse>()
+
+        fun parseObject(obj: JSONObject) {
+            val id = obj.pickInt("id", "series_id", "seriesId", "post_id") ?: return
+            val rawTitle = obj.pickString("title", "name", "series_title", "judul") ?: return
+            val title = rawTitle.cleanTitle()
+            if (isBadTitle(title)) return
+            val slug = obj.pickString("slug", "permalink") ?: title.slugify()
+            val poster = obj.pickString("poster", "image", "thumbnail", "cover", "banner")
+                ?.let { normalizePoster(normalizeUrl(it, mainUrl)) }
+                ?: sourceSeries.firstOrNull { it.id == id }?.poster
+            val type = obj.pickString("type", "kind", "category")?.let { getTypeFromText(it) }
+                ?: sourceSeries.firstOrNull { it.id == id }?.type
+                ?: TvType.Anime
+            val url = "$mainUrl/series/$id${if (slug.isNotBlank()) "/$slug" else ""}"
+            results[url] = newAnimeSearchResponse(title, url, type) {
+                posterUrl = poster
+            }
+        }
+
+        fun walk(value: Any?) {
+            when (value) {
+                is JSONArray -> for (i in 0 until value.length()) walk(value.opt(i))
+                is JSONObject -> {
+                    parseObject(value)
+                    val keys = value.keys()
+                    while (keys.hasNext()) walk(value.opt(keys.next()))
+                }
+            }
+        }
+
+        runCatching {
+            when {
+                clean.startsWith("[") -> walk(JSONArray(clean))
+                clean.startsWith("{") -> walk(JSONObject(clean))
+            }
+        }
+        return results.values.toList()
+    }
+
+    private fun parseApiEpisodeList(text: String): List<ApiEpisode> {
+        val clean = text.cleanEscaped().trim()
+        if (clean.isBlank() || !(clean.startsWith("[") || clean.startsWith("{"))) return emptyList()
+        val results = mutableListOf<ApiEpisode>()
+
+        fun parseObject(obj: JSONObject) {
+            val id = obj.pickInt("id", "episode_id", "episodeId", "pid", "post_id", "watch_id") ?: return
+            val title = obj.pickString("title", "name", "episode_title", "label", "judul")
+            val ep = obj.pickInt("episode", "episode_number", "episodeNumber", "number", "ep", "eps")
+                ?: extractEpisodeNumber(title.orEmpty(), obj.toString())
+                ?: id
+            results.add(
+                ApiEpisode(
+                    id = id,
+                    episode = ep,
+                    title = title,
+                    poster = obj.pickString("poster", "image", "thumbnail", "cover", "thumb"),
+                    description = obj.pickString("description", "synopsis", "overview")
+                )
+            )
+        }
+
+        fun walk(value: Any?) {
+            when (value) {
+                is JSONArray -> for (i in 0 until value.length()) walk(value.opt(i))
+                is JSONObject -> {
+                    parseObject(value)
+                    val keys = value.keys()
+                    while (keys.hasNext()) walk(value.opt(keys.next()))
+                }
+            }
+        }
+
+        runCatching {
+            when {
+                clean.startsWith("[") -> walk(JSONArray(clean))
+                clean.startsWith("{") -> walk(JSONObject(clean))
+            }
+        }
+        return results.distinctBy { it.id }
+    }
+
+    private fun JSONObject.pickString(vararg keys: String): String? {
+        keys.forEach { key ->
+            val value = opt(key) ?: return@forEach
+            val string = value.toString().cleanEscaped().trim()
+            if (string.isNotBlank() && !string.equals("null", true)) return string
+        }
+        return null
+    }
+
+    private fun JSONObject.pickInt(vararg keys: String): Int? {
+        keys.forEach { key ->
+            val value = opt(key) ?: return@forEach
+            when (value) {
+                is Number -> return value.toInt()
+                is String -> value.toIntOrNull()?.let { return it }
+                else -> value.toString().toIntOrNull()?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private val backendVideoKeys = listOf(
+        "download_url",
+        "video_url",
+        "reynime_video_url",
+        "vip_video_url",
+        "regular_video_url",
+        "regular_video_url_1",
+        "regular_video_url_2",
+        "regular_video_url_3",
+        "regular_video_url_4",
+        "regular_video_url_5",
+        "regular_video_url_6",
+        "regular_video_url_7",
+        "regular_video_url_8",
+        "embed_url",
+        "player_url",
+        "stream_url"
+    )
+
+    private fun extractJsonValue(text: String, key: String): String? {
+        val pattern = """["']${Regex.escape(key)}["']\s*:\s*(?:["']((?:\\.|[^"'\\])*)["']|([^,}\]]+))"""
+        val match = Regex(pattern, RegexOption.IGNORE_CASE).find(text) ?: return null
+        return (match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() } ?: match.groupValues.getOrNull(2))
+            ?.trim()
+            ?.trim('"', '\'')
+            ?.replace("\\/", "/")
+            ?.replace("\\u0026", "&")
+            ?.takeIf { it.isNotBlank() && !it.equals("null", true) }
+    }
+
 
     private fun collectCandidatesFromDocument(document: Document, baseUrl: String, directLinks: MutableSet<String>, embedLinks: MutableSet<String>) {
         document.select(
@@ -468,7 +762,7 @@ class ReynimeProvider : MainAPI() {
 
     private suspend fun resolveNestedLinks(url: String, referer: String): List<String> {
         if (shouldSkipUrl(url)) return emptyList()
-        val response = runCatching { app.get(url, headers = headers, referer = referer, timeout = 10L) }.getOrNull() ?: return emptyList()
+        val response = runCatching { app.get(url, headers = apiHeaders(), referer = referer, timeout = 10L) }.getOrNull() ?: return emptyList()
         val results = linkedSetOf<String>()
         val text = response.text.cleanEscaped()
         val direct = linkedSetOf<String>()
@@ -488,10 +782,24 @@ class ReynimeProvider : MainAPI() {
     private fun addCandidate(raw: String, baseUrl: String, directLinks: MutableSet<String>, embedLinks: MutableSet<String>) {
         val fixed = normalizeUrl(raw.cleanEscaped(), baseUrl).replace(".txt", ".m3u8").trim()
         if (fixed.isBlank() || isBadMediaUrl(fixed) || shouldSkipUrl(fixed)) return
-        when {
-            isDirectVideo(fixed) -> directLinks.add(fixed)
-            fixed.startsWith("http", true) && isLikelyEmbed(fixed) -> embedLinks.add(fixed)
+        expandRumbleTarCandidates(fixed).forEach { candidate ->
+            when {
+                isDirectVideo(candidate) -> directLinks.add(candidate)
+                candidate.startsWith("http", true) && isLikelyEmbed(candidate) -> embedLinks.add(candidate)
+            }
         }
+    }
+
+    private fun expandRumbleTarCandidates(url: String): List<String> {
+        if (!isRumbleTarHls(url)) return listOf(url)
+        val noQuery = url.substringBefore("?")
+        val match = Regex("""\.([a-z]aa)\.tar$""", RegexOption.IGNORE_CASE).find(noQuery)
+        val base = match?.let { noQuery.removeSuffix(".${it.groupValues[1]}.tar") } ?: return listOf(url)
+        val suffix = match.groupValues[1].lowercase()
+        val variants = linkedSetOf<String>()
+        listOf("aaa", suffix, "haa", "gaa", "caa", "baa").distinct().forEach { variants.add("$base.$it.mp4") }
+        variants.add(url)
+        return variants.toList()
     }
 
     private suspend fun emitDirectLink(link: String, referer: String, callback: (ExtractorLink) -> Unit): Boolean {
@@ -521,6 +829,7 @@ class ReynimeProvider : MainAPI() {
             ) {
                 this.referer = referer
                 this.quality = qualityFromUrl(link).takeIf { it != Qualities.Unknown.value } ?: Qualities.P720.value
+                this.headers = mapOf("User-Agent" to USER_AGENT, "Referer" to referer, "Origin" to mainUrl)
             }
         )
         return true
@@ -546,15 +855,15 @@ class ReynimeProvider : MainAPI() {
         val urls = linkedSetOf<String>()
         val clean = text.cleanEscaped()
         listOf(
-            Regex("""https?://[^\"'\\\s<>]+?\.(?:m3u8|mp4|webm|mkv|txt)(?:\?[^\"'\\\s<>]*)?""", RegexOption.IGNORE_CASE),
-            Regex("""//[^\"'\\\s<>]+?\.(?:m3u8|mp4|webm|mkv|txt)(?:\?[^\"'\\\s<>]*)?""", RegexOption.IGNORE_CASE)
+            Regex("""https?://[^\"'\\\s<>]+?\.(?:m3u8|mp4|webm|mkv|txt|tar)(?:\?[^\"'\\\s<>]*)?""", RegexOption.IGNORE_CASE),
+            Regex("""//[^\"'\\\s<>]+?\.(?:m3u8|mp4|webm|mkv|txt|tar)(?:\?[^\"'\\\s<>]*)?""", RegexOption.IGNORE_CASE)
         ).forEach { regex ->
             regex.findAll(clean).map { it.value }.forEach { raw ->
                 val fixed = (if (raw.startsWith("//")) "https:$raw" else raw).replace(".txt", ".m3u8").cleanEscaped()
                 if (!isBadMediaUrl(fixed) && !shouldSkipUrl(fixed)) urls.add(fixed)
             }
         }
-        Regex("""https?%3A%2F%2F[^\"'\\\s<>]+?(?:\.m3u8|\.mp4|\.webm|\.mkv|\.txt|embed|player|stream)[^\"'\\\s<>]*""", RegexOption.IGNORE_CASE)
+        Regex("""https?%3A%2F%2F[^\"'\\\s<>]+?(?:\.m3u8|\.mp4|\.webm|\.mkv|\.txt|\.tar|embed|player|stream)[^\"'\\\s<>]*""", RegexOption.IGNORE_CASE)
             .findAll(clean)
             .map { runCatching { URLDecoder.decode(it.value, "UTF-8") }.getOrDefault(it.value) }
             .map { it.cleanEscaped().replace(".txt", ".m3u8") }
@@ -664,7 +973,19 @@ class ReynimeProvider : MainAPI() {
     }
 
     private fun isDirectVideo(url: String): Boolean = isHlsLike(url) || url.contains(".mp4", true) || url.contains(".webm", true) || url.contains(".mkv", true)
-    private fun isHlsLike(url: String): Boolean = url.contains(".m3u8", true) || url.contains("application/x-mpegurl", true)
+    private fun isHlsLike(url: String): Boolean = url.contains(".m3u8", true) ||
+        url.contains("application/x-mpegurl", true) ||
+        url.contains("application/vnd.apple.mpegurl", true) ||
+        isRumbleTarHls(url)
+
+    private fun isRumbleTarHls(url: String): Boolean {
+        val value = url.lowercase()
+        return value.contains(".tar?") && (
+            value.contains("r_file=chunklist.m3u8") ||
+                value.contains("r_type=application%2fvnd.apple.mpegurl") ||
+                value.contains("r_type=application/vnd.apple.mpegurl")
+            )
+    }
 
     private fun isLikelyEmbed(url: String): Boolean {
         val value = url.lowercase()
@@ -712,10 +1033,10 @@ class ReynimeProvider : MainAPI() {
 
     private fun qualityFromUrl(url: String): Int = when {
         url.contains("2160", true) || url.contains("4k", true) -> Qualities.P2160.value
-        url.contains("1080", true) -> Qualities.P1080.value
-        url.contains("720", true) -> Qualities.P720.value
-        url.contains("480", true) -> Qualities.P480.value
-        url.contains("360", true) -> Qualities.P360.value
+        url.contains("1080", true) || url.contains(".haa.", true) -> Qualities.P1080.value
+        url.contains("720", true) || url.contains(".gaa.", true) || url.contains(".aaa.", true) -> Qualities.P720.value
+        url.contains("480", true) || url.contains(".caa.", true) -> Qualities.P480.value
+        url.contains("360", true) || url.contains(".baa.", true) -> Qualities.P360.value
         else -> getQualityFromName(url)
     }
 
@@ -755,4 +1076,11 @@ class ReynimeProvider : MainAPI() {
         .trim()
 
     private fun String.slugify(): String = lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+}
+
+@CloudstreamPlugin
+class ReynimeProviderPlugin : BasePlugin() {
+    override fun load() {
+        registerMainAPI(ReynimeProvider())
+    }
 }
