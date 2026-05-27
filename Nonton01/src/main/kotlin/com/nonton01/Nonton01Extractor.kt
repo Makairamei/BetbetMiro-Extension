@@ -23,9 +23,9 @@ import org.jsoup.nodes.Document
 
 object Nonton01Extractor {
     private const val TAG = "Nonton01"
-    private const val MAX_HOPS = 3
+    private const val MAX_HOPS = 4
     private const val MAX_DIRECT_CANDIDATES = 26
-    private const val MAX_EMBED_CANDIDATES = 14
+    private const val MAX_EMBED_CANDIDATES = 24
     private const val MAX_AJAX_CANDIDATES = 48
 
     private val keyValueRegex = Regex(
@@ -49,7 +49,8 @@ object Nonton01Extractor {
         "src", "href", "value", "data-src", "data-url", "data-link", "data-href",
         "data-file", "data-video", "data-video-url", "data-stream", "data-stream-url",
         "data-embed", "data-iframe", "data-player", "data-play", "data-server",
-        "data-content", "data-id", "data-post", "data-nume"
+        "data-content", "data-id", "data-post", "data-nume", "data-lazy-src", "srcdoc",
+        "data-code", "data-hls", "data-m3u8", "data-html", "data-frame", "data-target"
     )
 
     suspend fun loadLinks(
@@ -93,21 +94,26 @@ object Nonton01Extractor {
         var found = false
 
         val ajaxCandidates = prioritizeCandidates(fetchAjaxPlayers(pageUrl, mainUrl, document))
-        val direct = prioritizeCandidates(extractDirectMedia(pageUrl, document) + ajaxCandidates)
-        val embeds = prioritizeCandidates(extractEmbeds(pageUrl, document) + ajaxCandidates.filter { looksLikeEmbed(it) })
-        Log.e(TAG, "captured page=$pageUrl depth=$depth ajax=${ajaxCandidates.size} direct=${direct.size} embeds=${embeds.size}")
+        val allCandidates = prioritizeCandidates(
+            extractAttributeUrls(pageUrl, document) +
+                extractUrlsFromText(pageUrl, normalizedHtml(document)) +
+                ajaxCandidates
+        )
+        val direct = allCandidates.filter { isDirectMediaCandidate(it) }.distinct()
+        val embeds = allCandidates.filter { !isDirectMediaCandidate(it) && looksLikeEmbed(it) }.distinct()
+        Log.e(TAG, "captured page=$pageUrl depth=$depth ajax=${ajaxCandidates.size} all=${allCandidates.size} direct=${direct.size} embeds=${embeds.size}")
 
         for (url in direct.take(MAX_DIRECT_CANDIDATES)) {
             Log.e(TAG, "direct candidate: $url")
             val emittedNow = emitDirect(providerName, url, pageUrl, emitted, callback)
             found = found || emittedNow
-            if (!emittedNow && (isKnownExtractorHost(url.lowercase()) || looksLikeEmbed(url))) {
-                val extractorFound = runExtractor(url, pageUrl, emitted, subtitleCallback, callback)
-                found = found || extractorFound
+            if (!emittedNow && depth < MAX_HOPS && canRecurseInto(url, pageUrl)) {
+                val nestedFound = resolvePage(providerName, url, pageUrl, mainUrl, depth + 1, emitted, subtitleCallback, callback)
+                found = found || nestedFound
             }
         }
 
-        for (embed in embeds.filterNot { direct.contains(it) }.take(MAX_EMBED_CANDIDATES)) {
+        for (embed in embeds.take(MAX_EMBED_CANDIDATES)) {
             Log.e(TAG, "embed candidate: $embed referer=$pageUrl")
             val extractorFound = runExtractor(embed, pageUrl, emitted, subtitleCallback, callback)
             found = found || extractorFound
@@ -499,20 +505,29 @@ object Nonton01Extractor {
 
     private fun normalizedHtml(document: Document): String = normalizedText(document.html())
 
-    private fun normalizedText(text: String): String = text
-        .replace("\\/", "/")
-        .replace("\\\"", "\"")
-        .replace("\\'", "'")
-        .replace("&amp;", "&")
-        .replace("&#038;", "&")
-        .replace("&quot;", "\"")
-        .replace("&#039;", "'")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("\\u0026", "&")
-        .replace("\\u003d", "=")
-        .replace("\\u003a", ":")
-        .replace("\\u002f", "/")
+    private fun normalizedText(text: String): String {
+        var output = text
+            .replace("\\/", "/")
+            .replace("\\\"", "\"")
+            .replace("\\'", "'")
+            .replace("&amp;", "&")
+            .replace("&#038;", "&")
+            .replace("&quot;", "\"")
+            .replace("&#039;", "'")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("\\u0026", "&")
+            .replace("\\u003d", "=")
+            .replace("\\u003a", ":")
+            .replace("\\u002f", "/")
+        output = Regex("""\\x([0-9a-fA-F]{2})""").replace(output) { match ->
+            match.groupValues[1].toInt(16).toChar().toString()
+        }
+        output = Regex("""\\u([0-9a-fA-F]{4})""").replace(output) { match ->
+            match.groupValues[1].toInt(16).toChar().toString()
+        }
+        return output
+    }
 
     private fun normalizeUrl(pageUrl: String, value: String?): String? {
         val raw = decodeMaybe(value.orEmpty())
@@ -564,14 +579,16 @@ object Nonton01Extractor {
         return low.contains(".mp4") || low.contains("googlevideo") || low.contains("videoplayback")
     }
 
+    private fun isDirectMediaCandidate(url: String): Boolean {
+        val low = url.lowercase()
+        return !isDeniedUrl(low) &&
+            (looksLikeHls(url) || looksLikeDirectMp4(url) || shouldTryHlsFallback(url))
+    }
+
     private fun looksLikeMediaOrPlayer(url: String): Boolean {
         val low = url.lowercase()
         return !isDeniedUrl(low) &&
-            (looksLikeHls(url) ||
-                looksLikeDirectMp4(url) ||
-                isKnownExtractorHost(low) ||
-                looksLikeEmbed(url) ||
-                shouldTryHlsFallback(url))
+            (isDirectMediaCandidate(url) || isKnownExtractorHost(low) || looksLikeEmbed(url))
     }
 
     private fun looksLikeEmbed(url: String): Boolean {
@@ -605,7 +622,9 @@ object Nonton01Extractor {
             "myvidplay", "minochinos", "hglink", "streamtape", "dood", "filemoon",
             "vidhide", "vidguard", "filelions", "streamwish", "streamsb", "sbembed",
             "voe.sx", "uqload", "mixdrop", "fembed", "doodstream", "streamlare",
-            "luluvdo", "vidmoly", "wolfstream", "upstream", "streamruby", "mcloud"
+            "luluvdo", "vidmoly", "wolfstream", "upstream", "streamruby", "mcloud",
+            "streamhide", "streamvid", "embedsito", "filegram", "dropload", "hydrax",
+            "fastream", "streamhub", "vidsrc", "short.ink", "gofile", "mp4upload"
         ).any { low.contains(it) }
     }
 
@@ -628,11 +647,29 @@ object Nonton01Extractor {
         val embedOrigin = originOf(embed)
         val pageOrigin = originOf(pageUrl)
         val low = embed.lowercase()
-        return embedOrigin != null &&
-            embedOrigin != pageOrigin &&
-            !Nonton01Utils.isSameHost(embed) &&
-            !isDeniedUrl(low) &&
-            (isKnownExtractorHost(low) || low.contains("/embed/") || low.contains("/player/"))
+        if (embedOrigin == null || isDeniedUrl(low)) return false
+        val sameOrigin = embedOrigin == pageOrigin
+        val internalPlayer = looksLikeInternalPlayerUrl(low)
+        val externalPlayer = isKnownExtractorHost(low) || low.contains("/embed/") || low.contains("/player/")
+        return if (sameOrigin || Nonton01Utils.isSameHost(embed)) {
+            internalPlayer
+        } else {
+            externalPlayer || internalPlayer
+        }
+    }
+
+    private fun looksLikeInternalPlayerUrl(low: String): Boolean {
+        return low.contains("admin-ajax.php") ||
+            low.contains("doo_player") ||
+            low.contains("player_ajax") ||
+            low.contains("/player/") ||
+            low.contains("/embed/") ||
+            low.contains("/ajax/") ||
+            low.contains("/wp-json/") ||
+            low.contains("?player=") ||
+            low.contains("?embed=") ||
+            low.contains("?source=") ||
+            low.contains("?url=")
     }
 
     private fun prioritizeCandidates(urls: List<String>): List<String> {
