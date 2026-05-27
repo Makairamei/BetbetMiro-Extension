@@ -62,7 +62,7 @@ class YouTubeProvider : MainAPI() {
                 service,
                 service.searchQHFactory.fromQuery(query, videoFilter, "")
             )
-            YouTubeParser.parseInfoItems(searchInfo.relatedItems)
+            YouTubeParser.parseInfoItems(this, searchInfo.relatedItems)
         }.getOrElse { emptyList() }
     }
 
@@ -76,7 +76,7 @@ class YouTubeProvider : MainAPI() {
             val videoTab = tabs.firstOrNull { it.name.equals("videos", true) }
                 ?: tabs.firstOrNull { it.relatedItems.isNotEmpty() }
 
-            YouTubeParser.parseInfoItems(videoTab?.relatedItems.orEmpty())
+            YouTubeParser.parseInfoItems(this, videoTab?.relatedItems.orEmpty())
         }.getOrElse { emptyList() }
     }
 
