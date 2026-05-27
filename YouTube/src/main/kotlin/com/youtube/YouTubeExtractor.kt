@@ -4,6 +4,7 @@ import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.stream.StreamInfo
 
@@ -15,6 +16,11 @@ object YouTubeExtractor {
         "Accept" to "*/*",
         "Origin" to YouTubeSeeds.MAIN_URL,
         "Referer" to "${YouTubeSeeds.MAIN_URL}/"
+    )
+
+    private data class DirectYouTubeStream(
+        val url: String,
+        val resolution: String
     )
 
     suspend fun loadLinks(
@@ -34,37 +40,35 @@ object YouTubeExtractor {
         if (info != null) {
             info.hlsUrl?.takeIf { it.isNotBlank() }?.let { hls ->
                 callback(
-                    ExtractorLink(
-                        source = "YouTube",
-                        name = "YouTube HLS",
-                        url = hls,
-                        referer = "${YouTubeSeeds.MAIN_URL}/",
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = true,
+                    newExtractorLink("YouTube", "YouTube HLS", hls) {
+                        referer = "${YouTubeSeeds.MAIN_URL}/"
+                        quality = Qualities.Unknown.value
                         headers = youtubeHeaders
-                    )
+                    }
                 )
                 found = true
             }
 
             info.videoStreams
                 .orEmpty()
-                .filter { it.url.isNotBlank() }
+                .mapNotNull { stream ->
+                    val streamUrl = stream.url?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    DirectYouTubeStream(
+                        url = streamUrl,
+                        resolution = stream.resolution.orEmpty()
+                    )
+                }
                 .distinctBy { it.url }
                 .sortedByDescending { YouTubeUtils.qualityFromResolution(it.resolution) }
                 .forEach { stream ->
                     val quality = YouTubeUtils.qualityFromResolution(stream.resolution)
                     val label = stream.resolution.takeIf { it.isNotBlank() } ?: "Video"
                     callback(
-                        ExtractorLink(
-                            source = "YouTube",
-                            name = "YouTube $label",
-                            url = stream.url,
-                            referer = "${YouTubeSeeds.MAIN_URL}/",
-                            quality = quality,
-                            isM3u8 = stream.url.contains(".m3u8", ignoreCase = true),
+                        newExtractorLink("YouTube", "YouTube $label", stream.url) {
+                            referer = "${YouTubeSeeds.MAIN_URL}/"
+                            this.quality = quality
                             headers = youtubeHeaders
-                        )
+                        }
                     )
                     found = true
                 }
