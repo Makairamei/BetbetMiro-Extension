@@ -90,28 +90,30 @@ object LoklokUtils {
         return "${LoklokSeeds.IMAGE_PROXY}/?url=${encode(poster)}&w=175&h=246&fit=cover&output=webp"
     }
 
-    fun apiHeaders(contentType: Boolean = false): Map<String, String> {
+    fun apiHeaders(contentType: Boolean = false, mobile: Boolean = true): Map<String, String> {
         val timestamp = System.currentTimeMillis()
         val headers = linkedMapOf(
             "lang" to "en",
-            "versioncode" to "11132",
-            "clienttype" to "web_h5",
-            "platform" to "web",
+            "versioncode" to if (mobile) "11" else "11132",
+            "clienttype" to if (mobile) "ios_jike_default" else "web_h5",
             "deviceid" to deviceId,
-            "timestamp" to timestamp.toString(),
-            "sign" to generateSign(timestamp),
             "User-Agent" to BROWSER_UA,
             "Accept" to "application/json, text/plain, */*",
-            "Accept-Language" to "en-US,en;q=0.9",
-            "Origin" to LoklokSeeds.H5_SITE,
-            "Referer" to "${LoklokSeeds.H5_SITE}/",
-            "Sec-Ch-Ua" to "\"Chromium\";v=\"125\", \"Not.A/Brand\";v=\"24\"",
-            "Sec-Ch-Ua-Mobile" to "?1",
-            "Sec-Ch-Ua-Platform" to "\"Android\"",
-            "Sec-Fetch-Dest" to "empty",
-            "Sec-Fetch-Mode" to "cors",
-            "Sec-Fetch-Site" to "same-site"
+            "Accept-Language" to "en-US,en;q=0.9"
         )
+        if (!mobile) {
+            headers["platform"] = "web"
+            headers["timestamp"] = timestamp.toString()
+            headers["sign"] = generateSign(timestamp)
+            headers["Origin"] = LoklokSeeds.H5_SITE
+            headers["Referer"] = "${LoklokSeeds.H5_SITE}/"
+            headers["Sec-Ch-Ua"] = "\"Chromium\";v=\"125\", \"Not.A/Brand\";v=\"24\""
+            headers["Sec-Ch-Ua-Mobile"] = "?1"
+            headers["Sec-Ch-Ua-Platform"] = "\"Android\""
+            headers["Sec-Fetch-Dest"] = "empty"
+            headers["Sec-Fetch-Mode"] = "cors"
+            headers["Sec-Fetch-Site"] = "same-site"
+        }
         if (contentType) headers["Content-Type"] = "application/json"
         return headers
     }
@@ -125,40 +127,89 @@ object LoklokUtils {
         )
     }
 
-    suspend fun apiGet(path: String): String {
-        val url = "${LoklokSeeds.API_WEB}/$path"
-        Log.d(TAG, "apiGet: $url")
-        val headers = apiHeaders()
-        val res = app.get(url, headers = headers)
-        Log.d(TAG, "apiGet response code: ${res.code}")
-        if (res.code == 200) return res.text
+    private fun apiGetCandidates(path: String): List<Pair<String, Boolean>> {
+        if (path.startsWith("http://") || path.startsWith("https://")) return listOf(path to true)
+        return listOf(
+            "${LoklokSeeds.API_APP}/$path" to true,
+            "${LoklokSeeds.API_WEB}/$path" to false
+        ).distinctBy { it.first }
+    }
 
-        Log.d(TAG, "OkHttp blocked (${res.code}), trying WebView fetch")
-        val wvResult = webViewApiCall(url, headers)
-        if (wvResult != null) {
-            Log.d(TAG, "WebView GET success, len=${wvResult.length}")
-            return wvResult
+    private fun apiPostCandidates(path: String, useV2: Boolean): List<Pair<String, Boolean>> {
+        if (path.startsWith("http://") || path.startsWith("https://")) return listOf(path to true)
+        val appPaths = linkedSetOf<String>()
+        if (path.contains("search/v1/")) {
+            appPaths.add(path.replace("search/v1/", "search/v2/"))
+            appPaths.add(path)
+        } else if (path.contains("search/v2/")) {
+            appPaths.add(path)
+            appPaths.add(path.replace("search/v2/", "search/v1/"))
+        } else {
+            appPaths.add(path)
         }
-        throw Exception("API call failed for $path")
+        val candidates = mutableListOf<Pair<String, Boolean>>()
+        appPaths.forEach { candidates.add("${LoklokSeeds.API_APP}/$it" to true) }
+        val h5Base = if (useV2) LoklokSeeds.API_H5_V2 else LoklokSeeds.API_WEB
+        candidates.add("$h5Base/$path" to false)
+        return candidates.distinctBy { it.first }
+    }
+
+    private fun looksLikeJson(text: String): Boolean {
+        val trimmed = text.trim()
+        return trimmed.startsWith("{") || trimmed.startsWith("[")
+    }
+
+    suspend fun apiGet(path: String): String {
+        var lastError: String? = null
+        for ((url, mobile) in apiGetCandidates(path)) {
+            Log.d(TAG, "apiGet: $url")
+            val headers = apiHeaders(mobile = mobile)
+            val res = runCatching { app.get(url, headers = headers) }.onFailure {
+                lastError = it.message
+                Log.e(TAG, "apiGet request failed: ${it.message}")
+            }.getOrNull()
+            if (res != null) {
+                Log.d(TAG, "apiGet response code: ${res.code}")
+                if (res.code == 200 && looksLikeJson(res.text)) return res.text
+            }
+
+            if (!mobile) {
+                Log.d(TAG, "OkHttp blocked/invalid, trying WebView fetch")
+                val wvResult = webViewApiCall(url, headers)
+                if (wvResult != null && looksLikeJson(wvResult)) {
+                    Log.d(TAG, "WebView GET success, len=${wvResult.length}")
+                    return wvResult
+                }
+            }
+        }
+        throw Exception("API call failed for $path${lastError?.let { ": $it" }.orEmpty()}")
     }
 
     suspend fun apiPost(path: String, bodyJson: String, useV2: Boolean = false): String {
-        val base = if (useV2) LoklokSeeds.API_H5_V2 else LoklokSeeds.API_WEB
-        val url = "$base/$path"
-        Log.d(TAG, "apiPost: $url")
-        val headers = apiHeaders(contentType = true)
-        val body = bodyJson.toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-        val res = app.post(url, requestBody = body, headers = headers)
-        Log.d(TAG, "apiPost response code: ${res.code}")
-        if (res.code == 200) return res.text
+        var lastError: String? = null
+        for ((url, mobile) in apiPostCandidates(path, useV2)) {
+            Log.d(TAG, "apiPost: $url")
+            val headers = apiHeaders(contentType = true, mobile = mobile)
+            val body = bodyJson.toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+            val res = runCatching { app.post(url, requestBody = body, headers = headers) }.onFailure {
+                lastError = it.message
+                Log.e(TAG, "apiPost request failed: ${it.message}")
+            }.getOrNull()
+            if (res != null) {
+                Log.d(TAG, "apiPost response code: ${res.code}")
+                if (res.code == 200 && looksLikeJson(res.text)) return res.text
+            }
 
-        Log.d(TAG, "OkHttp POST blocked (${res.code}), trying WebView fetch")
-        val wvResult = webViewApiCall(url, headers, "POST", bodyJson)
-        if (wvResult != null) {
-            Log.d(TAG, "WebView POST success, len=${wvResult.length}")
-            return wvResult
+            if (!mobile) {
+                Log.d(TAG, "OkHttp POST blocked/invalid, trying WebView fetch")
+                val wvResult = webViewApiCall(url, headers, "POST", bodyJson)
+                if (wvResult != null && looksLikeJson(wvResult)) {
+                    Log.d(TAG, "WebView POST success, len=${wvResult.length}")
+                    return wvResult
+                }
+            }
         }
-        throw Exception("POST API call failed for $path")
+        throw Exception("POST API call failed for $path${lastError?.let { ": $it" }.orEmpty()}")
     }
 
     private suspend fun webViewApiCall(

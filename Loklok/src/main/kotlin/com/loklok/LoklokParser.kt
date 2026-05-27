@@ -42,6 +42,13 @@ object LoklokParser {
             .take(50)
     }
 
+
+    fun parseFallbackResults(api: MainAPI, query: String?): List<SearchResponse> {
+        return LoklokSeeds.fallbackItems(query)
+            .mapNotNull { parseMediaItem(api, it) }
+            .distinctBy { it.url }
+    }
+
     fun parseMediaItem(api: MainAPI, item: MediaItem): SearchResponse? {
         val id = normalizeId(item.id) ?: return null
         val title = cleanText(item.title ?: item.name).ifBlank { return null }
