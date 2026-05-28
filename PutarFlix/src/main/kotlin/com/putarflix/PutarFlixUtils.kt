@@ -44,7 +44,7 @@ internal object PutarFlixUtils {
     fun cleanTitle(value: String?): String {
         return cleanText(value)
             .replace(Regex("(?i)\\s*[-|]\\s*PUTARFLIX.*$"), "")
-            .replace(Regex("(?i)^Nonton\\s+(?:Film|Movie|Series)\\s+(.+)$"), "$1")
+            .replace(Regex("(?i)^Nonton\\s+(?:Film|Movie|Series)\\s+(.+)$"), "\$1")
             .replace(Regex("(?i)\\s+Sub\\s+Indo.*$"), "")
             .trim()
     }
@@ -72,8 +72,23 @@ internal object PutarFlixUtils {
         return runCatching { URI(url).host?.removePrefix("www.")?.lowercase() }.getOrNull()
     }
 
+    fun originOf(url: String): String? {
+        return runCatching {
+            val uri = URI(url)
+            val scheme = uri.scheme ?: "https"
+            val host = uri.host ?: return@runCatching null
+            "$scheme://$host"
+        }.getOrNull()
+    }
+
     fun isPutarFlixUrl(url: String): Boolean {
         return hostOf(url) == hostOf(PutarFlixSeeds.MAIN_URL)
+    }
+
+    fun isPutarFlixPlayerPage(url: String): Boolean {
+        if (!isPutarFlixUrl(url)) return false
+        val lower = url.lowercase()
+        return lower.contains("?player=") || lower.contains("&player=")
     }
 
     fun isShortenerUrl(url: String): Boolean {
@@ -87,11 +102,23 @@ internal object PutarFlixUtils {
         return playableHosts.any { host == it || host.contains(it) || host.endsWith(".$it") }
     }
 
+    fun isFilePressUrl(url: String): Boolean {
+        val host = hostOf(url) ?: return false
+        return host.contains("filepress.") && url.contains("/file/", true)
+    }
+
     fun isContentUrl(url: String): Boolean {
-        if (!isPutarFlixUrl(url)) return false
         val lower = url.lowercase()
+        if (!lower.startsWith(PutarFlixSeeds.MAIN_URL)) return false
         if (badContentPaths.any { it in lower }) return false
         return lower.contains("/eps/") || lower.contains("/tv/") || Regex("https?://[^/]+/[^/?#]+/?$").containsMatchIn(lower)
+    }
+
+    fun isInternalNavigation(url: String): Boolean {
+        if (!isPutarFlixUrl(url)) return false
+        if (looksDirectVideo(url)) return false
+        val lower = url.lowercase()
+        return isContentUrl(url) || badContentPaths.any { it in lower } || lower.trimEnd('/') == PutarFlixSeeds.MAIN_URL
     }
 
     fun isRejectedVideoCandidate(url: String): Boolean {
@@ -133,7 +160,9 @@ internal object PutarFlixUtils {
                 add(it.attr("srcset").split(",").lastOrNull()?.trim()?.substringBefore(" ").orEmpty())
             }
         }
-        return candidates.asSequence().mapNotNull { absoluteUrl(base, it) }.firstOrNull { it.startsWith("http") }
+        return candidates.asSequence()
+            .mapNotNull { absoluteUrl(base, it) }
+            .firstOrNull { it.startsWith("http") }
     }
 
     fun extractMetaImage(base: String, doc: Document): String? {
@@ -147,15 +176,27 @@ internal object PutarFlixUtils {
 
     fun extractYear(text: String?): Int? {
         val value = text.orEmpty()
-        return Regex("\\((19|20)\\d{2}\\)|\\b((19|20)\\d{2})\\b").find(value)?.value?.filter { it.isDigit() }?.take(4)?.toIntOrNull()
+        return Regex("\\((19|20)\\d{2}\\)|\\b((19|20)\\d{2})\\b")
+            .find(value)
+            ?.value
+            ?.filter { it.isDigit() }
+            ?.take(4)
+            ?.toIntOrNull()
     }
 
     fun extractDuration(text: String?): Int? {
-        return Regex("(?i)(\\d{2,3})\\s*(min|minute|minutes)").find(text.orEmpty())?.groupValues?.getOrNull(1)?.toIntOrNull()
+        return Regex("(?i)(\\d{2,3})\\s*(min|minute|minutes)")
+            .find(text.orEmpty())
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
     }
 
     fun extractRating(text: String?): String? {
-        return Regex("(?i)(\\d+(?:\\.\\d+)?)\\s*(?:votes|/10|out of 10)?").find(text.orEmpty())?.groupValues?.getOrNull(1)
+        return Regex("(?i)(\\d+(?:\\.\\d+)?)\\s*(?:votes|/10|out of 10)?")
+            .find(text.orEmpty())
+            ?.groupValues
+            ?.getOrNull(1)
     }
 
     fun episodeNumber(text: String?): Int? {
@@ -170,8 +211,10 @@ internal object PutarFlixUtils {
 
     fun seasonNumber(text: String?): Int? {
         val clean = cleanText(text).lowercase()
-        return listOf(Regex("season\\s*(\\d+)"), Regex("s(\\d+)"))
-            .firstNotNullOfOrNull { it.find(clean)?.groupValues?.getOrNull(1)?.toIntOrNull() }
+        return listOf(
+            Regex("season\\s*(\\d+)"),
+            Regex("s(\\d+)")
+        ).firstNotNullOfOrNull { it.find(clean)?.groupValues?.getOrNull(1)?.toIntOrNull() }
     }
 
     fun extractLabelNear(element: Element): String {
@@ -179,7 +222,7 @@ internal object PutarFlixUtils {
             element.attr("title").ifBlank { element.attr("aria-label") }
                 .ifBlank { element.text() }
                 .ifBlank { element.parent()?.text().orEmpty() }
-        ).ifBlank { PutarFlixConstants.PROVIDER_NAME }
+        ).ifBlank { "PutarFlix" }
     }
 
     fun looksDirectVideo(url: String): Boolean {
@@ -229,8 +272,8 @@ internal object PutarFlixUtils {
             .replace("\\u002f", "/")
         val pools = listOf(normalized, decodeUrlRepeated(normalized))
         val candidates = linkedSetOf<String>()
-        val urlRegex = Regex("""https?:\\?/\\?/[^\"'<> )\]\[\s]+""", RegexOption.IGNORE_CASE)
-        val protocolLessRegex = Regex("""(?<!:)//[^\"'<> )\]\[\s]+""", RegexOption.IGNORE_CASE)
+        val urlRegex = Regex("""https?:\\?/\\?/[^\"'<>)\]\[\s]+""", RegexOption.IGNORE_CASE)
+        val protocolLessRegex = Regex("""(?<!:)//[^\"'<>)\]\[\s]+""", RegexOption.IGNORE_CASE)
         pools.forEach { pool ->
             urlRegex.findAll(pool).forEach { candidates += it.value }
             protocolLessRegex.findAll(pool).forEach { candidates += it.value }
