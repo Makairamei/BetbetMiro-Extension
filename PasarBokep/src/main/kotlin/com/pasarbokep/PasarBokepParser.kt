@@ -3,6 +3,7 @@ package com.pasarbokep
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.newMovieSearchResponse
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
@@ -23,7 +24,7 @@ object PasarBokepParser {
         }
 
         return cards.values.map { card ->
-            api.newMovieSearchResponse(card.title, card.url, TvType.NSFW, fix = false) {
+            api.newMovieSearchResponse(card.title, card.url, TvType.NSFW) {
                 this.posterUrl = card.posterUrl
             }
         }

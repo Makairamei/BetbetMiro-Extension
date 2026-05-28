@@ -11,7 +11,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mainPage
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
-import com.lagradost.cloudstream3.toNewSearchResponseList
+import com.lagradost.cloudstream3.newSearchResponseList
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.SubtitleFile
 
@@ -23,8 +23,8 @@ class PasarBokepProvider : MainAPI() {
     override val hasMainPage = true
     override val hasDownloadSupport = true
     override val hasChromecastSupport = true
-    override val sequentialMainPage = true
-    override val sequentialMainPageDelay = 150L
+    override var sequentialMainPage = true
+    override var sequentialMainPageDelay = 150L
     override val supportedTypes = setOf(TvType.NSFW)
 
     override val mainPage = PasarBokepSeeds.mainPage.map { category ->
@@ -48,7 +48,7 @@ class PasarBokepProvider : MainAPI() {
         val encoded = PasarBokepUtils.encodeQuery(query)
         val url = if (page <= 1) "$mainUrl/?s=$encoded" else "$mainUrl/page/$page/?s=$encoded"
         val document = app.get(url, headers = PasarBokepUtils.headers, referer = mainUrl).document
-        return PasarBokepParser.parseCards(document, this).toNewSearchResponseList(document.hasNextPage())
+        return newSearchResponseList(PasarBokepParser.parseCards(document, this), hasNext = document.hasNextPage())
     }
 
     override suspend fun load(url: String): LoadResponse {
