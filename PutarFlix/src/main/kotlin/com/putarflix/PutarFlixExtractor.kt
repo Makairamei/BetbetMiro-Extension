@@ -1,10 +1,18 @@
 package com.putarflix
 
 import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.extractors.StreamWishExtractor
+import com.lagradost.cloudstream3.extractors.VidStack
+import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getQualityFromName
+import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.getAndUnpack
+import com.lagradost.cloudstream3.utils.getPacked
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.nicehttp.RequestBodyTypes
@@ -14,6 +22,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.json.JSONObject
+import java.net.URI
+import java.net.URLDecoder
 
 internal object PutarFlixExtractor {
     private const val EXTRACT_TIMEOUT_MS = 30_000L
@@ -84,6 +95,7 @@ internal object PutarFlixExtractor {
             val doc = safeGetDocument(page, PutarFlixSeeds.MAIN_URL) ?: continue
             candidates += collectServersFromDocument(page, doc)
             candidates += collectAjaxServers(page, doc)
+            candidates += collectMuviproServers(page, doc)
         }
 
         var found = false
@@ -182,6 +194,13 @@ internal object PutarFlixExtractor {
             }
         }
 
+        val unpacked = runCatching {
+            if (!getPacked(normalized).isNullOrEmpty()) getAndUnpack(normalized) else null
+        }.getOrNull()
+        if (!unpacked.isNullOrBlank()) {
+            servers += collectServersFromAjaxText(pageUrl, unpacked, "PutarFlix Unpacked")
+        }
+
         return servers.distinctBy { PutarFlixUtils.decodeKnownRedirect(it.url) }
     }
 
@@ -241,6 +260,71 @@ internal object PutarFlixExtractor {
                 }
             }
         }
+        return output.distinctBy { PutarFlixUtils.decodeKnownRedirect(it.url) }
+    }
+
+    private suspend fun collectMuviproServers(pageUrl: String, doc: Document): List<PutarFlixServer> {
+        val output = linkedSetOf<PutarFlixServer>()
+
+        // Same pattern as the working Dutamovie provider: some Muvipro themes expose
+        // direct tab URLs, while others keep the iframe behind admin-ajax.
+        doc.select("ul.muvipro-player-tabs li a[href], .muvipro-player-tabs a[href], a[href*='?player='], a[href*='&player=']")
+            .forEach { tab ->
+                val raw = tab.attr("href").trim()
+                val tabUrl = PutarFlixUtils.absoluteUrl(pageUrl, raw) ?: return@forEach
+                if (!shouldSkipCandidate(tabUrl, allowPlayerPage = true, allowShortener = true)) {
+                    output += PutarFlixServer(PutarFlixUtils.extractLabelNear(tab), tabUrl, pageUrl, "muvipro-tab")
+                }
+            }
+
+        doc.select("div.gmr-embed-responsive iframe[src], div.gmr-embed-responsive iframe[data-src], .tab-pane iframe[src], .tab-pane iframe[data-src], .tab-content iframe[src], .tab-content iframe[data-src]")
+            .forEach { iframe ->
+                addServerFromElement(output, pageUrl, iframe, allowInternalPlayerPage = true, forceAllowShortener = true)
+            }
+
+        val postId = doc.selectFirst("div#muvipro_player_content_id[data-id]")
+            ?.attr("data-id")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: extractPostId(doc)
+
+        if (postId.isNullOrBlank()) return output.distinctBy { PutarFlixUtils.decodeKnownRedirect(it.url) }
+
+        val tabIds = linkedSetOf<String>()
+        doc.select("div.tab-content-ajax[id], .tab-content-ajax[id], div[id^=muvipro_player_content], div[id*=muvipro][id]")
+            .map { it.id().trim() }
+            .filter { it.isNotBlank() }
+            .forEach { tabIds += it }
+
+        doc.select("ul.muvipro-player-tabs li a[href^=#], .muvipro-player-tabs a[href^=#]")
+            .map { it.attr("href").removePrefix("#").trim() }
+            .filter { it.isNotBlank() }
+            .forEach { tabIds += it }
+
+        // Conservative fallback: if the tabs are generated client-side, try common ids
+        // used by Muvipro skins. Bad ids just return empty ajax responses.
+        if (tabIds.isEmpty()) {
+            PutarFlixSeeds.playerNumbers.forEach { number ->
+                tabIds += "muvipro_player_content_$number"
+                tabIds += "player-option-$number"
+                tabIds += "server-$number"
+            }
+        }
+
+        for (tabId in tabIds.take(9)) {
+            val response = safePostAjaxText(
+                url = "${PutarFlixSeeds.MAIN_URL}/wp-admin/admin-ajax.php",
+                referer = pageUrl,
+                data = mapOf(
+                    "action" to "muvipro_player_content",
+                    "tab" to tabId,
+                    "post_id" to postId
+                )
+            ) ?: continue
+
+            output += collectServersFromAjaxText(pageUrl, response, "Muvipro ${tabId.substringAfterLast('-').substringAfterLast('_')}")
+        }
+
         return output.distinctBy { PutarFlixUtils.decodeKnownRedirect(it.url) }
     }
 
@@ -367,7 +451,13 @@ internal object PutarFlixExtractor {
         if (shouldSkipCandidate(fixedUrl, allowPlayerPage = true, allowShortener = true)) return false
 
         val doc = safeGetDocument(fixedUrl, referer) ?: return false
-        val nested = collectServersFromDocument(fixedUrl, doc) + collectAjaxServers(fixedUrl, doc)
+        val nested = buildList {
+            addAll(collectServersFromDocument(fixedUrl, doc))
+            addAll(collectAjaxServers(fixedUrl, doc))
+            if (PutarFlixUtils.isPutarFlixUrl(fixedUrl)) {
+                addAll(collectMuviproServers(fixedUrl, doc))
+            }
+        }
 
         var found = false
         for (server in nested
@@ -700,4 +790,693 @@ internal object PutarFlixExtractor {
             element.attr(attr).takeIf { it.isNotBlank() }
         }
     }
+}
+
+
+open class PutarFlixHostExtractor : ExtractorApi() {
+    override var name = "PutarFlix Host"
+    override var mainUrl = ""
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val pageUrl = url.replace(" ", "%20")
+        val domain = runCatching { "https://${URI(pageUrl).host}" }.getOrDefault(mainUrl.ifBlank { pageUrl })
+        val response = runCatching {
+            app.get(
+                pageUrl,
+                referer = referer ?: domain,
+                headers = putarFlixExtractorHeaders(referer ?: domain),
+                timeout = 15L
+            )
+        }.getOrNull() ?: return
+
+        val html = response.text.putarFlixCleanEscaped()
+        val directLinks = linkedSetOf<String>()
+        val embedLinks = linkedSetOf<String>()
+
+        if (html.trimStart().startsWith("#EXTM3U")) {
+            putarFlixEmitExtractorLink(name, pageUrl, referer ?: domain, callback)
+            return
+        }
+
+        response.document.select(
+            "meta[property=og:video], meta[property=og:video:url], meta[property=og:video:secure_url], " +
+                "meta[name=twitter:player], iframe[src], iframe[data-src], iframe[data-litespeed-src], " +
+                "video[src], video[data-src], video source[src], source[src], embed[src], object[data], " +
+                "a[href], [data-src], [data-file], [data-video], [data-url], [data-embed]"
+        ).forEach { element ->
+            val raw = element.attr("content")
+                .ifBlank { element.attr("data-file") }
+                .ifBlank { element.attr("data-video") }
+                .ifBlank { element.attr("data-url") }
+                .ifBlank { element.attr("data-embed") }
+                .ifBlank { element.attr("data-litespeed-src") }
+                .ifBlank { element.attr("data-src") }
+                .ifBlank { element.attr("data") }
+                .ifBlank { element.attr("src") }
+                .ifBlank { element.attr("href") }
+                .trim()
+
+            putarFlixAddExtractorCandidate(raw, pageUrl, directLinks, embedLinks)
+        }
+
+        putarFlixExtractExtractorUrls(html).forEach { raw ->
+            putarFlixAddExtractorCandidate(raw, pageUrl, directLinks, embedLinks)
+        }
+
+        val unpacked = runCatching {
+            if (!getPacked(html).isNullOrEmpty()) getAndUnpack(html) else null
+        }.getOrNull()
+
+        if (!unpacked.isNullOrBlank()) {
+            putarFlixExtractExtractorUrls(unpacked.putarFlixCleanEscaped()).forEach { raw ->
+                putarFlixAddExtractorCandidate(raw, pageUrl, directLinks, embedLinks)
+            }
+        }
+
+        directLinks.distinct().forEach { link ->
+            putarFlixEmitExtractorLink(name, link, pageUrl, callback)
+        }
+
+        if (directLinks.isNotEmpty()) return
+
+        embedLinks
+            .filterNot { it == pageUrl }
+            .filterNot { putarFlixIsJunkExtractorUrl(it) }
+            .distinct()
+            .take(6)
+            .forEach { embed ->
+                val nested = runCatching {
+                    app.get(
+                        embed,
+                        referer = pageUrl,
+                        headers = putarFlixExtractorHeaders(pageUrl),
+                        timeout = 15L
+                    ).text.putarFlixCleanEscaped()
+                }.getOrNull().orEmpty()
+
+                putarFlixExtractExtractorUrls(nested).forEach { raw ->
+                    val fixed = putarFlixNormalizeExtractorUrl(raw, embed).replace(".txt", ".m3u8")
+                    if (fixed.putarFlixIsDirectVideoUrl()) {
+                        putarFlixEmitExtractorLink(name, fixed, embed, callback)
+                    }
+                }
+
+                val nestedUnpacked = runCatching {
+                    if (!getPacked(nested).isNullOrEmpty()) getAndUnpack(nested) else null
+                }.getOrNull()
+
+                if (!nestedUnpacked.isNullOrBlank()) {
+                    putarFlixExtractExtractorUrls(nestedUnpacked.putarFlixCleanEscaped()).forEach { raw ->
+                        val fixed = putarFlixNormalizeExtractorUrl(raw, embed).replace(".txt", ".m3u8")
+                        if (fixed.putarFlixIsDirectVideoUrl()) {
+                            putarFlixEmitExtractorLink(name, fixed, embed, callback)
+                        }
+                    }
+                }
+            }
+    }
+}
+
+class PutarFlixEmturbovid : PutarFlixHostExtractor() {
+    override var name = "Emturbovid"
+    override var mainUrl = "https://emturbovid.com"
+}
+
+class PutarFlixF16 : PutarFlixHostExtractor() {
+    override var name = "F16"
+    override var mainUrl = "https://f16px.com"
+}
+
+class PutarFlixMajorplay : PutarFlixHostExtractor() {
+    override var name = "Majorplay"
+    override var mainUrl = "https://majorplay.net"
+}
+
+class PutarFlixE2eMajorplay : PutarFlixHostExtractor() {
+    override var name = "Majorplay E2E"
+    override var mainUrl = "https://e2e.majorplay.net"
+}
+
+class PutarFlixM3u8Majorplay : PutarFlixHostExtractor() {
+    override var name = "Majorplay M3U8"
+    override var mainUrl = "https://m3u8.majorplay.net"
+}
+
+class PutarFlixP2P : PutarFlixHostExtractor() {
+    override var name = "P2P"
+    override var mainUrl = "https://cloud.hownetwork.xyz"
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        super.getUrl(url, referer, subtitleCallback, callback)
+
+        val id = url.substringAfter("id=", "")
+            .substringBefore("&")
+            .substringBefore("?")
+            .trim()
+        if (id.isBlank()) return
+
+        val text = runCatching {
+            app.post(
+                "$mainUrl/api2.php?id=$id",
+                data = mapOf(
+                    "r" to (referer ?: "https://playeriframe.sbs/"),
+                    "d" to "cloud.hownetwork.xyz"
+                ),
+                referer = url,
+                headers = putarFlixExtractorHeaders(url) + mapOf("X-Requested-With" to "XMLHttpRequest"),
+                timeout = 15L
+            ).text.putarFlixCleanEscaped()
+        }.getOrNull().orEmpty()
+
+        putarFlixParseJsonStream(text)?.let { stream ->
+            putarFlixEmitExtractorLink(name, putarFlixNormalizeExtractorUrl(stream, url), mainUrl, callback)
+        }
+
+        putarFlixExtractExtractorUrls(text).forEach { raw ->
+            putarFlixEmitExtractorLink(name, putarFlixNormalizeExtractorUrl(raw, url), mainUrl, callback)
+        }
+    }
+}
+
+class PutarFlixJeniusplay : PutarFlixHostExtractor() {
+    override var name = "Jeniusplay"
+    override var mainUrl = "https://jeniusplay.com"
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        super.getUrl(url, referer, subtitleCallback, callback)
+
+        val pageUrl = url.replace(" ", "%20")
+        val hash = pageUrl.substringAfter("data=", pageUrl.substringAfterLast("/"))
+            .substringBefore("&")
+            .substringBefore("?")
+            .trim()
+        if (hash.isBlank()) return
+
+        listOf(
+            "$mainUrl/player/ajax.php?data=$hash&do=getVideo",
+            "$mainUrl/player/index.php?data=$hash&do=getVideo"
+        ).forEach { endpoint ->
+            val text = runCatching {
+                app.post(
+                    url = endpoint,
+                    data = mapOf("hash" to hash, "r" to (referer ?: "")),
+                    referer = pageUrl,
+                    headers = putarFlixExtractorHeaders(pageUrl) + mapOf("X-Requested-With" to "XMLHttpRequest"),
+                    timeout = 15L
+                ).text.putarFlixCleanEscaped()
+            }.getOrNull().orEmpty()
+
+            putarFlixParseJsonStream(text)?.let { stream ->
+                putarFlixEmitExtractorLink(name, putarFlixNormalizeExtractorUrl(stream, pageUrl), pageUrl, callback)
+            }
+            putarFlixExtractExtractorUrls(text).forEach { raw ->
+                putarFlixEmitExtractorLink(name, putarFlixNormalizeExtractorUrl(raw, pageUrl), pageUrl, callback)
+            }
+        }
+    }
+}
+
+class PutarFlixHglink : StreamWishExtractor() {
+    override val name = "Hglink"
+    override val mainUrl = "https://hglink.to"
+}
+
+class PutarFlixGhbrisk : StreamWishExtractor() {
+    override val name = "Ghbrisk"
+    override val mainUrl = "https://ghbrisk.com"
+}
+
+class PutarFlixDhcplay : StreamWishExtractor() {
+    override var name = "DHC Play"
+    override var mainUrl = "https://dhcplay.com"
+}
+
+class PutarFlixStreamcasthub : VidStack() {
+    override var name = "Streamcasthub"
+    override var mainUrl = "https://live.streamcasthub.store"
+    override var requiresReferer = true
+}
+
+class PutarFlixDm21embed : VidStack() {
+    override var name = "Dm21embed"
+    override var mainUrl = "https://dm21.embed4me.vip"
+    override var requiresReferer = true
+}
+
+class PutarFlixDm21upns : VidStack() {
+    override var name = "Dm21upns"
+    override var mainUrl = "https://dm21.upns.live"
+    override var requiresReferer = true
+}
+
+class PutarFlixDm21 : VidStack() {
+    override var name = "Dm21"
+    override var mainUrl = "https://dm21.embed4me.vip"
+    override var requiresReferer = true
+}
+
+class PutarFlixMeplayer : VidStack() {
+    override var name = "Meplayer"
+    override var mainUrl = "https://video.4meplayer.com"
+    override var requiresReferer = true
+}
+
+private fun putarFlixAddExtractorCandidate(
+    raw: String,
+    baseUrl: String,
+    directLinks: MutableSet<String>,
+    embedLinks: MutableSet<String>
+) {
+    if (raw.isBlank()) return
+    val fixed = putarFlixNormalizeExtractorUrl(raw.putarFlixCleanEscaped(), baseUrl)
+        .replace(".txt", ".m3u8")
+        .trim()
+    if (fixed.isBlank() || putarFlixIsJunkExtractorUrl(fixed)) return
+
+    when {
+        fixed.putarFlixIsDirectVideoUrl() -> directLinks.add(fixed)
+        fixed.startsWith("http", true) && putarFlixIsKnownExtractorHost(fixed) -> embedLinks.add(fixed)
+        fixed.startsWith("http", true) && fixed.contains("embed", true) -> embedLinks.add(fixed)
+        fixed.startsWith("http", true) && fixed.contains("player", true) -> embedLinks.add(fixed)
+        fixed.startsWith("http", true) && fixed.contains("stream", true) -> embedLinks.add(fixed)
+    }
+}
+
+private suspend fun putarFlixEmitExtractorLink(
+    source: String,
+    streamUrl: String,
+    referer: String,
+    callback: (ExtractorLink) -> Unit
+) {
+    val fixed = streamUrl.putarFlixCleanEscaped().replace(".txt", ".m3u8")
+    if (putarFlixIsJunkExtractorUrl(fixed)) return
+
+    if (fixed.contains(".m3u8", true)) {
+        generateM3u8(
+            source = source,
+            streamUrl = fixed,
+            referer = referer,
+            headers = putarFlixExtractorHeaders(referer)
+        ).forEach(callback)
+    } else {
+        callback(
+            newExtractorLink(
+                source = source,
+                name = source,
+                url = fixed,
+                type = ExtractorLinkType.VIDEO
+            ) {
+                this.referer = referer
+                this.quality = getQualityFromName(fixed).takeIf { it != Qualities.Unknown.value }
+                    ?: Qualities.Unknown.value
+                this.headers = putarFlixExtractorHeaders(referer)
+            }
+        )
+    }
+}
+
+private fun putarFlixParseJsonStream(text: String): String? {
+    return runCatching {
+        val json = JSONObject(text)
+        listOf(
+            json.optString("file"),
+            json.optString("link"),
+            json.optString("videoSource"),
+            json.optString("securedLink"),
+            json.optString("url"),
+            json.optString("src")
+        ).firstOrNull { it.isNotBlank() }
+    }.getOrNull()
+}
+
+private fun putarFlixExtractExtractorUrls(text: String): List<String> {
+    val clean = text.putarFlixCleanEscaped()
+    val urls = linkedSetOf<String>()
+
+    Regex(
+        """https?://[^"'\\\s<>]+?\.(?:m3u8|mp4|webm|txt)(?:\?[^"'\\\s<>]*)?""",
+        RegexOption.IGNORE_CASE
+    ).findAll(clean)
+        .map { it.value.putarFlixCleanEscaped().replace(".txt", ".m3u8") }
+        .filterNot { putarFlixIsJunkExtractorUrl(it) }
+        .forEach { urls.add(it) }
+
+    Regex(
+        """//[^"'\\\s<>]+?\.(?:m3u8|mp4|webm|txt)(?:\?[^"'\\\s<>]*)?""",
+        RegexOption.IGNORE_CASE
+    ).findAll(clean)
+        .map { "https:${it.value.putarFlixCleanEscaped().replace(".txt", ".m3u8")}" }
+        .filterNot { putarFlixIsJunkExtractorUrl(it) }
+        .forEach { urls.add(it) }
+
+    Regex(
+        """https?%3A%2F%2F[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.webm|\.txt|emturbovid|hownetwork|f16|jeniusplay|majorplay|streamwish|filemoon|dood|streamtape|vidhide|voe|mixdrop|play\.putar\.in|gdplayer|awstream|megaplay|luluvdo|filedon|blogger|blogspot|streamplay|movearnpre)[^"'\\\s<>]*""",
+        RegexOption.IGNORE_CASE
+    ).findAll(clean)
+        .map { runCatching { URLDecoder.decode(it.value, "UTF-8") }.getOrDefault(it.value) }
+        .map { it.putarFlixCleanEscaped().replace(".txt", ".m3u8") }
+        .filterNot { putarFlixIsJunkExtractorUrl(it) }
+        .forEach { urls.add(it) }
+
+    Regex(
+        """(?:file|src|source|url|videoSource|videoUrl|video_url|playUrl|play_url|hls|hlsUrl|hls_url|stream|streamUrl|stream_url|embedUrl|embed_url)\s*[:=]\s*["']([^"']+)["']""",
+        RegexOption.IGNORE_CASE
+    ).findAll(clean)
+        .mapNotNull { it.groupValues.getOrNull(1) }
+        .map { it.putarFlixCleanEscaped().replace(".txt", ".m3u8") }
+        .filter {
+            it.putarFlixIsDirectVideoUrl() ||
+                putarFlixIsKnownExtractorHost(it) ||
+                it.contains("embed", true) ||
+                it.contains("player", true)
+        }
+        .filterNot { putarFlixIsJunkExtractorUrl(it) }
+        .forEach { urls.add(it) }
+
+    return urls.toList()
+}
+
+private fun putarFlixIsKnownExtractorHost(url: String): Boolean {
+    val value = url.lowercase()
+    return listOf(
+        "emturbovid",
+        "hownetwork",
+        "playeriframe",
+        "cloud.",
+        "p2p",
+        "f16",
+        "jeniusplay",
+        "majorplay",
+        "e2e.majorplay",
+        "m3u8.majorplay",
+        "streamwish",
+        "filemoon",
+        "dood",
+        "streamtape",
+        "vidhide",
+        "voe",
+        "mixdrop",
+        "hglink",
+        "ghbrisk",
+        "dhcplay",
+        "streamcasthub",
+        "embed4me",
+        "upns.live",
+        "4meplayer",
+        "play.putar.in",
+        "gdplayer",
+        "z.awstream.net",
+        "awstream",
+        "megaplay",
+        "luluvdo",
+        "filedon",
+        "blogger.com",
+        "blogspot",
+        "play.streamplay.co.in",
+        "movearnpre"
+    ).any { value.contains(it) }
+}
+
+private fun putarFlixIsJunkExtractorUrl(url: String): Boolean {
+    val value = url.lowercase()
+    return value.isBlank() ||
+        value.contains("facebook.com") ||
+        value.contains("twitter.com") ||
+        value.contains("telegram") ||
+        value.contains("whatsapp") ||
+        value.contains("mailto:") ||
+        value.contains("trailer") ||
+        value.contains("youtube.com") ||
+        value.contains("youtu.be") ||
+        value.contains("googletagmanager") ||
+        value.contains("cloudflareinsights") ||
+        value.contains("recaptcha") ||
+        value.contains("doubleclick") ||
+        value.contains("googlesyndication") ||
+        value.contains("/ads/") ||
+        value.contains("banner") ||
+        value.contains("tracking") ||
+        value.contains("analytics")
+}
+
+private fun String.putarFlixIsDirectVideoUrl(): Boolean {
+    return contains(".m3u8", true) || contains(".mp4", true) || contains(".webm", true)
+}
+
+private fun putarFlixNormalizeExtractorUrl(url: String, baseUrl: String): String {
+    val clean = url.putarFlixCleanEscaped().trim()
+    return when {
+        clean.isBlank() -> ""
+        clean.startsWith("http", true) -> clean
+        clean.startsWith("//") -> "https:$clean"
+        clean.startsWith("/") -> "${putarFlixOrigin(baseUrl)}$clean"
+        else -> runCatching { URI(baseUrl).resolve(clean).toString() }.getOrDefault(clean)
+    }
+}
+
+private fun putarFlixOrigin(url: String): String {
+    return runCatching {
+        val uri = URI(url)
+        "${uri.scheme ?: "https"}://${uri.host}"
+    }.getOrDefault(url.substringBeforeLast("/"))
+}
+
+private fun putarFlixExtractorHeaders(referer: String): Map<String, String> {
+    return mapOf(
+        "User-Agent" to USER_AGENT,
+        "Referer" to referer,
+        "Origin" to putarFlixOrigin(referer)
+    )
+}
+
+private fun String.putarFlixCleanEscaped(): String {
+    return replace("\\/", "/")
+        .replace("&amp;", "&")
+        .replace("\\\"", "\"")
+        .replace("\\u0026", "&")
+        .replace("\\u003d", "=")
+        .replace("\\u003a", ":")
+        .replace("\\u002f", "/")
+        .replace("\\\\/", "/")
+}
+
+
+class PutarFlixPlayPutarIn : ExtractorApi() {
+    override var name = "PlayPutarIn"
+    override var mainUrl = "https://play.putar.in"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val encoded = url.substringAfter("?url=", "").substringBefore("&").trim()
+        val target = runCatching { URLDecoder.decode(encoded, "UTF-8") }.getOrDefault(encoded)
+            .putarFlixCleanEscaped()
+            .trim()
+
+        if (target.startsWith("http", true)) {
+            val loaded = runCatching { loadExtractor(target, url, subtitleCallback, callback) }.getOrDefault(false)
+            if (!loaded) PutarFlixHostExtractor().getUrl(target, url, subtitleCallback, callback)
+        }
+
+        PutarFlixHostExtractor().getUrl(url, referer ?: mainUrl, subtitleCallback, callback)
+    }
+}
+
+class PutarFlixLk21PlayerPage : ExtractorApi() {
+    override var name = "Lk21Player"
+    override var mainUrl = "https://playeriframe.sbs"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val response = runCatching {
+            app.get(url, referer = referer, headers = putarFlixExtractorHeaders(referer ?: mainUrl), timeout = 15L)
+        }.getOrNull() ?: return
+
+        response.document.select("iframe[src], iframe[data-src]").forEach { iframe ->
+            val raw = iframe.attr("src").ifBlank { iframe.attr("data-src") }
+            val src = putarFlixNormalizeExtractorUrl(raw, url)
+            if (src.isBlank() || putarFlixIsJunkExtractorUrl(src)) return@forEach
+            val loaded = runCatching { loadExtractor(src, url, subtitleCallback, callback) }.getOrDefault(false)
+            if (!loaded) PutarFlixHostExtractor().getUrl(src, url, subtitleCallback, callback)
+        }
+
+        putarFlixExtractExtractorUrls(response.text).forEach { raw ->
+            val fixed = putarFlixNormalizeExtractorUrl(raw, url).replace(".txt", ".m3u8")
+            if (fixed.putarFlixIsDirectVideoUrl()) {
+                putarFlixEmitExtractorLink(name, fixed, url, callback)
+            }
+        }
+    }
+}
+
+class PutarFlixGdplayer : ExtractorApi() {
+    override var name = "Gdplayer"
+    override var mainUrl = "https://gdplayer.to"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val doc = runCatching { app.get(url, referer = referer, timeout = 15L).document }.getOrNull() ?: return
+        val script = doc.selectFirst("script:containsData(kaken), script:containsData(player =)")?.data().orEmpty()
+        val kaken = Regex("""kaken\s*=\s*["']([^"']+)""").find(script)?.groupValues?.getOrNull(1).orEmpty()
+        if (kaken.isNotBlank()) {
+            val jsonText = runCatching {
+                app.get(
+                    "$mainUrl/api/?$kaken=&_=${System.currentTimeMillis()}",
+                    headers = mapOf("X-Requested-With" to "XMLHttpRequest"),
+                    referer = url,
+                    timeout = 15L
+                ).text
+            }.getOrNull().orEmpty()
+            val files = linkedSetOf<String>()
+            putarFlixExtractExtractorUrls(jsonText).forEach { files += it }
+            Regex("""[\"']file[\"']\s*:\s*[\"']([^\"']+)[\"']""", RegexOption.IGNORE_CASE)
+                .findAll(jsonText.putarFlixCleanEscaped())
+                .mapNotNull { it.groupValues.getOrNull(1) }
+                .forEach { files += it }
+            files.forEach { file ->
+                putarFlixEmitExtractorLink(name, putarFlixNormalizeExtractorUrl(file, url), mainUrl, callback)
+            }
+        }
+
+        PutarFlixHostExtractor().getUrl(url, referer ?: mainUrl, subtitleCallback, callback)
+    }
+}
+
+class PutarFlixAWSStream : ExtractorApi() {
+    override var name = "AWSStream"
+    override var mainUrl = "https://z.awstream.net"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val hash = url.substringAfterLast("/").substringBefore("?").trim()
+        if (hash.isNotBlank()) {
+            val response = runCatching {
+                app.post(
+                    "$mainUrl/player/index.php?data=$hash&do=getVideo",
+                    referer = url,
+                    headers = mapOf("X-Requested-With" to "XMLHttpRequest"),
+                    data = mapOf("hash" to hash, "r" to mainUrl),
+                    timeout = 15L
+                ).text
+            }.getOrNull().orEmpty()
+            putarFlixParseJsonStream(response)?.let { stream ->
+                putarFlixEmitExtractorLink(name, putarFlixNormalizeExtractorUrl(stream, url), mainUrl, callback)
+            }
+        }
+        PutarFlixHostExtractor().getUrl(url, referer ?: mainUrl, subtitleCallback, callback)
+    }
+}
+
+class PutarFlixMegaPlay : ExtractorApi() {
+    override var name = "MegaPlay"
+    override var mainUrl = "https://megaplay.buzz"
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val doc = runCatching { app.get(url, referer = referer, timeout = 15L).document }.getOrNull() ?: return
+        val id = doc.selectFirst("#megaplay-player[data-id], [data-id]")?.attr("data-id").orEmpty()
+        if (id.isNotBlank()) {
+            val jsonText = runCatching { app.get("$mainUrl/stream/getSources?id=$id", referer = url, timeout = 15L).text }.getOrNull().orEmpty()
+            val streams = linkedSetOf<String>()
+            putarFlixExtractExtractorUrls(jsonText).forEach { streams += it }
+            Regex("""[\"']file[\"']\s*:\s*[\"']([^\"']+)[\"']""", RegexOption.IGNORE_CASE)
+                .findAll(jsonText.putarFlixCleanEscaped())
+                .mapNotNull { it.groupValues.getOrNull(1) }
+                .forEach { streams += it }
+            streams.forEach { stream ->
+                putarFlixEmitExtractorLink(name, putarFlixNormalizeExtractorUrl(stream, url), mainUrl, callback)
+            }
+        }
+        PutarFlixHostExtractor().getUrl(url, referer ?: mainUrl, subtitleCallback, callback)
+    }
+}
+
+class PutarFlixLuluStream : ExtractorApi() {
+    override var name = "LuluStream"
+    override var mainUrl = "https://luluvdo.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val fileCode = url.substringAfterLast("/").substringBefore("?").trim()
+        if (fileCode.isNotBlank()) {
+            val doc = runCatching {
+                app.post(
+                    "$mainUrl/dl",
+                    referer = url,
+                    data = mapOf("op" to "embed", "file_code" to fileCode, "auto" to "1", "referer" to (referer ?: "")),
+                    timeout = 15L
+                ).document
+            }.getOrNull()
+            val script = doc?.selectFirst("script:containsData(vplayer), script:containsData(file:)")?.data().orEmpty()
+            Regex("""file\s*:\s*["']([^"']+)""").find(script)?.groupValues?.getOrNull(1)?.let { stream ->
+                putarFlixEmitExtractorLink(name, putarFlixNormalizeExtractorUrl(stream, url), mainUrl, callback)
+            }
+        }
+        PutarFlixHostExtractor().getUrl(url, referer ?: mainUrl, subtitleCallback, callback)
+    }
+}
+
+class PutarFlixFiledon : PutarFlixHostExtractor() {
+    override var name = "Filedon"
+    override var mainUrl = "https://filedon.co"
+}
+
+class PutarFlixBloggerVideo : PutarFlixHostExtractor() {
+    override var name = "BloggerVideo"
+    override var mainUrl = "https://www.blogger.com"
+}
+
+class PutarFlixPlayStreamplay : PutarFlixHostExtractor() {
+    override var name = "PlayStreamplay"
+    override var mainUrl = "https://play.streamplay.co.in"
+}
+
+class PutarFlixMovearnpre : PutarFlixHostExtractor() {
+    override var name = "Movearnpre"
+    override var mainUrl = "https://movearnpre.com"
 }

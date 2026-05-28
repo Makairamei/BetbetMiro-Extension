@@ -30,7 +30,10 @@ internal object PutarFlixUtils {
         "dood.to", "d000d.com", "vidhide", "voe.sx", "voe.ws", "mixdrop.co", "mixdrop.to",
         "streamsb", "sbembed", "sbrapid", "streamwish", "wishfast", "hlswish", "vidmoly",
         "mp4upload", "uqload", "vidoza", "fembed", "filelions", "luluvdo", "streamruby",
-        "vidguard", "vidplay", "filepursuit", "filegram", "pixeldrain.com", "krakenfiles.com"
+        "vidguard", "vidplay", "filepursuit", "filegram", "pixeldrain.com", "krakenfiles.com",
+        "emturbovid", "hownetwork", "playeriframe", "p2p", "f16", "jeniusplay", "majorplay",
+        "e2e.majorplay", "m3u8.majorplay", "hglink", "ghbrisk", "dhcplay", "streamcasthub",
+        "embed4me", "upns.live", "4meplayer", "play.putar.in", "gdplayer", "z.awstream.net", "awstream", "megaplay", "luluvdo", "filedon", "blogger.com", "blogspot", "play.streamplay.co.in", "movearnpre"
     )
 
     fun cleanText(value: String?): String {

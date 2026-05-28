@@ -1,4 +1,4 @@
-version = 7
+version = 9
 
 cloudstream {
     description = "PutarFlix provider by BetbetMiro"
