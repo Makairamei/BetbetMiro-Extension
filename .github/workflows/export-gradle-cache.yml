@@ -3,6 +3,9 @@ name: Export Gradle Cache
 on:
 workflow_dispatch:
 
+permissions:
+contents: read
+
 jobs:
 export-gradle-cache:
 runs-on: ubuntu-latest
@@ -26,21 +29,31 @@ steps:
       curl -L \
         -o "$HOME/.gradle/caches/cloudstream/cloudstream/cloudstream.jar" \
         "https://github.com/recloudstream/cloudstream/releases/download/pre-release/classes.jar"
+      ls -lah "$HOME/.gradle/caches/cloudstream/cloudstream"
 
   - name: Populate Gradle cache
     run: |
+      ./gradlew tasks --no-daemon || true
       ./gradlew :NoDrakorID:compileDebugKotlin --no-daemon || true
 
   - name: Pack Gradle cache
+    shell: bash
     run: |
       mkdir -p gradle-cache-export
+
+      paths=()
+
+      [ -d "$HOME/.gradle/caches/modules-2" ] && paths+=(".gradle/caches/modules-2")
+      [ -d "$HOME/.gradle/caches/jars-9" ] && paths+=(".gradle/caches/jars-9")
+      [ -d "$HOME/.gradle/caches/transforms-4" ] && paths+=(".gradle/caches/transforms-4")
+      [ -d "$HOME/.gradle/caches/cloudstream" ] && paths+=(".gradle/caches/cloudstream")
+      [ -d "$HOME/.gradle/wrapper/dists" ] && paths+=(".gradle/wrapper/dists")
+
       tar -czf gradle-cache-export/gradle-local-cache.tar.gz \
         -C "$HOME" \
-        .gradle/caches/modules-2 \
-        .gradle/caches/jars-* \
-        .gradle/caches/transforms-* \
-        .gradle/caches/cloudstream \
-        .gradle/wrapper/dists || true
+        "${paths[@]}"
+
+      ls -lah gradle-cache-export
 
   - name: Upload Gradle cache artifact
     uses: actions/upload-artifact@v4
