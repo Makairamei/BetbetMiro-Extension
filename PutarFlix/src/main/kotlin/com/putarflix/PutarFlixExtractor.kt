@@ -13,18 +13,18 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
 internal object PutarFlixExtractor {
-    private const val EXTRACT_TIMEOUT_MS = 25_000L
-    private const val REQUEST_TIMEOUT_MS = 7_000L
+    private const val EXTRACT_TIMEOUT_MS = 30_000L
+    private const val REQUEST_TIMEOUT_MS = 8_000L
     private const val LOAD_EXTRACTOR_TIMEOUT_MS = 8_000L
-    private const val MAX_RESOLVE_DEPTH = 3
+    private const val MAX_RESOLVE_DEPTH = 4
 
     private val directVideoRegex = Regex(
-        """https?:\?/\?/[^\"'<>)\]\[\s]+?\.(?:m3u8|mp4|mkv|mpd)(?:\?[^\"'<>)\]\[\s]+)?""",
+        """https?:\\?/\\?/[^\"'<>)\]\[\s]+?\.(?:m3u8|mp4|mkv|mpd)(?:\?[^\"'<>)\]\[\s]+)?""",
         RegexOption.IGNORE_CASE
     )
     private val iframeRegex = Regex("""<iframe[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
     private val jsonEmbedRegex = Regex(
-        """["'](?:embed_url|file|url|source|src|link|download|download_url)["']\s*:\s*["']([^"']+)["']""",
+        """["'](?:embed_url|file|url|source|src|link|download|download_url|direct_link|downloadLink)["']\s*:\s*["']([^"']+)["']""",
         RegexOption.IGNORE_CASE
     )
 
@@ -55,7 +55,7 @@ internal object PutarFlixExtractor {
         if (startUrl.isBlank()) return false
 
         if (!PutarFlixUtils.isPutarFlixUrl(startUrl)) {
-            if (PutarFlixUtils.looksDirectVideo(startUrl)) {
+            if (PutarFlixUtils.looksDirectVideo(startUrl) || PutarFlixUtils.isDirectDownloadUrl(startUrl)) {
                 return emitDirect(startUrl, PutarFlixSeeds.MAIN_URL, "PutarFlix Direct", callback)
             }
             return resolveServer(
@@ -122,16 +122,16 @@ internal object PutarFlixExtractor {
                 }
         }
 
-        // PutarFlix exposes usable download mirrors as shortlinks outside the visible player block.
-        // Grab only known shortener/playable hosts globally; do not crawl menus or related posts.
+        // PutarFlix exposes download mirrors as shortlinks outside the visible player block.
+        // Keep shortlinks as candidates even when the redirect target is hidden behind the shortener slug.
         doc.select("a[href]").forEach { anchor ->
             val raw = anchor.attr("href")
             val absolute = PutarFlixUtils.absoluteUrl(pageUrl, raw) ?: return@forEach
             val decoded = PutarFlixUtils.decodeKnownRedirect(absolute)
+            val candidate = decoded.takeIf { it != absolute } ?: absolute
 
             when {
                 PutarFlixUtils.isShortenerUrl(absolute) -> {
-                    val candidate = decoded.takeIf { it != absolute } ?: absolute
                     if (!shouldSkipCandidate(candidate, allowPlayerPage = true, allowShortener = true)) {
                         servers += PutarFlixServer(
                             PutarFlixUtils.extractLabelNear(anchor),
@@ -141,7 +141,7 @@ internal object PutarFlixExtractor {
                         )
                     }
                 }
-                PutarFlixUtils.isKnownPlayableHost(absolute) || PutarFlixUtils.looksDirectVideo(absolute) -> {
+                PutarFlixUtils.isKnownPlayableHost(absolute) || PutarFlixUtils.looksDirectVideo(absolute) || PutarFlixUtils.isDirectDownloadUrl(absolute) -> {
                     if (!shouldSkipCandidate(absolute, allowPlayerPage = true, allowShortener = true)) {
                         servers += PutarFlixServer(
                             PutarFlixUtils.extractLabelNear(anchor),
@@ -253,7 +253,35 @@ internal object PutarFlixExtractor {
                 players += PutarFlixAjaxPlayer(post, type, nume, PutarFlixUtils.extractLabelNear(element))
             }
 
-        return players.distinctBy { "${it.postId}:${it.type}:${it.nume}" }.take(5)
+        // Some Dooplay skins expose only ?player=2/3 tabs in visible HTML and keep the post id
+        // in rel=shortlink, body classes, or inline scripts. Generate the standard 1..3 AJAX
+        // candidates from that post id so server tabs still resolve.
+        if (players.isEmpty()) {
+            val postId = extractPostId(doc)
+            if (!postId.isNullOrBlank()) {
+                PutarFlixSeeds.playerNumbers.forEach { nume ->
+                    players += PutarFlixAjaxPlayer(postId, fallbackType, nume, "Server $nume")
+                }
+            }
+        }
+
+        return players.distinctBy { "${it.postId}:${it.type}:${it.nume}" }.take(6)
+    }
+
+    private fun extractPostId(doc: Document): String? {
+        val shortLink = doc.selectFirst("link[rel=shortlink]")?.attr("href").orEmpty()
+        Regex("""[?&]p=(\d+)""").find(shortLink)?.groupValues?.getOrNull(1)?.let { return it }
+
+        val bodyClasses = doc.body()?.className().orEmpty()
+        Regex("""postid-(\d+)""", RegexOption.IGNORE_CASE).find(bodyClasses)?.groupValues?.getOrNull(1)?.let { return it }
+
+        val scripts = doc.select("script").joinToString("\n") { it.data() + "\n" + it.html() }
+        return listOf(
+            Regex("""postid-(\d+)""", RegexOption.IGNORE_CASE),
+            Regex("""["']?postId["']?\s*[:=]\s*["']?(\d+)""", RegexOption.IGNORE_CASE),
+            Regex("""["']?post_id["']?\s*[:=]\s*["']?(\d+)""", RegexOption.IGNORE_CASE),
+            Regex("""["']?post["']?\s*[:=]\s*["']?(\d+)""", RegexOption.IGNORE_CASE)
+        ).firstNotNullOfOrNull { regex -> regex.find(scripts)?.groupValues?.getOrNull(1) }
     }
 
     private fun collectServersFromAjaxText(pageUrl: String, response: String, label: String): List<PutarFlixServer> {
@@ -304,17 +332,14 @@ internal object PutarFlixExtractor {
         if (depth > MAX_RESOLVE_DEPTH || fixedUrl in visited) return false
         visited += fixedUrl
 
-        if (PutarFlixUtils.looksDirectVideo(fixedUrl)) {
+        if (PutarFlixUtils.looksDirectVideo(fixedUrl) || PutarFlixUtils.isDirectDownloadUrl(fixedUrl)) {
             return emitDirect(fixedUrl, referer, label, callback)
         }
 
         if (PutarFlixUtils.isRejectedVideoCandidate(fixedUrl)) return false
 
-        // Cloudstream's loadExtractor may return true when a matching extractor exists,
-        // even if that extractor emits no playable link. Count emitted callbacks instead.
-        val loadedWithLinks = safeLoadExtractor(fixedUrl, referer, subtitleCallback, callback)
-        if (loadedWithLinks) return true
-
+        // Prefer the custom FilePress path; FilePress extractors can emit landing/download pages
+        // that Cloudstream treats as "success" but ExoPlayer cannot play.
         if (PutarFlixUtils.isFilePressUrl(fixedUrl)) {
             val fp = resolveFilePress(
                 url = fixedUrl,
@@ -327,6 +352,9 @@ internal object PutarFlixExtractor {
             )
             if (fp == true) return true
         }
+
+        val loadedWithLinks = safeLoadExtractor(fixedUrl, referer, subtitleCallback, callback)
+        if (loadedWithLinks) return true
 
         if (shouldSkipCandidate(fixedUrl, allowPlayerPage = true, allowShortener = true)) return false
 
@@ -372,40 +400,64 @@ internal object PutarFlixExtractor {
         val fileId = Regex("""/file/([^/?#]+)""", RegexOption.IGNORE_CASE)
             .find(url)?.groupValues?.getOrNull(1) ?: return false
 
+        val servers = linkedSetOf<PutarFlixServer>()
+
+        val fileDoc = safeGetDocument(url, referer)
+        if (fileDoc != null) {
+            servers += collectServersFromDocument(url, fileDoc)
+            val text = normalizeExtractText(fileDoc.select("script").joinToString("\n") { it.data() + "\n" + it.html() })
+            PutarFlixUtils.extractUrlsFromText(url, text).forEach { found ->
+                val fixed = PutarFlixUtils.decodeKnownRedirect(found)
+                if (!PutarFlixUtils.isHtmlLandingUrl(fixed)) {
+                    servers += PutarFlixServer(label.ifBlank { "FilePress" }, fixed, url, "filepress-page")
+                }
+            }
+        }
+
         val endpoints = listOf(
             "$origin/api/file/downlaod/",
             "$origin/api/file/download/"
         )
+        val methods = listOf("publicDownlaod", "publicDownload", "download")
 
         for (endpoint in endpoints) {
-            val response = safePostAjaxText(
-                url = endpoint,
-                referer = url,
-                data = mapOf(
-                    "id" to fileId,
-                    "method" to "publicDownlaod"
-                )
-            ) ?: continue
-
-            val servers = collectServersFromAjaxText(url, response, label.ifBlank { "FilePress" })
-            for (server in servers
-                .sortedBy { rankServer(it.url) }
-                .distinctBy { PutarFlixUtils.decodeKnownRedirect(it.url) }) {
-
-                val fixed = PutarFlixUtils.decodeKnownRedirect(server.url)
-                if (fixed == url || fixed in visited) continue
-
-                val resolved = resolveServer(
-                    url = fixed,
+            for (method in methods) {
+                val response = safePostAjaxText(
+                    url = endpoint,
                     referer = url,
-                    label = server.label,
-                    subtitleCallback = subtitleCallback,
-                    callback = callback,
-                    visited = visited,
-                    depth = depth
-                )
-                if (resolved) return true
+                    data = mapOf(
+                        "id" to fileId,
+                        "method" to method
+                    )
+                ) ?: continue
+
+                servers += collectServersFromAjaxText(url, response, label.ifBlank { "FilePress" })
+                PutarFlixUtils.extractUrlsFromText(url, normalizeExtractText(response)).forEach { found ->
+                    val fixed = PutarFlixUtils.decodeKnownRedirect(found)
+                    if (!PutarFlixUtils.isHtmlLandingUrl(fixed)) {
+                        servers += PutarFlixServer(label.ifBlank { "FilePress" }, fixed, url, "filepress-api")
+                    }
+                }
             }
+        }
+
+        for (server in servers
+            .sortedBy { rankServer(it.url) }
+            .distinctBy { PutarFlixUtils.decodeKnownRedirect(it.url) }) {
+
+            val fixed = PutarFlixUtils.decodeKnownRedirect(server.url)
+            if (fixed == url || fixed in visited) continue
+
+            val resolved = resolveServer(
+                url = fixed,
+                referer = url,
+                label = server.label.ifBlank { label.ifBlank { "FilePress" } },
+                subtitleCallback = subtitleCallback,
+                callback = callback,
+                visited = visited,
+                depth = depth
+            )
+            if (resolved) return true
         }
         return false
     }
@@ -420,6 +472,7 @@ internal object PutarFlixExtractor {
         }
 
         return !PutarFlixUtils.looksDirectVideo(url) &&
+            !PutarFlixUtils.isDirectDownloadUrl(url) &&
             !PutarFlixUtils.isKnownPlayableHost(url) &&
             !PutarFlixUtils.isShortenerUrl(url)
     }
@@ -429,11 +482,12 @@ internal object PutarFlixExtractor {
         val host = PutarFlixUtils.hostOf(fixed).orEmpty()
         return when {
             PutarFlixUtils.looksDirectVideo(fixed) -> 0
-            "filepress" in host -> 1
-            "drive.google.com" in host || "googleusercontent" in host -> 2
-            PutarFlixUtils.isKnownPlayableHost(fixed) -> 3
-            PutarFlixUtils.isPutarFlixPlayerPage(fixed) -> 4
-            PutarFlixUtils.isShortenerUrl(fixed) -> 5
+            PutarFlixUtils.isDirectDownloadUrl(fixed) -> 1
+            "filepress" in host -> 2
+            "drive.google.com" in host || "googleusercontent" in host || "drive.usercontent.google.com" in host -> 3
+            PutarFlixUtils.isKnownPlayableHost(fixed) -> 4
+            PutarFlixUtils.isPutarFlixPlayerPage(fixed) -> 5
+            PutarFlixUtils.isShortenerUrl(fixed) -> 6
             else -> 10
         }
     }
@@ -446,8 +500,10 @@ internal object PutarFlixExtractor {
     ): Boolean {
         var emitted = false
         val wrappedCallback: (ExtractorLink) -> Unit = { link ->
-            emitted = true
-            callback(link)
+            if (!PutarFlixUtils.isHtmlLandingUrl(link.url)) {
+                emitted = true
+                callback(link)
+            }
         }
 
         withTimeoutOrNull(LOAD_EXTRACTOR_TIMEOUT_MS) {
@@ -481,7 +537,8 @@ internal object PutarFlixExtractor {
                     headers = mapOf(
                         "X-Requested-With" to "XMLHttpRequest",
                         "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
-                        "Accept" to "*/*"
+                        "Accept" to "application/json, text/javascript, */*; q=0.01",
+                        "Origin" to PutarFlixSeeds.MAIN_URL
                     ),
                     data = data
                 ).text
@@ -510,6 +567,11 @@ internal object PutarFlixExtractor {
             ) {
                 this.referer = referer
                 this.quality = getQualityFromName(label).takeIf { it > 0 } ?: getQualityFromName(url)
+                this.headers = mapOf(
+                    "Referer" to referer,
+                    "Origin" to PutarFlixSeeds.MAIN_URL,
+                    "User-Agent" to "Mozilla/5.0"
+                )
             }
         )
         return true

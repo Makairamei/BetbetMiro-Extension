@@ -25,7 +25,7 @@ internal object PutarFlixUtils {
     )
 
     private val playableHosts = listOf(
-        "filepress.today", "filepress.store", "drive.google.com", "googleusercontent.com",
+        "filepress.today", "filepress.store", "filepress.cloud", "drive.google.com", "drive.usercontent.google.com", "googleusercontent.com",
         "streamtape.com", "streamtape.to", "filemoon.sx", "filemoon.to", "doodstream.com",
         "dood.to", "d000d.com", "vidhide", "voe.sx", "voe.ws", "mixdrop.co", "mixdrop.to",
         "streamsb", "sbembed", "sbrapid", "streamwish", "wishfast", "hlswish", "vidmoly",
@@ -105,6 +105,27 @@ internal object PutarFlixUtils {
     fun isFilePressUrl(url: String): Boolean {
         val host = hostOf(url) ?: return false
         return host.contains("filepress.") && url.contains("/file/", true)
+    }
+
+
+    fun isDirectDownloadUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        val host = hostOf(lower).orEmpty()
+        if (looksDirectVideo(lower)) return true
+        if ("googlevideo.com" in host || "googleusercontent.com" in host || "drive.usercontent.google.com" in host) return true
+        if ("videoplayback" in lower) return true
+        if (("download" in lower || "export=download" in lower || "uc?" in lower) && ("drive.google.com" in host || "filepress" in host)) return true
+        return false
+    }
+
+    fun isHtmlLandingUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        if (isPutarFlixUrl(lower)) return true
+        if (isShortenerUrl(lower)) return true
+        if (isFilePressUrl(lower)) return true
+        if ("drive.google.com/file/d/" in lower || "drive.google.com/open?" in lower) return true
+        if (lower.endsWith(".html") || lower.endsWith(".php")) return true
+        return false
     }
 
     fun isContentUrl(url: String): Boolean {
