@@ -2,12 +2,22 @@ name: Export Gradle Cache
 
 on:
 workflow_dispatch:
+push:
+paths:
+- ".github/workflows/export-gradle-cache.yml"
+- "build.gradle.kts"
+- "settings.gradle.kts"
+- "gradle.properties"
+- "gradle/wrapper/"
+- "src/NoDrakorID/"
 
 permissions:
 contents: read
+actions: read
 
 jobs:
 export-gradle-cache:
+name: Export Gradle Cache
 runs-on: ubuntu-latest
 
 steps:
@@ -18,7 +28,7 @@ steps:
     uses: actions/setup-java@v4
     with:
       distribution: temurin
-      java-version: 17
+      java-version: "17"
 
   - name: Make Gradle executable
     run: chmod +x ./gradlew
@@ -26,32 +36,24 @@ steps:
   - name: Download Cloudstream classes jar
     run: |
       mkdir -p "$HOME/.gradle/caches/cloudstream/cloudstream"
-      curl -L \
+      curl -L --retry 3 --fail \
         -o "$HOME/.gradle/caches/cloudstream/cloudstream/cloudstream.jar" \
         "https://github.com/recloudstream/cloudstream/releases/download/pre-release/classes.jar"
       ls -lah "$HOME/.gradle/caches/cloudstream/cloudstream"
 
   - name: Populate Gradle cache
     run: |
-      ./gradlew tasks --no-daemon || true
       ./gradlew :NoDrakorID:compileDebugKotlin --no-daemon || true
 
   - name: Pack Gradle cache
-    shell: bash
     run: |
       mkdir -p gradle-cache-export
 
-      paths=()
-
-      [ -d "$HOME/.gradle/caches/modules-2" ] && paths+=(".gradle/caches/modules-2")
-      [ -d "$HOME/.gradle/caches/jars-9" ] && paths+=(".gradle/caches/jars-9")
-      [ -d "$HOME/.gradle/caches/transforms-4" ] && paths+=(".gradle/caches/transforms-4")
-      [ -d "$HOME/.gradle/caches/cloudstream" ] && paths+=(".gradle/caches/cloudstream")
-      [ -d "$HOME/.gradle/wrapper/dists" ] && paths+=(".gradle/wrapper/dists")
-
       tar -czf gradle-cache-export/gradle-local-cache.tar.gz \
         -C "$HOME" \
-        "${paths[@]}"
+        .gradle/caches/modules-2 \
+        .gradle/caches/cloudstream \
+        .gradle/wrapper/dists
 
       ls -lah gradle-cache-export
 
