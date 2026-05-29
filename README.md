@@ -15,16 +15,15 @@
 
 </div>
 
+---
+
 ## 🎬 CloudStream Extension Repository
 
 **⚡ Fast • Stable • Anime • Donghua • Movies • Drama**
 
-<p align="center">
-Repository extension CloudStream custom yang berisi berbagai provider anime, donghua, drama, movie, dan source streaming lainnya.
-Dibuat untuk pengalaman nonton yang lebih praktis, ringan, dan terus diperbarui mengikuti perubahan source.
-</p>
+Repository extension CloudStream custom yang berisi berbagai provider anime, donghua, drama, movie, dan source streaming lainnya. Dibuat untuk pengalaman nonton yang lebih praktis, ringan, dan terus diperbarui mengikuti perubahan source.
 
-</div>
+> Fokus utama repo ini adalah provider yang mudah dipasang, cepat diuji, dan tetap dirawat saat domain, parser, atau extractor berubah.
 
 ---
 
@@ -32,9 +31,9 @@ Dibuat untuk pengalaman nonton yang lebih praktis, ringan, dan terus diperbarui 
 
 - 🎥 Streaming langsung melalui aplikasi CloudStream
 - ⚡ Ringan, cepat, dan mudah digunakan
-- 🔄 Mendukung auto-update extension
+- 🔄 Mendukung auto-update extension melalui `repo.json`
 - 🧩 Kompatibel dengan CloudStream versi terbaru
-- 🌐 Berisi banyak source anime, donghua, drama, dan movie
+- 🌐 Berisi banyak source anime, donghua, drama, movie, dan multi-source
 - 📱 Dioptimalkan untuk perangkat Android modern
 - 🛠️ Open source dan aktif diperbarui
 - 🍿 Cocok untuk pengguna yang ingin repo praktis tanpa ribet
@@ -72,7 +71,7 @@ https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/master/repo.json
 
 ## 🧩 Isi Repository
 
-Repository ini berisi berbagai provider, seperti:
+Repository ini berisi berbagai jenis provider dan komponen pendukung:
 
 - **Anime Providers**
 - **Donghua Providers**
@@ -80,9 +79,9 @@ Repository ini berisi berbagai provider, seperti:
 - **Drama Providers**
 - **Multi-source Providers**
 - **Extractor pendukung**
-- Dan source lain yang akan terus ditambahkan
+- Source lain yang akan terus ditambahkan sesuai kebutuhan
 
-> Daftar provider dapat berubah sewaktu-waktu mengikuti kondisi website source dan hasil build terbaru.
+> Daftar provider dapat berubah sewaktu-waktu mengikuti kondisi website source, hasil build terbaru, dan laporan issue dari pengguna.
 
 ---
 
@@ -111,6 +110,18 @@ Hasil build akan tersedia di folder:
 /builds
 ```
 
+### Catatan untuk Provider Fix
+
+Jika melakukan perbaikan provider, pastikan:
+
+- `build.gradle.kts` provider sudah **bump version** agar ikut ter-build.
+- Perubahan hanya menyentuh provider/module yang relevan.
+- Provider aktif memakai status yang sesuai.
+- `search`, `getMainPage`, `load`, dan `loadLinks` tetap aman dari URL kosong, URL relatif, dan parser crash.
+- Jangan membaca file/response besar dengan `.text` jika berisiko terkena OOM guard.
+
+Gradle boleh galak, tapi jangan dikasih alasan buat ngamuk 😭
+
 ---
 
 ## 📸 Preview Alur Install
@@ -127,7 +138,7 @@ CloudStream
 
 ---
 
-## 🔄 Update
+## 🔄 Update dan Laporan Error
 
 Repository ini akan terus diperbarui jika ada:
 
@@ -138,7 +149,32 @@ Repository ini akan terus diperbarui jika ada:
 - Extractor baru
 - Perbaikan build Gradle
 
-Kalau ada provider yang tidak berjalan, silakan cek update terbaru atau laporkan melalui issue.
+Kalau ada provider yang tidak berjalan, silakan buka **Issue** dan gunakan template yang sesuai:
+
+- **Provider bermasalah** untuk error search, homepage, load detail, atau video tidak bisa diputar.
+- **Build gagal** untuk error GitHub Actions atau compile Gradle.
+- **Request provider baru** untuk mengusulkan source/provider baru.
+
+Semakin lengkap contoh judul, URL, log, atau screenshot yang diberikan, semakin cepat provider bisa diperiksa.
+
+---
+
+## 🤝 Kontribusi dan Pull Request
+
+Pull Request sangat diterima, terutama untuk:
+
+- Memperbaiki provider yang rusak
+- Mengaktifkan kembali provider yang mati karena domain berubah
+- Menambah kategori/genre dari website sumber
+- Memperkuat extractor dan fallback playback
+- Membersihkan kode tanpa merusak provider yang sudah jalan
+
+Checklist penting sebelum PR:
+
+- Bump `version` di `build.gradle.kts` provider yang diubah.
+- Pastikan build/compile sudah dicek atau jelaskan log errornya.
+- Jangan mengubah provider lain jika tidak terkait.
+- Sertakan ringkasan perubahan yang jelas.
 
 ---
 
@@ -150,17 +186,15 @@ Semua konten, metadata, gambar, video, maupun source streaming berasal dari piha
 
 Gunakan dengan bijak dan patuhi aturan yang berlaku di wilayah masing-masing.
 
-Jika Anda meyakini bahwa ada konten yang melanggar hukum hak cipta, silakan hubungi **pihak penyedia host file yang bersangkutan**, **bukan** pengembang dari repositori ini ataupun aplikasi Cloudstream 3.
-
----
+Jika Anda meyakini bahwa ada konten yang melanggar hukum hak cipta, silakan hubungi **pihak penyedia host file yang bersangkutan**, **bukan** pengembang dari repositori ini ataupun aplikasi CloudStream.
 
 ---
 
 ## 🔞 Peringatan Konten Dewasa (NSFW)
 
-Harap diperhatikan bahwa beberapa ekstensi di dalam repositori ini dapat mengakses konten bernuansa dewasa (NSFW). 
+Harap diperhatikan bahwa beberapa ekstensi di dalam repositori ini dapat mengakses konten bernuansa dewasa (NSFW).
 
-- Penggunaan ekstensi ini ditujukan secara tegas **hanya untuk pengguna berusia 18 tahun ke atas** (atau sesuai dengan batas usia kedewasaan legal di yurisdiksi/negara Anda).
+- Penggunaan ekstensi ini ditujukan secara tegas **hanya untuk pengguna berusia 18 tahun ke atas** atau sesuai batas usia legal di yurisdiksi/negara Anda.
 - Jika Anda belum memenuhi syarat usia atau berada di lingkungan yang tidak mengizinkan konten semacam ini, harap segera tinggalkan halaman ini.
 - Pengembang repositori ini tidak bertanggung jawab atas akses yang dilakukan oleh anak di bawah umur.
 
@@ -175,7 +209,7 @@ Terima kasih untuk:
 - [CloudStream](https://github.com/recloudstream/cloudstream)
 - Semua developer provider dan extractor
 - Komunitas open source
-- Keluarga dan teman serta pengguna anonim yang ikut membantu testing dan melaporkan error
+- Keluarga, teman, dan pengguna anonim yang ikut membantu testing serta melaporkan error
 - Gradle, walau sering bikin kepala ingin restart hidup 😭
 
 ---
