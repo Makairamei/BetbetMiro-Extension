@@ -98,7 +98,7 @@ object SurgeFilm21Extractor {
         return out.filterNot { it.isNoiseUrlSf21() }.toCollection(linkedSetOf())
     }
 
-    private fun emitDirect(url: String, referer: String, emit: (ExtractorLink) -> Unit) {
+    private suspend fun emitDirect(url: String, referer: String, emit: (ExtractorLink) -> Unit) {
         emit(
             newExtractorLink("SurgeFilm21", "SurgeFilm21 ${url.qualitySf21().takeIf { it > 0 } ?: "Auto"}", url, INFER_TYPE) {
                 this.referer = referer
