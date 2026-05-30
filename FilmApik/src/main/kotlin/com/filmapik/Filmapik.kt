@@ -59,21 +59,8 @@ class Filmapik : MainAPI() {
 
         "tvshows-genre/k-drama/page/%d/" to "Drama Korea",
         "tvshows-genre/west-series/page/%d/" to "West Series",
-        "tvshows-genre/drama-mandarin/page/%d/" to "Drama Mandarin",
         "tvshows-genre/drama-india/page/%d/" to "Drama India",
-        "tvshows-genre/drama-singapore/page/%d/" to "Drama Singapore",
-        "tvshows-genre/drama-jepang/page/%d/" to "Drama Jepang",
-        "tvshows-genre/drama-thailand/page/%d/" to "Drama Thailand",
         "tvshows-genre/drama-lainnya/page/%d/" to "Drama Lainnya",
-
-        "country/usa/page/%d/" to "USA",
-        "country/united-states/page/%d/" to "United States",
-        "country/japan/page/%d/" to "Japan",
-        "country/canada/page/%d/" to "Canada",
-        "country/france/page/%d/" to "France",
-        "country/india/page/%d/" to "India",
-        "country/germany/page/%d/" to "Germany",
-        "country/south-korea/page/%d/" to "South Korea",
 
         "release-year/2026/page/%d/" to "Tahun 2026",
         "release-year/2025/page/%d/" to "Tahun 2025",
