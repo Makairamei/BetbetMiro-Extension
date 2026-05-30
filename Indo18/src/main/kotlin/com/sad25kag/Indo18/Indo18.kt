@@ -301,7 +301,7 @@ class Indo18 : MainAPI() {
         candidates.toList().forEach { candidate ->
             when {
                 emitDirect(candidate, startUrl) -> found = true
-                tryDoodstream(candidate, startUrl, callback) -> found = true
+                tryDoodstream(candidate, startUrl, subtitleCallback, callback) -> found = true
                 tryExtractor(candidate, startUrl) -> found = true
             }
         }
@@ -318,7 +318,7 @@ class Indo18 : MainAPI() {
                 collectFromPage(embed, startUrl).forEach { nested ->
                     when {
                         emitDirect(nested, embed) -> found = true
-                        tryDoodstream(nested, embed, callback) -> found = true
+                        tryDoodstream(nested, embed, subtitleCallback, callback) -> found = true
                         tryExtractor(nested, embed) -> found = true
                     }
                     if (found) return@forEach
@@ -457,11 +457,23 @@ class Indo18 : MainAPI() {
         return urls.filterNot { isAdUrl(it) || shouldSkipUrl(it) }.distinct()
     }
 
-    private suspend fun tryDoodstream(link: String, referer: String, callback: (ExtractorLink) -> Unit): Boolean {
+    private suspend fun tryDoodstream(
+        link: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
         val doodUrl = normalizeDoodstreamUrl(link, referer) ?: return false
         if (!isDoodstreamHost(doodUrl)) return false
 
-        if (tryExtractor(doodUrl, referer)) return true
+        var extractorFound = false
+        runCatching {
+            loadExtractor(doodUrl, referer, subtitleCallback) { extractorLink ->
+                extractorFound = true
+                callback(extractorLink)
+            }
+        }
+        if (extractorFound) return true
 
         val response = runCatching {
             app.get(
@@ -478,7 +490,24 @@ class Indo18 : MainAPI() {
         val html = response.text.cleanEscaped()
         extractPlayableUrls(html, doodUrl).forEach { media ->
             if (media.contains(".m3u8", true) || media.contains(".mp4", true) || media.contains(".webm", true)) {
-                return emitDirect(media, doodUrl)
+                callback(
+                    newExtractorLink(
+                        source = "$name Doodstream",
+                        name = "$name Doodstream",
+                        url = media,
+                        type = if (isHlsLike(media)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = doodUrl
+                        this.quality = qualityFromUrl(media)
+                        this.headers = mapOf(
+                            "User-Agent" to USER_AGENT,
+                            "Referer" to doodUrl,
+                            "Origin" to origin(doodUrl),
+                            "Accept" to "*/*"
+                        )
+                    }
+                )
+                return true
             }
         }
 
