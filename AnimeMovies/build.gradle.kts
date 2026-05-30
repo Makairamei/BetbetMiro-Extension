@@ -1,9 +1,9 @@
-version = 2
+version = 3
 
 cloudstream {
     authors = listOf("sad25kag")
     language = "id"
-    description = "Provider CloudStream untuk AnimeMovies dengan detail anime, episode list, dan resolver server dari payload watch page."
+    description = "Provider CloudStream untuk AnimeMovies dengan parser anime, episode, dan server watch dari payload situs."
     status = 1
     tvTypes = listOf(
         "Anime"

@@ -1,9 +1,6 @@
 package com.sad25kag.animemovies
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.SubtitleFile
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
@@ -95,25 +92,24 @@ class AnimeMovies : MainAPI() {
                     ?.groupValues
                     ?.getOrNull(1)
                     ?.toIntOrNull()
-                Episode(
-                    data = epUrl,
-                    name = epName,
-                    episode = epNum
-                )
+                newEpisode(epUrl) {
+                    this.name = epName
+                    this.episode = epNum
+                }
             }
 
         return newAnimeLoadResponse(title, url, TvType.Anime) {
             posterUrl = poster
             plot = description
             this.tags = tags
-            this.episodes = episodes
+            addEpisodes(DubStatus.Subbed, episodes)
         }
     }
 
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleHelper.SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val html = app.get(data).text
@@ -125,15 +121,16 @@ class AnimeMovies : MainAPI() {
             .distinct()
             .forEach { link ->
                 found = true
-                callback(
-                    ExtractorLink(
+                callback.invoke(
+                    newExtractorLink(
                         source = name,
                         name = "$name Direct",
                         url = link,
-                        referer = data,
-                        quality = getQualityFromName(link),
-                        isM3u8 = link.contains(".m3u8", ignoreCase = true)
-                    )
+                        type = if (link.contains(".m3u8", ignoreCase = true)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO,
+                        quality = getQualityFromName(link)
+                    ) {
+                        referer = data
+                    }
                 )
             }
 
