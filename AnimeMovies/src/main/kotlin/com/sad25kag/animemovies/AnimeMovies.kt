@@ -426,7 +426,7 @@ class AnimeMovies : MainAPI() {
         return links.toList()
     }
 
-    private fun collectSubtitles(document: Document, baseUrl: String, subtitleCallback: (SubtitleFile) -> Unit) {
+    private suspend fun collectSubtitles(document: Document, baseUrl: String, subtitleCallback: (SubtitleFile) -> Unit) {
         document.select("track[src], a[href$=.vtt], a[href$=.srt], a[href*='.vtt'], a[href*='.srt']").forEach { element ->
             val subUrl = fixUrl(element.attr("src").ifBlank { element.attr("href") }, baseUrl) ?: return@forEach
             val label = cleanText(element.attr("label").ifBlank { element.attr("srclang").ifBlank { element.text().ifBlank { "Subtitle" } } })
