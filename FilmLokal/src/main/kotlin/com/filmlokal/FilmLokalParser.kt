@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
+import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.filmlokal.FilmLokalUtils.absoluteUrl
 import com.filmlokal.FilmLokalUtils.cleanText
