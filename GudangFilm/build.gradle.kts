@@ -1,9 +1,9 @@
-version = 5
+version = 11
 
 cloudstream {
     authors = listOf("sad25kag", "BetbetMiro")
     language = "id"
-    description = "Provider CloudStream untuk GudangFilm / Dutamovie21 source."
+    description = "Provider CloudStream untuk GudangFilm / Dutamovie21 source dengan homepage, search, dan loadLinks terbaru."
     status = 1
 
     tvTypes = listOf(
