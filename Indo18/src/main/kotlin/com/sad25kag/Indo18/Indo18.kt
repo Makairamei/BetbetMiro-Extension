@@ -285,6 +285,7 @@ class Indo18 : MainAPI() {
 
             collectElementLinks(document, url).forEach { links.add(it) }
             extractPlayableUrls(html, url).forEach { links.add(it) }
+            extractDoodstreamLinks(html, url).forEach { links.add(it) }
             extractPackedLinks(html, url).forEach { links.add(it) }
             extractEncodedLinks(html, url).forEach { links.add(it) }
             extractDownloadButtons(document, url).forEach { links.add(it) }
@@ -352,6 +353,7 @@ class Indo18 : MainAPI() {
             )
             values.filter { it.isNotBlank() }.forEach { raw ->
                 extractPlayableUrls(raw, baseUrl).forEach { results.add(it) }
+                extractDoodstreamLinks(raw, baseUrl).forEach { results.add(it) }
                 fixUrl(raw, baseUrl)?.let { fixed ->
                     if (isLikelyPlayable(fixed) || isKnownHost(fixed)) results.add(fixed)
                 }
@@ -369,6 +371,7 @@ class Indo18 : MainAPI() {
             val looksLikeSource = text.contains("download") || text.contains("server") || text.contains("watch") || text.contains("play") || isKnownHost(raw)
             if (!looksLikeSource) return@forEach
             extractPlayableUrls(raw, baseUrl).forEach { results.add(it) }
+            extractDoodstreamLinks(raw, baseUrl).forEach { results.add(it) }
             fixUrl(raw, baseUrl)?.let { results.add(it) }
         }
         return results.toList()
@@ -376,7 +379,9 @@ class Indo18 : MainAPI() {
 
     private fun extractPackedLinks(html: String, baseUrl: String): List<String> {
         val unpacked = runCatching { if (!getPacked(html).isNullOrEmpty()) getAndUnpack(html) else null }.getOrNull()
-        return unpacked?.let { extractPlayableUrls(it.cleanEscaped(), baseUrl) }.orEmpty()
+        return unpacked?.let { unpackedHtml ->
+            (extractPlayableUrls(unpackedHtml.cleanEscaped(), baseUrl) + extractDoodstreamLinks(unpackedHtml.cleanEscaped(), baseUrl)).distinct()
+        }.orEmpty()
     }
 
     private fun extractEncodedLinks(html: String, baseUrl: String): List<String> {
@@ -384,14 +389,37 @@ class Indo18 : MainAPI() {
         val clean = html.cleanEscaped()
         runCatching { URLDecoder.decode(clean, "UTF-8") }.getOrNull()?.takeIf { it != clean }?.let {
             extractPlayableUrls(it.cleanEscaped(), baseUrl).forEach { link -> links.add(link) }
+            extractDoodstreamLinks(it.cleanEscaped(), baseUrl).forEach { link -> links.add(link) }
         }
         Regex("""(?i)atob\(['\"]([^'\"]+)['\"]\)""").findAll(clean).mapNotNull { decodeBase64(it.groupValues[1]) }.forEach {
             extractPlayableUrls(it.cleanEscaped(), baseUrl).forEach { link -> links.add(link) }
+            extractDoodstreamLinks(it.cleanEscaped(), baseUrl).forEach { link -> links.add(link) }
         }
         Regex("""(?i)(?:base64|data|hash)\s*[:=]\s*['\"]([A-Za-z0-9+/=_-]{20,})['\"]""").findAll(clean).mapNotNull { decodeBase64(it.groupValues[1]) }.forEach {
             extractPlayableUrls(it.cleanEscaped(), baseUrl).forEach { link -> links.add(link) }
+            extractDoodstreamLinks(it.cleanEscaped(), baseUrl).forEach { link -> links.add(link) }
         }
         return links.toList()
+    }
+
+    private fun extractDoodstreamLinks(text: String, baseUrl: String = mainUrl): List<String> {
+        val links = linkedSetOf<String>()
+        val clean = text.cleanEscaped()
+        val decoded = runCatching { URLDecoder.decode(clean, "UTF-8") }.getOrDefault(clean)
+        val source = if (decoded != clean) "$clean $decoded" else clean
+        Regex(
+            """(?i)(?:https?:)?//(?:www\.)?(?:doodstream\.com|dood\.(?:watch|to|so|la|pm|re|ws|sh)|do0od\.com|doods\.(?:pro|to)|ds2play\.com)/(?:e|d|embed)/[A-Za-z0-9_-]+(?:[^"'\\\s<>]*)?""",
+            RegexOption.IGNORE_CASE
+        ).findAll(source).map { it.value }.forEach { raw ->
+            fixUrl(raw, baseUrl)?.let { links.add(it) }
+        }
+        Regex(
+            """(?i)(?:src|href|data-src|data-url|data-video|data-file|file|url)\s*[:=]\s*["']([^"']*(?:doodstream\.com|dood\.|do0od\.com|doods\.|ds2play\.com)[^"']*)["']""",
+            RegexOption.IGNORE_CASE
+        ).findAll(source).mapNotNull { it.groupValues.getOrNull(1) }.forEach { raw ->
+            fixUrl(raw, baseUrl)?.let { links.add(it) }
+        }
+        return links.filterNot { isAdUrl(it) || shouldSkipUrl(it) }.distinct()
     }
 
     private fun extractPlayableUrls(text: String, baseUrl: String = mainUrl): List<String> {
@@ -412,7 +440,7 @@ class Indo18 : MainAPI() {
             if (fixed != null && (isLikelyPlayable(fixed) || isKnownHost(fixed))) urls.add(fixed)
         }
         Regex(
-            """https?://[^"'\\\s<>]+?(?:embed|player|stream|jomblo|playmogo|filemoon|streamwish|wishfast|dood|streamtape|vidhide|vidguard|voe|mixdrop|mp4upload|lulustream|luluvdoo|lulu|hglink|hgcloud|majorplay|jeniusplay|pornhub|xvideos|xhamster|redtube|spankbang)[^"'\\\s<>]*""",
+            """https?://[^"'\\\s<>]+?(?:embed|player|stream|jomblo|playmogo|filemoon|streamwish|wishfast|doodstream|dood\.|do0od|doods|ds2play|dood|streamtape|vidhide|vidguard|voe|mixdrop|mp4upload|lulustream|luluvdoo|lulu|hglink|hgcloud|majorplay|jeniusplay|pornhub|xvideos|xhamster|redtube|spankbang)[^"'\\\s<>]*""",
             RegexOption.IGNORE_CASE
         ).findAll(clean).map { it.value }.forEach { fixUrl(it, baseUrl)?.let(urls::add) }
         return urls.filterNot { isAdUrl(it) || shouldSkipUrl(it) }.distinct()
@@ -427,10 +455,11 @@ class Indo18 : MainAPI() {
     private fun hostPriority(url: String): Int {
         val value = url.lowercase()
         return when {
-            value.contains("jomblo.org") -> 0
-            value.contains("playmogo.com") -> 1
-            value.contains("majorplay") -> 2
-            value.contains("jeniusplay") -> 3
+            isDoodstreamHost(value) -> 0
+            value.contains("jomblo.org") -> 1
+            value.contains("playmogo.com") -> 2
+            value.contains("majorplay") -> 3
+            value.contains("jeniusplay") -> 4
             value.contains("hglink") -> 4
             value.contains("hgcloud") -> 5
             value.contains("lulustream") || value.contains("luluvdoo") || value.contains("lulu") -> 6
@@ -442,7 +471,6 @@ class Indo18 : MainAPI() {
             value.contains("mixdrop") -> 12
             value.contains("mp4upload") -> 13
             value.contains("streamtape") -> 14
-            value.contains("dood") -> 15
             value.contains("embed") -> 30
             value.contains("player") -> 31
             value.contains("stream") -> 32
@@ -450,10 +478,27 @@ class Indo18 : MainAPI() {
         }
     }
 
+    private fun isDoodstreamHost(url: String): Boolean {
+        val value = url.lowercase()
+        return value.contains("doodstream.com") ||
+            value.contains("dood.watch") ||
+            value.contains("dood.to") ||
+            value.contains("dood.so") ||
+            value.contains("dood.la") ||
+            value.contains("dood.pm") ||
+            value.contains("dood.re") ||
+            value.contains("dood.ws") ||
+            value.contains("dood.sh") ||
+            value.contains("do0od.com") ||
+            value.contains("doods.pro") ||
+            value.contains("doods.to") ||
+            value.contains("ds2play.com")
+    }
+
     private fun isKnownHost(url: String): Boolean {
         val value = url.lowercase()
-        return listOf(
-            "jomblo.org", "playmogo.com", "filemoon", "streamwish", "wishfast", "dood", "streamtape",
+        return isDoodstreamHost(value) || listOf(
+            "jomblo.org", "playmogo.com", "filemoon", "streamwish", "wishfast", "streamtape",
             "vidhide", "vidguard", "voe", "mixdrop", "mp4upload", "lulustream", "luluvdoo", "lulu",
             "hglink", "hgcloud", "majorplay", "jeniusplay", "pornhub", "xvideos", "xhamster", "redtube", "spankbang",
             "embed", "player", "stream"
