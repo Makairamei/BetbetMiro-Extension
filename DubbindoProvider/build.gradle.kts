@@ -1,4 +1,4 @@
-version = 4
+version = 5
 
 cloudstream {
     language = "id"
@@ -12,7 +12,7 @@ cloudstream {
      * 2: Slow
      * 3: Beta only
      */
-    status = 0
+    status = 1
 
     tvTypes = listOf(
         "TvSeries",
