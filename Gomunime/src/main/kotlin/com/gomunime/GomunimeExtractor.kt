@@ -3,7 +3,6 @@ package com.gomunime
 import com.gomunime.GomunimeUtils.absoluteUrl
 import com.gomunime.GomunimeUtils.decodeBase64Html
 import com.gomunime.GomunimeUtils.decodeUrl
-import com.gomunime.GomunimeUtils.episodeNumber
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.newSubtitleFile
@@ -19,28 +18,13 @@ import java.net.URI
 object GomunimeExtractor {
     private const val BLOGGER_REFERER = "https://youtube.googleapis.com/"
 
-    private val keyValueMediaRegex = Regex(
-        """(?i)(?:file|src|source|url|hls|playlist|videoUrl|hlsUrl|video_url|embed_url|iframe_url|defaultStreamingUrl)\s*[:=]\s*['\"]([^'\"]+)['\"]"""
-    )
-    private val dataAttrRegex = Regex(
-        """(?i)data-(?:src|url|embed|iframe|link|server|player|video|em|id|nume|post|hash|token)\s*=\s*['\"]([^'\"]+)['\"]"""
-    )
-    private val iframeRegex = Regex(
-        """(?i)<iframe[^>]+(?:src|data-src)=['\"]([^'\"]+)['\"]"""
-    )
-    private val quotedMediaRegex = Regex(
-        """(?i)['\"]((?:https?:)?//[^'\"<>\s\\]+?(?:\.m3u8|\.mp4|\.webm|googlevideo\.com/[^'\"<>\s\\]+|videoplayback[^'\"<>\s\\]*|blogger\.com/video\.g[^'\"<>\s\\]*|blogger\.googleusercontent\.com/[^'\"<>\s\\]+)(?:\?[^'\"<>\s\\]*)?)['\"]"""
-    )
-    private val bareMediaRegex = Regex(
-        """(?i)(?:https?:)?//[^\s'\"<>\\]+?(?:\.m3u8|\.mp4|\.webm|googlevideo\.com/[^\s'\"<>\\]+|videoplayback[^\s'\"<>\\]*|blogger\.com/video\.g[^\s'\"<>\\]*|blogger\.googleusercontent\.com/[^\s'\"<>\\]+)(?:\?[^\s'\"<>\\]*)?"""
-    )
-    private val encodedHttpRegex = Regex(
-        """https?%3A%2F%2F[^\s'\"<>]+""",
-        RegexOption.IGNORE_CASE
-    )
-    private val atobRegex = Regex(
-        """(?i)atob\(['\"]([^'\"]+)['\"]\)"""
-    )
+    private val iframeRegex = Regex("""(?i)<(?:iframe|embed)[^>]+(?:src|data-src)=['"]([^'"]+)['"]""")
+    private val atobRegex = Regex("""(?i)atob\(['"]([^'"]+)['"]\)""")
+    private val dataAttrRegex = Regex("""(?i)data-(?:src|url|embed|iframe|link|server|player|video|em|id|nume|post|hash|token)\s*=\s*['"]([^'"]+)['"]""")
+    private val keyValueMediaRegex = Regex("""(?i)(?:file|src|source|url|hls|playlist|videoUrl|hlsUrl|video_url|embed_url|iframe_url|defaultStreamingUrl)\s*[:=]\s*['"]([^'"]+)['"]""")
+    private val quotedMediaRegex = Regex("""(?i)['"]((?:https?:)?//[^'"<>\s\\]+?(?:\.m3u8|\.mp4|\.webm|googlevideo\.com/[^'"<>\s\\]+|videoplayback[^'"<>\s\\]*|blogger\.com/video\.g[^'"<>\s\\]*|blogger\.googleusercontent\.com/[^'"<>\s\\]+|pixeldrain\.com/(?:u|api/file)/[^'"<>\s\\]+)(?:\?[^'"<>\s\\]*)?)['"]""")
+    private val bareMediaRegex = Regex("""(?i)(?:https?:)?//[^\s'"<>\\]+?(?:\.m3u8|\.mp4|\.webm|googlevideo\.com/[^\s'"<>\\]+|videoplayback[^\s'"<>\\]*|blogger\.com/video\.g[^\s'"<>\\]*|blogger\.googleusercontent\.com/[^\s'"<>\\]+|pixeldrain\.com/(?:u|api/file)/[^\s'"<>\\]+)(?:\?[^\s'"<>\\]*)?""")
+    private val encodedHttpRegex = Regex("""https?%3A%2F%2F[^\s'"<>]+""", RegexOption.IGNORE_CASE)
 
     suspend fun loadLinks(
         providerName: String,
@@ -59,7 +43,7 @@ object GomunimeExtractor {
         }
 
         for (candidateUrl in buildDataUrlCandidates(mainUrl, data)) {
-            if (loadFromUrl(providerName, mainUrl, candidateUrl, data, subtitleCallback, ::emit, visited, depth = 0)) {
+            if (loadFromUrl(providerName, mainUrl, candidateUrl, data, subtitleCallback, ::emit, visited, 0)) {
                 found = true
             }
         }
@@ -79,6 +63,21 @@ object GomunimeExtractor {
     ): Boolean {
         val normalizedUrl = absoluteUrl(mainUrl, url) ?: return false
         if (!visited.add(normalizedUrl)) return false
+
+        pixelDrainDirectUrl(normalizedUrl)?.let { direct ->
+            callback(
+                newExtractorLink(providerName, "PixelDrain", direct, ExtractorLinkType.VIDEO) {
+                    referer = "https://pixeldrain.com/"
+                    quality = qualityFromUrl(normalizedUrl)
+                    headers = mapOf(
+                        "User-Agent" to GomunimeUtils.USER_AGENT,
+                        "Accept" to "*/*",
+                        "Referer" to "https://pixeldrain.com/"
+                    )
+                }
+            )
+            return true
+        }
 
         if (normalizedUrl.isDirectMedia() || normalizedUrl.isBloggerVideo()) {
             return emitCandidate(
@@ -100,7 +99,7 @@ object GomunimeExtractor {
                 found = true
             }
         } catch (_: Throwable) {
-            // Continue with local parser fallback.
+            // Continue with page parsing fallback.
         }
 
         val document = try {
@@ -139,19 +138,29 @@ object GomunimeExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        pixelDrainDirectUrl(candidate.url)?.let { direct ->
+            callback(
+                newExtractorLink(sourceName, candidate.name.ifBlank { "PixelDrain" }, direct, ExtractorLinkType.VIDEO) {
+                    referer = "https://pixeldrain.com/"
+                    quality = qualityFromUrl(candidate.url)
+                    headers = mapOf(
+                        "User-Agent" to GomunimeUtils.USER_AGENT,
+                        "Accept" to "*/*",
+                        "Referer" to "https://pixeldrain.com/"
+                    )
+                }
+            )
+            return true
+        }
+
         var emitted = false
 
         if (candidate.url.isBloggerVideo()) {
             val videos = extractBloggerDirectVideos(candidate.url, candidate.referer)
             for (video in videos) {
+                val directReferer = if (video.url.contains("googlevideo.com", true)) BLOGGER_REFERER else candidate.url
                 callback(
-                    newExtractorLink(
-                        sourceName,
-                        candidate.name,
-                        video.url,
-                        ExtractorLinkType.VIDEO
-                    ) {
-                        val directReferer = if (video.url.contains("googlevideo.com", true)) BLOGGER_REFERER else candidate.url
+                    newExtractorLink(sourceName, candidate.name, video.url, ExtractorLinkType.VIDEO) {
                         referer = directReferer
                         quality = video.quality
                         headers = mapOf(
@@ -168,16 +177,10 @@ object GomunimeExtractor {
 
         if (candidate.isHls || candidate.url.contains(".m3u8", true)) {
             val links = try {
-                generateM3u8(
-                    source = sourceName,
-                    streamUrl = candidate.url,
-                    referer = candidate.referer,
-                    headers = GomunimeUtils.headers
-                )
+                generateM3u8(sourceName, candidate.url, candidate.referer, headers = GomunimeUtils.headers)
             } catch (_: Throwable) {
                 emptyList()
             }
-
             links.forEach { link ->
                 emitted = true
                 callback(link)
@@ -188,12 +191,7 @@ object GomunimeExtractor {
         if (candidate.url.isDirectVideo()) {
             val directReferer = if (candidate.url.contains("googlevideo.com", true)) BLOGGER_REFERER else candidate.referer
             callback(
-                newExtractorLink(
-                    sourceName,
-                    candidate.name,
-                    candidate.url,
-                    ExtractorLinkType.VIDEO
-                ) {
+                newExtractorLink(sourceName, candidate.name, candidate.url, ExtractorLinkType.VIDEO) {
                     referer = directReferer
                     quality = qualityFromUrl(candidate.url)
                     headers = mapOf(
@@ -247,20 +245,23 @@ object GomunimeExtractor {
         }
 
         document.select("iframe[src], iframe[data-src], embed[src]").forEach { frame ->
-            val src = absoluteUrl(pageUrl, frame.attr("src").ifBlank { frame.attr("data-src") }) ?: absoluteUrl(mainUrl, frame.attr("src").ifBlank { frame.attr("data-src") })
+            val src = absoluteUrl(pageUrl, frame.attr("src").ifBlank { frame.attr("data-src") })
+                ?: absoluteUrl(mainUrl, frame.attr("src").ifBlank { frame.attr("data-src") })
             if (!src.isNullOrBlank()) servers.add(GomunimeServer(frame.attr("title").ifBlank { "Embed" }, src))
         }
 
-        document.select("a[href*='gofile'], a[href*='drive'], a[href*='blogger'], a[href*='btube'], a[href*='mp4upload'], a[href*='filemoon'], a[href*='streamtape'], a[href*='vidhide'], a[href*='vidguard'], a[href*='voe']").forEach { anchor ->
+        document.select(
+            "a[href*='pixeldrain'], a[href*='pdrain'], a[href*='gofile'], a[href*='drive'], " +
+                "a[href*='blogger'], a[href*='btube'], a[href*='mp4upload'], a[href*='filemoon'], " +
+                "a[href*='streamtape'], a[href*='vidhide'], a[href*='vidguard'], a[href*='voe']"
+        ).forEach { anchor ->
             val href = absoluteUrl(pageUrl, anchor.attr("href")) ?: absoluteUrl(mainUrl, anchor.attr("href"))
             if (!href.isNullOrBlank()) servers.add(GomunimeServer(GomunimeUtils.cleanText(anchor.text()).ifBlank { "Download" }, href))
         }
 
         document.select("[value], [data-src], [data-url], [data-embed], [data-iframe], [data-link], [data-server], [data-player], [data-video], [data-em], [data-id], [data-nume], [data-post], [data-hash], [data-token]").forEach { element ->
             val name = GomunimeUtils.cleanText(element.text()).ifBlank { element.attr("class").ifBlank { "Server" } }
-            listOf(
-                "value", "data-src", "data-url", "data-embed", "data-iframe", "data-link", "data-server", "data-player", "data-video", "data-em", "data-id", "data-nume", "data-post", "data-hash", "data-token"
-            ).forEach { attr ->
+            listOf("value", "data-src", "data-url", "data-embed", "data-iframe", "data-link", "data-server", "data-player", "data-video", "data-em", "data-id", "data-nume", "data-post", "data-hash", "data-token").forEach { attr ->
                 resolveServerValue(mainUrl, pageUrl, element.attr(attr))?.let { servers.add(GomunimeServer(name, it)) }
             }
         }
@@ -291,13 +292,12 @@ object GomunimeExtractor {
             .mapNotNull { normalizeMediaUrl(mainUrl, pageUrl, it.groupValues[1]) }
             .forEach { servers.add(GomunimeServer("Script", it)) }
 
-        Regex("""(?i)['\"]((?:https?:)?//[^'\"]+(?:embed|player|stream|drive|gofile|dood|streamtape|filemoon|vidhide|vidguard|voe|mp4upload|uqload|krakenfiles|filelions|btube|blogger|googlevideo|videoplayback)[^'\"]*)['\"]""")
+        Regex("""(?i)['"]((?:https?:)?//[^'"]+(?:embed|player|stream|drive|gofile|dood|streamtape|filemoon|vidhide|vidguard|voe|mp4upload|uqload|krakenfiles|filelions|btube|blogger|googlevideo|videoplayback|pixeldrain|pdrain)[^'"]*)['"]""")
             .findAll(raw)
             .mapNotNull { absoluteUrl(pageUrl, it.groupValues[1]) ?: absoluteUrl(mainUrl, it.groupValues[1]) }
             .forEach { servers.add(GomunimeServer("Embed", it)) }
 
-        return servers.distinctBy { it.url }
-            .filterNot { it.url.isNoiseUrl() }
+        return servers.distinctBy { it.url }.filterNot { it.url.isNoiseUrl() }
     }
 
     private fun extractMediaCandidates(sourceName: String, mainUrl: String, referer: String, document: Document): List<GomunimeMediaCandidate> {
@@ -310,32 +310,17 @@ object GomunimeExtractor {
             }
         }
 
-        keyValueMediaRegex.findAll(raw)
-            .mapNotNull { normalizeMediaUrl(mainUrl, referer, it.groupValues[1]) }
-            .forEach { url ->
-                candidates.add(GomunimeMediaCandidate(url, "$sourceName Stream", referer, url.isLikelyHls()))
-            }
+        listOf(
+            keyValueMediaRegex.findAll(raw).map { it.groupValues[1] },
+            quotedMediaRegex.findAll(raw).map { it.groupValues[1] },
+            bareMediaRegex.findAll(raw).map { it.value },
+            encodedHttpRegex.findAll(raw).map { decodeUrl(it.value) }
+        ).forEach { sequence ->
+            sequence.mapNotNull { normalizeMediaUrl(mainUrl, referer, it) }
+                .forEach { url -> candidates.add(GomunimeMediaCandidate(url, "$sourceName Stream", referer, url.isLikelyHls())) }
+        }
 
-        quotedMediaRegex.findAll(raw)
-            .mapNotNull { normalizeMediaUrl(mainUrl, referer, it.groupValues[1]) }
-            .forEach { url ->
-                candidates.add(GomunimeMediaCandidate(url, "$sourceName Direct", referer, url.isLikelyHls()))
-            }
-
-        bareMediaRegex.findAll(raw)
-            .mapNotNull { normalizeMediaUrl(mainUrl, referer, it.value) }
-            .forEach { url ->
-                candidates.add(GomunimeMediaCandidate(url, "$sourceName Bare", referer, url.isLikelyHls()))
-            }
-
-        encodedHttpRegex.findAll(raw)
-            .mapNotNull { normalizeMediaUrl(mainUrl, referer, decodeUrl(it.value)) }
-            .forEach { url ->
-                candidates.add(GomunimeMediaCandidate(url, "$sourceName Encoded", referer, url.isLikelyHls()))
-            }
-
-        return candidates.distinctBy { it.url }
-            .filterNot { it.url.isNoiseUrl() }
+        return candidates.distinctBy { it.url }.filterNot { it.url.isNoiseUrl() }
     }
 
     private fun extractEpisodeLinks(mainUrl: String, pageUrl: String, document: Document): List<String> {
@@ -344,7 +329,6 @@ object GomunimeExtractor {
             "a[href*='-eps-']",
             "a[href*='/episode/']",
             "a[href*='?episode=']",
-            "a[href]:contains(Episode)",
             ".eplister a[href]",
             ".episodes a[href]",
             ".episode-list a[href]",
@@ -361,7 +345,6 @@ object GomunimeExtractor {
             .mapNotNull { absoluteUrl(pageUrl, it.attr("href")) ?: absoluteUrl(mainUrl, it.attr("href")) }
             .flatMap { buildDataUrlCandidates(mainUrl, it) }
             .filter { it != pageUrl && it.contains("gomunime", true) }
-            .filter { episodeNumber(it) != null || it.contains("episode", true) || it.contains("eps", true) }
             .distinct()
     }
 
@@ -385,9 +368,7 @@ object GomunimeExtractor {
             }
         }
 
-        return normalizeMediaUrl(mainUrl, pageUrl, raw)
-            ?: absoluteUrl(pageUrl, raw)
-            ?: absoluteUrl(mainUrl, raw)
+        return normalizeMediaUrl(mainUrl, pageUrl, raw) ?: absoluteUrl(pageUrl, raw) ?: absoluteUrl(mainUrl, raw)
     }
 
     private suspend fun collectSubtitles(
@@ -399,9 +380,7 @@ object GomunimeExtractor {
             val subUrl = absoluteUrl(baseUrl, element.attr("src").ifBlank { element.attr("href") }) ?: return@forEach
             val label = GomunimeUtils.cleanText(
                 element.attr("label").ifBlank {
-                    element.attr("srclang").ifBlank {
-                        element.text().ifBlank { "Subtitle" }
-                    }
+                    element.attr("srclang").ifBlank { element.text().ifBlank { "Subtitle" } }
                 }
             )
             subtitleCallback(newSubtitleFile(label, subUrl))
@@ -450,19 +429,13 @@ object GomunimeExtractor {
         val fixedUrl = if (url.startsWith("//")) "https:$url" else decodeUrl(url)
 
         if (fixedUrl.contains("blogger.googleusercontent.com", true) || fixedUrl.contains("googlevideo.com/videoplayback", true)) {
-            return listOf(
-                ResolvedVideo(
-                    url = fixedUrl,
-                    quality = qualityFromUrl(fixedUrl)
-                )
-            )
+            return listOf(ResolvedVideo(fixedUrl, qualityFromUrl(fixedUrl)))
         }
 
         val token = Regex("[?&]token=([^&]+)")
             .find(fixedUrl)
             ?.groupValues
-            ?.getOrNull(1)
-            ?: return emptyList()
+            ?.getOrNull(1) ?: return emptyList()
 
         val page = try {
             app.get(
@@ -479,22 +452,9 @@ object GomunimeExtractor {
 
         val html = page.text
         val cookies = page.cookies
-        val fSid = Regex("FdrFJe\":\"(-?\\d+)\"")
-            .find(html)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?: ""
-        val bl = Regex("cfb2h\":\"([^\"]+)\"")
-            .find(html)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?: return emptyList()
-        val hl = Regex("lang=\"([^\"]+)\"")
-            .find(html)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.ifBlank { null }
-            ?: "en-US"
+        val fSid = Regex("FdrFJe\":\"(-?\\d+)\"").find(html)?.groupValues?.getOrNull(1) ?: ""
+        val bl = Regex("cfb2h\":\"([^\"]+)\"").find(html)?.groupValues?.getOrNull(1) ?: return emptyList()
+        val hl = Regex("lang=\"([^\"]+)\"").find(html)?.groupValues?.getOrNull(1)?.ifBlank { null } ?: "en-US"
         val reqId = (10000..99999).random()
         val rpcId = "WcwnYd"
         val payload = """[[["$rpcId","[\"$token\",\"\",0]",null,"generic"]]]"""
@@ -534,6 +494,24 @@ object GomunimeExtractor {
             .toList()
     }
 
+    private fun pixelDrainDirectUrl(url: String): String? {
+        val fixed = decodeUrl(url)
+            .replace("\\/", "/")
+            .substringBefore("#")
+
+        val id = Regex("""(?i)pixeldrain\.com/(?:u|file)/([A-Za-z0-9]+)""")
+            .find(fixed)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: Regex("""(?i)pixeldrain\.com/api/file/([A-Za-z0-9]+)""")
+                .find(fixed)
+                ?.groupValues
+                ?.getOrNull(1)
+            ?: return null
+
+        return "https://pixeldrain.com/api/file/$id?download"
+    }
+
     private fun decodeUnicodeEscapes(input: String): String {
         val unicodeRegex = Regex("""\\u([0-9a-fA-F]{4})""")
         var output = input
@@ -571,7 +549,8 @@ object GomunimeExtractor {
             lower.contains(".webm") ||
             lower.contains("googlevideo.com") ||
             lower.contains("videoplayback") ||
-            lower.contains("blogger.googleusercontent.com")
+            lower.contains("blogger.googleusercontent.com") ||
+            lower.contains("pixeldrain.com/api/file")
     }
 
     private fun String.isDirectVideo(): Boolean {
@@ -580,7 +559,8 @@ object GomunimeExtractor {
             lower.contains(".webm") ||
             lower.contains("googlevideo.com") ||
             lower.contains("videoplayback") ||
-            lower.contains("blogger.googleusercontent.com")
+            lower.contains("blogger.googleusercontent.com") ||
+            lower.contains("pixeldrain.com/api/file")
     }
 
     private fun String.isBloggerVideo(): Boolean {
@@ -613,7 +593,7 @@ object GomunimeExtractor {
             itag in setOf(37, 96, 137, 248, 299) -> Qualities.P1080.value
             itag in setOf(22, 59, 136, 247, 298) -> Qualities.P720.value
             itag in setOf(18, 134, 244) -> Qualities.P360.value
-            itag in setOf(59, 135) -> Qualities.P480.value
+            itag == 135 -> Qualities.P480.value
             itag == 36 -> Qualities.P240.value
             itag == 17 -> Qualities.P144.value
             text.contains("1080") -> Qualities.P1080.value
