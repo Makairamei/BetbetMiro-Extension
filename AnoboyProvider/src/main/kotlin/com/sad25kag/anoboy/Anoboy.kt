@@ -502,7 +502,7 @@ class Anoboy : MainAPI() {
             }
     }
 
-    private fun emitDirect(
+    private suspend fun emitDirect(
         link: String,
         referer: String,
         callback: (ExtractorLink) -> Unit
