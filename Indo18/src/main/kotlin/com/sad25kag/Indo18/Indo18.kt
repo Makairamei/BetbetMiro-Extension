@@ -424,11 +424,30 @@ class Indo18 : MainAPI() {
             extractDoodstreamLinks(html, url).forEach { links.add(it) }
             extractPackedLinks(html, url).forEach { links.add(it) }
             extractEncodedLinks(html, url).forEach { links.add(it) }
+            extractTrackingPayloadLinks(html, url).forEach { links.add(it) }
             extractDownloadButtons(document, url).forEach { links.add(it) }
             extractRedirectTargets(html, url).forEach { links.add(it) }
             extractJombloLinks(html, url).forEach { links.add(it) }
 
             return links.filterNot { isAdUrl(it) || shouldSkipUrl(it) }.distinct()
+        }
+
+        suspend fun tryPlaymogo(link: String, referer: String): Boolean {
+            val fixed = fixUrl(link, referer) ?: return false
+            if (!isPlaymogoHost(fixed)) return false
+
+            var localFound = false
+            val pageReferer = if (isJombloHost(referer)) referer else "https://jomblo.org/"
+            collectFromPage(fixed, pageReferer).forEach { nested ->
+                val target = fixUrl(nested, fixed) ?: return@forEach
+                when {
+                    emitDirect(target, fixed) -> localFound = true
+                    tryDoodstream(target, fixed, subtitleCallback, callback) -> localFound = true
+                    tryExtractor(target, fixed) -> localFound = true
+                }
+            }
+
+            return localFound
         }
 
         suspend fun tryAny(link: String, referer: String): Boolean {
@@ -443,6 +462,7 @@ class Indo18 : MainAPI() {
                 when {
                     emitDirect(target, referer) -> localFound = true
                     tryDoodstream(target, referer, subtitleCallback, callback) -> localFound = true
+                    tryPlaymogo(target, referer) -> localFound = true
                     tryExtractor(target, referer) -> localFound = true
                 }
             }
@@ -642,6 +662,34 @@ class Indo18 : MainAPI() {
         return urls.filterNot { isAdUrl(it) || shouldSkipUrl(it) }.distinct()
     }
 
+    private fun extractTrackingPayloadLinks(text: String, baseUrl: String = mainUrl): List<String> {
+        val clean = text.cleanEscaped()
+        val decoded = runCatching { URLDecoder.decode(clean, "UTF-8") }.getOrDefault(clean)
+        val source = if (decoded != clean) "$clean $decoded" else clean
+        val links = linkedSetOf<String>()
+
+        Regex("""(?i)(?:[?&]|&amp;)md=([A-Za-z0-9_+\-/%=]{24,})""")
+            .findAll(source)
+            .map { it.groupValues[1].substringBefore("&").substringBefore(" ") }
+            .mapNotNull { raw ->
+                val value = runCatching { URLDecoder.decode(raw.cleanEscaped(), "UTF-8") }.getOrDefault(raw.cleanEscaped())
+                decodeBase64(value)
+            }
+            .forEach { payload ->
+                Regex("(?i)\\\"(?:q|r|url|embed|source)\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+                    .findAll(payload.cleanEscaped())
+                    .map { it.groupValues[1].cleanEscaped() }
+                    .forEach { raw ->
+                        val target = runCatching { URLDecoder.decode(raw, "UTF-8") }.getOrDefault(raw)
+                        fixUrl(target, baseUrl)?.let { fixed ->
+                            if ((isKnownHost(fixed) || isLikelyPlayable(fixed)) && !isAdUrl(fixed)) links.add(fixed)
+                        }
+                    }
+            }
+
+        return links.distinct()
+    }
+
     private fun extractRedirectTargets(text: String, baseUrl: String = mainUrl): List<String> {
         val clean = text.cleanEscaped()
         val decoded = runCatching { URLDecoder.decode(clean, "UTF-8") }.getOrDefault(clean)
@@ -704,6 +752,10 @@ class Indo18 : MainAPI() {
 
     private fun isJombloHost(url: String): Boolean {
         return runCatching { URI(url).host.orEmpty().lowercase().endsWith("jomblo.org") }.getOrDefault(false)
+    }
+
+    private fun isPlaymogoHost(url: String): Boolean {
+        return runCatching { URI(url).host.orEmpty().lowercase().endsWith("playmogo.com") }.getOrDefault(false)
     }
 
     private fun normalizeDoodstreamUrl(raw: String, baseUrl: String): String? {
@@ -882,6 +934,7 @@ class Indo18 : MainAPI() {
     private fun isAdUrl(url: String): Boolean {
         val value = url.lowercase()
         return value.contains("ouo.io") || value.contains("ouo.press") ||
+            value.contains("aldidevoiderhisn.cyou") || value.contains("raquetspurrey.rest") || value.contains("tilesremedy.qpon") ||
             value.contains("vast") || value.contains("preroll") || value.contains("doubleclick") ||
             value.contains("googlesyndication") || value.contains("ads") || value.contains("banner") ||
             value.contains("content-removal") || value.contains("popads") || value.contains("onclick") ||
