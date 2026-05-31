@@ -283,7 +283,7 @@ class Alqanime : MainAPI() {
             }
         }
 
-        fun emitDirect(
+        suspend fun emitDirect(
             source: String,
             url: String,
             quality: Int,
@@ -337,12 +337,7 @@ class Alqanime : MainAPI() {
 
             try {
                 loadExtractor(resolvedUrl, "$mainUrl/", subtitleCallback) { link ->
-                    markEmit(newExtractorLink(link.source, link.name, link.url, link.type) {
-                        this.referer = link.referer
-                        this.quality = qualityInt
-                        this.headers = link.headers
-                        this.extractorData = link.extractorData
-                    })
+                    markEmit(link)
                 }
             } catch (_: Exception) {
             }
@@ -463,12 +458,7 @@ class Alqanime : MainAPI() {
 
             runCatching {
                 loadExtractor(pageUrl, "$mainUrl/", subtitleCallback) { link ->
-                    callback(newExtractorLink(link.source, link.name, link.url, link.type) {
-                        this.referer = link.referer
-                        this.quality = quality
-                        this.headers = link.headers
-                        this.extractorData = link.extractorData
-                    })
+                    callback(link)
                     emitted = true
                 }
             }
@@ -514,7 +504,7 @@ class Alqanime : MainAPI() {
     }
 
     private fun normalizeUrl(url: String?, baseUrl: String = mainUrl): String? {
-        val clean = url.cleanEscaped()
+        val clean = url?.cleanEscaped().orEmpty()
         if (clean.isBlank() || clean == "#" || clean.startsWith("javascript:", true)) return null
         return when {
             clean.startsWith("http", true) -> clean
