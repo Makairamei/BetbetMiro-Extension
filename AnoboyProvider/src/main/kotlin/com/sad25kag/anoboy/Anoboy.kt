@@ -26,27 +26,25 @@ class Anoboy : MainAPI() {
 
     override val mainPage = mainPageOf(
         "" to "Update Terbaru",
-        "anime-list/" to "Anime List",
-        "category/anime/ongoing/" to "Anime Ongoing",
-        "category/donghua/" to "Donghua",
-        "category/anime-movie/" to "Movie",
-        "category/tokusatsu/" to "Tokusatsu",
-        "category/live-action-movie/" to "Live Action",
-        "category/studio-ghibli/" to "Studio Ghibli",
-        "category/action/" to "Action",
-        "category/adventure/" to "Adventure",
-        "category/comedy/" to "Comedy",
-        "category/drama/" to "Drama",
-        "category/fantasy/" to "Fantasy",
-        "category/horror/" to "Horror",
-        "category/isekai/" to "Isekai",
-        "category/martial-arts/" to "Martial Arts",
-        "category/romance/" to "Romance",
-        "category/school/" to "School",
-        "category/shounen/" to "Shounen",
-        "category/slice-of-life/" to "Slice of Life",
-        "category/sports/" to "Sports",
-        "category/supernatural/" to "Supernatural"
+        "anime/?order=update&status=ongoing&type=tv" to "Anime Ongoing",
+        "anime/?order=update&status=&type=movie" to "Movie",
+        "anime/?order=update&status=&type=ona" to "ONA",
+        "anime/?order=update&status=&type=ova" to "OVA",
+        "genres/donghua/" to "Donghua",
+        "genres/action/" to "Action",
+        "genres/adventure/" to "Adventure",
+        "genres/comedy/" to "Comedy",
+        "genres/drama/" to "Drama",
+        "genres/fantasy/" to "Fantasy",
+        "genres/horror/" to "Horror",
+        "genres/isekai/" to "Isekai",
+        "genres/martial-arts/" to "Martial Arts",
+        "genres/romance/" to "Romance",
+        "genres/school/" to "School",
+        "genres/shounen/" to "Shounen",
+        "genres/slice-of-life/" to "Slice of Life",
+        "genres/sports/" to "Sports",
+        "genres/supernatural/" to "Supernatural"
     )
 
     private data class CardData(
@@ -58,14 +56,18 @@ class Anoboy : MainAPI() {
     )
 
     private fun buildPageUrl(data: String, page: Int): String {
-        val raw = data.trim().trimStart('/')
+        val raw = data.trim()
         if (raw.isBlank()) return if (page <= 1) mainUrl else "$mainUrl/page/$page/"
 
-        val path = raw.trimEnd('/')
-        return if (page <= 1) {
-            "$mainUrl/$path/"
+        val firstPage = normalizeAnoboyUrl(raw)
+        if (page <= 1) return firstPage
+
+        val base = firstPage.substringBefore("?").trimEnd('/')
+        val query = firstPage.substringAfter("?", "")
+        return if (query.isBlank() || query == firstPage) {
+            "$base/page/$page/"
         } else {
-            "$mainUrl/$path/page/$page/"
+            "$base/page/$page/?$query"
         }
     }
 
@@ -281,7 +283,9 @@ class Anoboy : MainAPI() {
             ".venz ul li",
             ".latest a[href]",
             ".listupd a[href]",
-            ".bixbox a[href]"
+            ".topten .serieslist li",
+            ".serieslist li",
+            ".result li"
         ).joinToString(", ")
 
         return document.select(selectors)
@@ -292,7 +296,7 @@ class Anoboy : MainAPI() {
 
     private fun collectRecommendations(document: Document): List<CardData> {
         return document.select(
-            "a[href]:has(div.amv), a[href]:has(div#amv), div.listupd article.bs, article.bs, div.bs, .bixbox a[href]"
+            "a[href]:has(div.amv), a[href]:has(div#amv), div.listupd article.bs, article.bs, div.bs, .topten .serieslist li"
         ).mapNotNull { it.toCardData() }
             .filterNot { isNavigationTitle(it.title) }
     }
@@ -601,11 +605,16 @@ class Anoboy : MainAPI() {
         val lower = url.lowercase()
         return lower.startsWith(mainUrl.lowercase()) &&
             !lower.contains("/category/") &&
+            !lower.contains("/genres/") &&
             !lower.contains("/tag/") &&
             !lower.contains("/season/") &&
             !lower.contains("/studio/") &&
             !lower.contains("/anime-list") &&
             !lower.contains("/az-list") &&
+            !lower.contains("/anime/?") &&
+            !lower.contains("?order=") &&
+            !lower.contains("?status=") &&
+            !lower.contains("?type=") &&
             !lower.contains("/page/")
     }
 
@@ -615,8 +624,7 @@ class Anoboy : MainAPI() {
         if (isBadUrl(url)) return false
         if (isDirectMedia(url)) return true
 
-        return lower.contains("anoboy.be") ||
-            lower.contains("/uploads/") ||
+        return lower.contains("/uploads/") ||
             lower.contains("mirrored.to") ||
             lower.contains("adsbatch") ||
             lower.contains("acbatch") ||
@@ -626,6 +634,8 @@ class Anoboy : MainAPI() {
             lower.contains("stream.php") ||
             lower.contains("embed.php") ||
             lower.contains("/api/") ||
+            lower.contains("/player/") ||
+            lower.contains("/iframe/") ||
             lower.contains("blogger.com/video.g") ||
             lower.contains("blogger.com/_/bloggervideoplayerui") ||
             lower.contains("blogger.googleusercontent.com") ||
@@ -659,6 +669,16 @@ class Anoboy : MainAPI() {
             lower.contains("telegram") ||
             lower.contains("whatsapp") ||
             lower.contains("mailto:") ||
+            lower.contains("/genres/") ||
+            lower.contains("/genre/") ||
+            lower.contains("/category/") ||
+            lower.contains("/tag/") ||
+            lower.contains("/season/") ||
+            lower.contains("/studio/") ||
+            lower.contains("/anime/?") ||
+            lower.contains("?order=") ||
+            lower.contains("?status=") ||
+            lower.contains("?type=") ||
             lower.contains("adsbygoogle") ||
             lower.contains("googlesyndication") ||
             lower.contains("doubleclick") ||
