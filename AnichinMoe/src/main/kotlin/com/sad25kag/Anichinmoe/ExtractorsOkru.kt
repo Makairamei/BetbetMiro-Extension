@@ -6,14 +6,13 @@ import com.lagradost.cloudstream3.ErrorLoadingException
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.newExtractorLink
-
+import org.json.JSONArray
 
 class OkRuSSL : Odnoklassniki() {
     override var name    = "OkRuSSL"
@@ -26,9 +25,9 @@ class OkRuHTTP : Odnoklassniki() {
 }
 
 open class Odnoklassniki : ExtractorApi() {
-    override val name            = "Odnoklassniki"
-    override val mainUrl         = "https://odnoklassniki.ru"
-    override val requiresReferer = false
+    override val name             = "Odnoklassniki"
+    override val mainUrl          = "https://odnoklassniki.ru"
+    override val requiresReferer  = false
 
     override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val headers = mapOf(
@@ -46,8 +45,10 @@ open class Odnoklassniki : ExtractorApi() {
                 Integer.parseInt(matchResult.groupValues[1], 16).toChar().toString()
             }
 
-        val videosStr = Regex(""""videos":(\[[^]]*])""").find(videoReq)?.groupValues?.get(1) ?: throw ErrorLoadingException("Video not found")
-        val videos    = AppUtils.tryParseJson<List<OkRuVideo>>(videosStr) ?: throw ErrorLoadingException("Video not found")
+        val videosStr = Regex(""""videos":(\[[^]]*])""").find(videoReq)?.groupValues?.get(1)
+            ?: throw ErrorLoadingException("Video not found")
+        val videos = parseOkRuVideos(videosStr).takeIf { it.isNotEmpty() }
+            ?: throw ErrorLoadingException("Video not found")
 
         for (video in videos) {
 
@@ -75,6 +76,28 @@ open class Odnoklassniki : ExtractorApi() {
                     this.headers = headers
                 }
             )
+        }
+    }
+
+    private fun parseOkRuVideos(value: String): List<OkRuVideo> {
+        return runCatching {
+            val array = JSONArray(value)
+            val results = mutableListOf<OkRuVideo>()
+
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val name = item.optString("name").trim()
+                val url = item.optString("url").trim()
+
+                if (name.isNotBlank() && url.isNotBlank()) {
+                    results.add(OkRuVideo(name = name, url = url))
+                }
+            }
+
+            results
+        }.getOrElse { error ->
+            Log.w("AnichinOkRu", "Failed to parse OK.ru videos", error)
+            emptyList()
         }
     }
 
