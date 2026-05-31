@@ -1,15 +1,25 @@
 package com.sad25kag.Animasu
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.extractors.Filesim
-import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
+
+
+private val animasuJsonMapper = jacksonObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+
+private inline fun <reified T> parseJsonSafe(json: String?): T? {
+    if (json.isNullOrBlank()) return null
+    return runCatching { animasuJsonMapper.readValue<T>(json) }.getOrNull()
+}
 
 class Archivd : ExtractorApi() {
 
@@ -33,7 +43,7 @@ class Archivd : ExtractorApi() {
         if (json.isNullOrBlank()) return
 
         val video =
-            AppUtils.tryParseJson<Sources>(json)
+            parseJsonSafe<Sources>(json)
                 ?.props
                 ?.datas
                 ?.data
@@ -133,7 +143,7 @@ class Newuservideo : ExtractorApi() {
                     ?.groupValues
                     ?.get(1)
 
-        AppUtils.tryParseJson<Sources>(json)
+        parseJsonSafe<Sources>(json)
             ?.streams
             ?.map {
 
