@@ -512,7 +512,7 @@ class JuraganFilmProvider : MainAPI() {
         return links.toList()
     }
 
-    private fun extractMp4ShortcodeLinks(
+    private suspend fun extractMp4ShortcodeLinks(
         text: String,
         baseUrl: String,
         subtitleCallback: (SubtitleFile) -> Unit
