@@ -164,6 +164,29 @@ Masalah yang paling sering terjadi:
 
 ---
 
+## 🧭 Catatan Kompatibilitas & Investigasi
+
+CloudStream dan source website dapat berubah sewaktu-waktu. Beberapa provider mungkin mengalami error setelah update aplikasi, terutama pada versi prerelease, misalnya:
+
+```text
+No virtual method parseJson(...)
+in class com.lagradost.cloudstream3.utils.AppUtils
+```
+
+Error seperti ini biasanya menandakan perubahan kompatibilitas API/runtime CloudStream, bukan selalu berarti website sumber sedang mati. Provider yang masih memakai parser lama perlu diperbarui agar sesuai dengan runtime CloudStream terbaru.
+
+Untuk menjaga kualitas perbaikan, perubahan provider dilakukan secara bertahap dan berbasis bukti:
+
+- Error kompatibilitas ringan diperbaiki langsung pada bagian yang terbukti bermasalah.
+- Masalah `search()` diverifikasi dari domain, endpoint, dan struktur halaman sumber.
+- Masalah `loadLinks()` hanya diperbaiki setelah ada bukti valid dari HTML/DOM player, network log, atau HAR capture.
+- Patch tidak dibuat berdasarkan tebakan, fallback acak, atau penambahan host tanpa bukti dari source aktif.
+- Setiap provider yang diubah wajib menaikkan `version` di `build.gradle.kts`.
+
+Jika melaporkan masalah playback atau `loadLinks()` 0 link, HAR/network capture sangat membantu untuk menemukan iframe, API player, token, referer, redirect, dan direct video URL yang benar. Jangan kirim HAR dari situs yang membutuhkan login atau mengandung cookie/session pribadi.
+
+---
+
 ## 📝 Melaporkan Error
 
 Saat membuat issue, sertakan:
