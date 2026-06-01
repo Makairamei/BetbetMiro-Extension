@@ -516,7 +516,7 @@ class IdlixProvider : MainAPI() {
     }
 
 
-    private fun buildDirectPlayableLink(
+    private suspend fun buildDirectPlayableLink(
         url: String,
         referer: String,
         headers: Map<String, String>,
