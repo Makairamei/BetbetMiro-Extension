@@ -41,6 +41,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URI
 import java.net.URLEncoder
+import java.util.UUID
 import java.text.Normalizer
 
 class IdlixProvider : MainAPI() {
@@ -104,6 +105,14 @@ class IdlixProvider : MainAPI() {
         "$mainUrl/api/browse?page=%d&limit=36&sort=latest&network=disney-plus" to "Disney+",
         "$mainUrl/api/browse?page=%d&limit=36&sort=latest&network=apple-tv-plus" to "Apple TV+",
     )
+
+    private val deviceId = UUID.randomUUID().toString().replace("-", "")
+
+    private val playbackCookies: Map<String, String>
+        get() = mapOf(
+            "NEXT_LOCALE" to "id",
+            "did" to deviceId,
+        )
 
     private val apiHeaders = mapOf(
         "Referer" to "$mainUrl/",
@@ -340,30 +349,28 @@ class IdlixProvider : MainAPI() {
             "Content-Type" to "application/json",
         )
 
+        val baseCookies = playbackCookies
         val playResponse = app.get(
             "$mainUrl/api/watch/play-info/${parsed.type}/${parsed.id}",
             headers = mapOf(
                 "Referer" to contentReferer,
                 "Accept" to "*/*",
             ),
+            cookies = baseCookies,
             referer = contentReferer,
             timeout = 10000L,
         )
 
-        val playInfo = playResponse.parsedSafe<Res>() ?: return false
-        waitForGate(playInfo)
-
-        val claimResponse = app.post(
-            "$mainUrl/api/watch/session/claim",
+        val playInfo = playResponse.parsedSafe<WatchSessionResponse>() ?: return false
+        val claimSession = resolvePlaySession(
+            initial = playInfo,
+            contentReferer = contentReferer,
+            cookies = baseCookies + playResponse.cookies,
             headers = jsonHeaders,
-            cookies = playResponse.cookies,
-            referer = contentReferer,
-            requestBody = """{"gateToken":"${playInfo.gateToken}"}"""
-                .toRequestBody("application/json".toMediaType()),
-            timeout = 10000L,
-        ).parsedSafe<RedeemRes>() ?: return false
+        ) ?: return false
 
-        val redeemUrl = claimResponse.redeemUrl.fixAgainstMainUrl() ?: return false
+        val claim = claimSession.claim?.takeIf { it.isNotBlank() } ?: return false
+        val redeemUrl = claimSession.redeemUrl?.fixAgainstMainUrl() ?: return false
         val iframeResponse = app.post(
             redeemUrl,
             headers = mapOf(
@@ -372,7 +379,7 @@ class IdlixProvider : MainAPI() {
                 "Accept" to "*/*",
             ),
             referer = "$mainUrl/",
-            requestBody = """{"claim":"${claimResponse.claim}"}"""
+            requestBody = """{"claim":"$claim"}"""
                 .toRequestBody("text/plain".toMediaType()),
             timeout = 10000L,
         ).parsedSafe<Iframe>() ?: return false
@@ -402,7 +409,7 @@ class IdlixProvider : MainAPI() {
                     newExtractorLink(name, "$name Majorplay", streamUrl, ExtractorLinkType.M3U8) {
                         this.referer = "$mainUrl/"
                         this.headers = streamHeaders
-                        this.quality = claimResponse.maxHeight?.toQuality() ?: Qualities.Unknown.value
+                        this.quality = claimSession.maxHeight?.toQuality() ?: Qualities.Unknown.value
                     },
                 )
                 delivered = true
@@ -422,15 +429,61 @@ class IdlixProvider : MainAPI() {
         return delivered
     }
 
-    private suspend fun waitForGate(playInfo: Res) {
-        val waitTime = (playInfo.unlockAt - playInfo.serverNow).coerceAtLeast(0)
-        val totalWait = (waitTime / 1000).coerceAtLeast(0)
-        var elapsed = 0L
+    private suspend fun resolvePlaySession(
+        initial: WatchSessionResponse,
+        contentReferer: String,
+        cookies: Map<String, String>,
+        headers: Map<String, String>,
+    ): WatchSessionResponse? {
+        var session = initial
 
-        while (elapsed < totalWait) {
-            Log.d(name, "Waiting IDLIX gate: ${elapsed}s / ${totalWait}s")
-            delay(1000)
-            elapsed++
+        repeat(12) {
+            if (session.kind.equals("pentos", true) &&
+                !session.claim.isNullOrBlank() &&
+                !session.redeemUrl.isNullOrBlank()
+            ) {
+                return session
+            }
+
+            val gateToken = session.gateToken?.takeIf { it.isNotBlank() } ?: return null
+            waitForGate(session)
+
+            session = app.post(
+                "$mainUrl/api/watch/session/claim",
+                headers = headers,
+                cookies = cookies,
+                referer = contentReferer,
+                requestBody = """{"gateToken":"$gateToken"}"""
+                    .toRequestBody("application/json".toMediaType()),
+                timeout = 10000L,
+            ).parsedSafe<WatchSessionResponse>() ?: return null
+
+            if (session.kind.equals("pentos", true) &&
+                !session.claim.isNullOrBlank() &&
+                !session.redeemUrl.isNullOrBlank()
+            ) {
+                return session
+            }
+
+            val remaining = session.remainingMs?.coerceAtLeast(0L) ?: 0L
+            if (remaining > 0L) {
+                delay((remaining + 125L).coerceAtMost(5000L))
+            }
+        }
+
+        return null
+    }
+
+    private suspend fun waitForGate(playInfo: WatchSessionResponse) {
+        val remaining = playInfo.remainingMs?.coerceAtLeast(0L) ?: run {
+            val serverNow = playInfo.serverNow ?: return
+            val unlockAt = playInfo.unlockAt ?: return
+            (unlockAt - serverNow).coerceAtLeast(0L)
+        }
+
+        if (remaining > 25L) {
+            Log.d(name, "Waiting IDLIX gate: ${remaining}ms")
+            delay((remaining + 125L).coerceAtMost(16000L))
         }
     }
 

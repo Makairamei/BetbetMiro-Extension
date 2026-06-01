@@ -150,16 +150,14 @@ data class LoadData(
     val refererUrl: String? = null,
 )
 
-data class Res(
-    val gateToken: String,
-    val serverNow: Long,
-    val unlockAt: Long,
-)
-
-data class RedeemRes(
+data class WatchSessionResponse(
     val kind: String? = null,
-    val claim: String,
-    val redeemUrl: String,
+    val gateToken: String? = null,
+    val serverNow: Long? = null,
+    val unlockAt: Long? = null,
+    val remainingMs: Long? = null,
+    val claim: String? = null,
+    val redeemUrl: String? = null,
     val videoId: String? = null,
     val title: String? = null,
     val durationSec: Long? = null,
