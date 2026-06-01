@@ -32,10 +32,9 @@ import com.lagradost.cloudstream3.toNewSearchResponseList
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
+import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.delay
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -388,31 +387,63 @@ class IdlixProvider : MainAPI() {
         var delivered = false
 
         if (!streamUrl.isNullOrBlank()) {
-            val streamHeaders = mapOf(
-                "Referer" to "$mainUrl/",
-                "Origin" to mainUrl,
-                "Accept" to "*/*",
-            )
+            val iframePage = runCatching {
+                app.get(
+                    url = streamUrl,
+                    headers = mapOf(
+                        "Referer" to "$mainUrl/",
+                        "Origin" to mainUrl,
+                        "Accept" to "*/*",
+                    ),
+                    referer = "$mainUrl/",
+                    timeout = 10000L,
+                )
+            }.getOrNull()
 
-            generateM3u8(
-                source = name,
-                streamUrl = streamUrl,
-                referer = "$mainUrl/",
-                headers = streamHeaders,
-            ).forEach { link ->
-                callback(link)
-                delivered = true
+            val iframeText = iframePage?.text.orEmpty()
+            val iframeDoc = iframePage?.document
+            val mediaUrls = extractIframeMediaUrls(
+                iframeText = iframeText,
+                iframeUrl = streamUrl,
+                sourceUrl = streamUrl,
+                sourceCandidate = iframeText.startsWith("#EXTM3U"),
+            ).ifEmpty {
+                iframeDoc
+                    ?.select("source[src]")
+                    ?.mapNotNull { it.attr("src").fixAgainst(streamUrl) }
+                    ?.filter { it.isLikelyPlayableUrl() }
+                    ?.distinct()
+                    .orEmpty()
+            }.ifEmpty {
+                if (streamUrl.isLikelyPlayableUrl()) listOf(streamUrl) else emptyList()
+            }
+
+            mediaUrls.forEach { actualM3uLink ->
+                val streamReferer = if (actualM3uLink == streamUrl) "$mainUrl/" else streamUrl
+                val streamHeaders = mapOf(
+                    "Referer" to streamReferer,
+                    "Origin" to if (actualM3uLink == streamUrl) mainUrl else streamUrl.originOfUrl(),
+                    "Accept" to "*/*",
+                )
+
+                generateM3u8(
+                    source = name,
+                    streamUrl = actualM3uLink,
+                    referer = streamReferer,
+                    headers = streamHeaders,
+                ).forEach { link ->
+                    callback(link)
+                    delivered = true
+                }
             }
 
             if (!delivered) {
-                callback(
-                    newExtractorLink(name, "$name Majorplay", streamUrl, ExtractorLinkType.M3U8) {
-                        this.referer = "$mainUrl/"
-                        this.headers = streamHeaders
-                        this.quality = claimSession.maxHeight?.toQuality() ?: Qualities.Unknown.value
-                    },
-                )
-                delivered = true
+                Log.d(name, "Direct source extraction failed, delegating to loadExtractor.")
+                delivered = loadExtractor(streamUrl, "$mainUrl/", subtitleCallback, callback)
+            }
+
+            extractIframeSubtitles(iframeText, streamUrl).forEach { subtitle ->
+                subtitleCallback(subtitle)
             }
         }
 
@@ -427,6 +458,59 @@ class IdlixProvider : MainAPI() {
         }
 
         return delivered
+    }
+
+
+    private fun extractIframeMediaUrls(
+        iframeText: String,
+        iframeUrl: String,
+        sourceUrl: String,
+        sourceCandidate: Boolean,
+    ): List<String> {
+        val urls = mutableListOf<String>()
+
+        if (sourceCandidate) {
+            urls.add(sourceUrl)
+        }
+
+        val patterns = listOf(
+            Regex("""<source[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex("""["'](?:file|src|url)["']\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex("""https?://[^"'\\\s<>]+(?:m3u8|mp4|config-[^"'\\\s<>]+?\.json)[^"'\\\s<>]*""", RegexOption.IGNORE_CASE),
+        )
+
+        patterns.forEach { regex ->
+            regex.findAll(iframeText).forEach { match ->
+                val candidate = match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() }
+                    ?: match.value
+                candidate
+                    .replace("\\/", "/")
+                    .fixAgainst(iframeUrl)
+                    ?.takeIf { it.isLikelyPlayableUrl() }
+                    ?.let(urls::add)
+            }
+        }
+
+        return urls.distinct()
+    }
+
+    private fun extractIframeSubtitles(
+        iframeText: String,
+        iframeUrl: String,
+    ): List<SubtitleFile> {
+        val subtitles = mutableListOf<SubtitleFile>()
+        val subRegex = Regex("""\"label\"\s*:\s*\"([^\"]*?)\"[^}]*?\"path\"\s*:\s*\"([^\"]*?)\"""")
+
+        subRegex.findAll(iframeText).forEach { match ->
+            val label = match.groupValues[1].ifBlank { "Subtitle" }
+            val path = match.groupValues[2]
+                .replace("\\/", "/")
+                .fixAgainst(iframeUrl)
+                ?: return@forEach
+            subtitles.add(newSubtitleFile(label, path))
+        }
+
+        return subtitles
     }
 
     private suspend fun resolvePlaySession(
@@ -556,6 +640,32 @@ class IdlixProvider : MainAPI() {
 
     private fun String.tmdbPoster(size: String): String {
         return if (startsWith("http", true)) this else "https://image.tmdb.org/t/p/$size$this"
+    }
+
+
+    private fun String.fixAgainst(baseUrl: String): String? {
+        val value = trim()
+        if (value.isBlank()) return null
+        if (value.startsWith("//")) return "https:$value"
+        if (value.startsWith("http://", true) || value.startsWith("https://", true)) return value
+        return runCatching { URI(baseUrl).resolve(value).toString() }.getOrNull()
+    }
+
+    private fun String.originOfUrl(): String {
+        return runCatching {
+            val uri = URI(this)
+            val scheme = uri.scheme ?: "https"
+            val host = uri.host ?: return@runCatching mainUrl
+            "$scheme://$host"
+        }.getOrDefault(mainUrl)
+    }
+
+    private fun String.isLikelyPlayableUrl(): Boolean {
+        val value = lowercase()
+        return value.contains(".m3u8") ||
+            value.contains("config-") ||
+            value.contains("application/vnd.apple.mpegurl") ||
+            value.contains(".mp4")
     }
 
     private fun String.fixAgainstMainUrl(): String? {
