@@ -32,7 +32,9 @@ import com.lagradost.cloudstream3.toNewSearchResponseList
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.Qualities
 import kotlinx.coroutines.delay
@@ -406,7 +408,7 @@ class IdlixProvider : MainAPI() {
                 iframeText = iframeText,
                 iframeUrl = streamUrl,
                 sourceUrl = streamUrl,
-                sourceCandidate = iframeText.startsWith("#EXTM3U"),
+                sourceCandidate = iframeText.trimStart().startsWith("#EXTM3U"),
             ).ifEmpty {
                 iframeDoc
                     ?.select("source[src]")
@@ -426,14 +428,33 @@ class IdlixProvider : MainAPI() {
                     "Accept" to "*/*",
                 )
 
-                generateM3u8(
-                    source = name,
-                    streamUrl = actualM3uLink,
-                    referer = streamReferer,
-                    headers = streamHeaders,
-                ).forEach { link ->
-                    callback(link)
-                    delivered = true
+                var helperDelivered = false
+                runCatching {
+                    generateM3u8(
+                        source = name,
+                        streamUrl = actualM3uLink,
+                        referer = streamReferer,
+                        headers = streamHeaders,
+                    ).forEach { link ->
+                        callback(link)
+                        delivered = true
+                        helperDelivered = true
+                    }
+                }.onFailure { error ->
+                    Log.d(name, "M3U8 helper failed for Majorplay manifest: ${error.message}")
+                }
+
+                if (!helperDelivered) {
+                    val directLink = buildDirectPlayableLink(
+                        url = actualM3uLink,
+                        referer = streamReferer,
+                        headers = streamHeaders,
+                        quality = claimSession.maxHeight?.toQuality() ?: Qualities.Unknown.value,
+                    )
+                    if (directLink != null) {
+                        callback(directLink)
+                        delivered = true
+                    }
                 }
             }
 
@@ -492,6 +513,31 @@ class IdlixProvider : MainAPI() {
         }
 
         return urls.distinct()
+    }
+
+
+    private fun buildDirectPlayableLink(
+        url: String,
+        referer: String,
+        headers: Map<String, String>,
+        quality: Int,
+    ): ExtractorLink? {
+        val type = when {
+            url.isHlsManifestUrl() -> ExtractorLinkType.M3U8
+            url.contains(".mp4", true) -> ExtractorLinkType.VIDEO
+            else -> return null
+        }
+
+        return newExtractorLink(
+            source = name,
+            name = "$name Majorplay",
+            url = url,
+            type = type,
+        ) {
+            this.referer = referer
+            this.headers = headers
+            this.quality = quality
+        }
     }
 
     private suspend fun extractIframeSubtitles(
@@ -660,12 +706,17 @@ class IdlixProvider : MainAPI() {
         }.getOrDefault(mainUrl)
     }
 
-    private fun String.isLikelyPlayableUrl(): Boolean {
+    private fun String.isHlsManifestUrl(): Boolean {
         val value = lowercase()
         return value.contains(".m3u8") ||
             value.contains("config-") ||
-            value.contains("application/vnd.apple.mpegurl") ||
-            value.contains(".mp4")
+            value.contains("data-") && value.contains(".json") ||
+            value.contains("application/vnd.apple.mpegurl")
+    }
+
+    private fun String.isLikelyPlayableUrl(): Boolean {
+        val value = lowercase()
+        return isHlsManifestUrl() || value.contains(".mp4")
     }
 
     private fun String.fixAgainstMainUrl(): String? {
