@@ -29,11 +29,15 @@ import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.json.JSONObject
 import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.Base64
 import java.util.Locale
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class GudangFilm : MainAPI() {
     override var mainUrl = "https://www.huazai6.com"
@@ -105,6 +109,8 @@ class GudangFilm : MainAPI() {
         val encoded = URLEncoder.encode(keyword, "UTF-8")
         val slug = slugify(keyword)
         val urls = listOf(
+            "$mainUrl/?s=$encoded&post_type%5B%5D=post&post_type%5B%5D=tv",
+            "$mainUrl?s=$encoded&post_type%5B%5D=post&post_type%5B%5D=tv",
             "$mainUrl/?s=$encoded",
             "$mainUrl/page/1/?s=$encoded",
             "$mainUrl/search/$encoded/",
@@ -202,15 +208,15 @@ class GudangFilm : MainAPI() {
             if (!fixed.isPlayableMedia()) return false
             val key = fixed.substringBefore("#")
             if (!emitted.add(key)) return false
-            if (fixed.contains("m3u8", true)) {
-                val links = try { generateM3u8(source, fixed, referer, headers = headers + mapOf("Referer" to referer)) } catch (_: Throwable) { emptyList() }
+            if (fixed.isM3u8Like()) {
+                val links = try { generateM3u8(source, fixed, referer, headers = headers + mapOf("Referer" to referer, "Accept" to "*/*")) } catch (_: Throwable) { emptyList() }
                 links.forEach { link ->
                     val linkKey = link.url.substringBefore("#")
                     if (emitted.add(linkKey)) callback(link)
                 }
                 if (links.isNotEmpty()) return true
             }
-            callback(newExtractorLink(source, source, fixed, ExtractorLinkType.VIDEO) {
+            callback(newExtractorLink(source, source, fixed, if (fixed.isM3u8Like()) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
                 this.referer = referer
                 this.quality = qualityFromUrl(fixed)
                 this.headers = headers + mapOf("Referer" to referer, "Accept" to "*/*")
@@ -232,6 +238,15 @@ class GudangFilm : MainAPI() {
                     }
                 }
             } catch (_: Throwable) {
+            }
+            return localFound
+        }
+
+        suspend fun resolveKnownPlayer(url: String, referer: String): Boolean {
+            val fixed = fixUrl(url, referer) ?: return false
+            var localFound = false
+            resolvePlayerLinks(fixed, referer).forEach { resolved ->
+                if (emitDirect(resolved.url, resolved.referer, resolved.source)) localFound = true
             }
             return localFound
         }
@@ -260,10 +275,12 @@ class GudangFilm : MainAPI() {
                 if (emitDirect(url, referer)) found = true
                 continue
             }
+            if (resolveKnownPlayer(url, referer)) found = true
             if (emitExtractor(url, referer)) found = true
             inspectPage(url, referer).forEach { next ->
                 when {
                     next.isPlayableMedia() -> if (emitDirect(next, url)) found = true
+                    resolveKnownPlayer(next, url) -> found = true
                     shouldFollow(next) -> queue.add(next to url)
                     else -> if (emitExtractor(next, url)) found = true
                 }
@@ -388,8 +405,10 @@ class GudangFilm : MainAPI() {
         iframeLinks(normalized, baseUrl).forEach { links.add(it) }
         embeddedLinks(normalized, baseUrl).forEach { links.add(it) }
         base64Links(normalized, baseUrl).forEach { links.add(it) }
-        Regex("""(?i)"(?:embed_url|iframe_url|player_url|url|src|file|source|link)"\s*:\s*"([^"]+)"""").findAll(normalized).mapNotNull { decodePossibleUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
-        Regex("""(?i)(?:embed_url|iframe_url|player_url|url|src|file|source|link)\s*[:=]\s*['"]([^'"]+)['"]""").findAll(normalized).mapNotNull { decodePossibleUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
+        Regex("(?i)\"(?:embed_url|iframe_url|player_url|url|src|file|source|link|m3u8|hls|hlsVideoTiktok)\"\\s*:\\s*\"([^\"]+)\"").findAll(normalized).mapNotNull { decodePossibleUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
+        Regex("""(?i)(?:embed_url|iframe_url|player_url|url|src|file|source|link|m3u8|hls|hlsVideoTiktok)\s*[:=]\s*['"]([^'"]+)['"]""").findAll(normalized).mapNotNull { decodePossibleUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
+        Regex("""(?i)['"]([^'"]*/play/token_hash\?[^'"]+)['"]""").findAll(normalized).mapNotNull { decodePossibleUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
+        buildXFileShareStream(normalized, baseUrl)?.let { links.add(it) }
         return links.toList()
     }
 
@@ -435,9 +454,9 @@ class GudangFilm : MainAPI() {
 
     private fun directMedia(html: String, baseUrl: String): List<String> {
         val links = linkedSetOf<String>()
-        Regex("""(?i)['"]((?:https?:)?//[^'"]+?(?:\.m3u8|\.mp4|\.webm|googlevideo\.com/[^'"]+|videoplayback[^'"]*|/hls/[^'"]+|/stream/[^'"]+)(?:\?[^'"]*)?)['"]""").findAll(html)
+        Regex("""(?i)['"]((?:https?:)?//[^'"]+?(?:\.m3u8|\.mp4|\.webm|googlevideo\.com/[^'"]+|videoplayback[^'"]*|/hls/[^'"]+|/stream/[^'"]+|/play/token_hash\?[^'"]+)(?:\?[^'"]*)?)['"]""").findAll(html)
             .mapNotNull { fixUrl(it.groupValues[1], baseUrl) }.filter { it.isPlayableMedia() }.forEach { links.add(it) }
-        Regex("""(?i)(?:https?:)?//[^\s'"<>\\]+?(?:\.m3u8|\.mp4|\.webm|googlevideo\.com/[^\s'"<>\\]+|videoplayback[^\s'"<>\\]*|/hls/[^\s'"<>\\]+|/stream/[^\s'"<>\\]+)(?:\?[^\s'"<>\\]*)?""").findAll(html)
+        Regex("""(?i)(?:https?:)?//[^\s'"<>\\]+?(?:\.m3u8|\.mp4|\.webm|googlevideo\.com/[^\s'"<>\\]+|videoplayback[^\s'"<>\\]*|/hls/[^\s'"<>\\]+|/stream/[^\s'"<>\\]+|/play/token_hash\?[^\s'"<>\\]+)(?:\?[^\s'"<>\\]*)?""").findAll(html)
             .mapNotNull { fixUrl(it.value, baseUrl) }.filter { it.isPlayableMedia() }.forEach { links.add(it) }
         Regex("""https?%3A%2F%2F[^\s'"<>]+""", RegexOption.IGNORE_CASE).findAll(html)
             .mapNotNull { fixUrl(urlDecode(it.value), baseUrl) }.filter { it.isPlayableMedia() }.forEach { links.add(it) }
@@ -454,6 +473,56 @@ class GudangFilm : MainAPI() {
             if (html.startsWith("http", true) || html.startsWith("//")) fixUrl(html, baseUrl)?.let { return it }
         }
         return null
+    }
+
+
+    private data class ResolvedPlayerLink(val url: String, val referer: String, val source: String)
+
+    private suspend fun resolvePlayerLinks(url: String, referer: String): List<ResolvedPlayerLink> {
+        val fixed = fixUrl(url, referer) ?: return emptyList()
+        val host = try { URI(fixed).host.orEmpty().lowercase(Locale.ROOT) } catch (_: Throwable) { return emptyList() }
+        return when {
+            host.contains("sf21.vidplayer.live") -> resolveSf21Player(fixed, referer)
+            else -> emptyList()
+        }
+    }
+
+    private suspend fun resolveSf21Player(url: String, referer: String): List<ResolvedPlayerLink> {
+        val uri = try { URI(url) } catch (_: Throwable) { return emptyList() }
+        val id = uri.rawFragment?.substringBefore("&")?.substringBefore("?")?.trim().orEmpty()
+            .ifBlank {
+                Regex("""(?i)(?:[?&]id=|/)([a-z0-9]{4,12})(?:[&#/?]|$)""").find(url)?.groupValues?.getOrNull(1).orEmpty()
+            }
+        if (id.isBlank()) return emptyList()
+        val playerOrigin = "https://sf21.vidplayer.live"
+        val sourceHost = runCatching { URI(referer).host.orEmpty().removePrefix("www.") }.getOrNull().orEmpty().ifBlank { "huazai6.com" }
+        val apiUrl = "$playerOrigin/api/v1/video?id=$id&w=1280&h=720&r=$sourceHost"
+        val encrypted = try {
+            app.get(apiUrl, headers = headers + mapOf("Accept" to "*/*", "Referer" to "$playerOrigin/"), referer = "$playerOrigin/").text
+        } catch (_: Throwable) { return emptyList() }
+        val json = decryptSf21Payload(encrypted) ?: return emptyList()
+        val obj = runCatching { JSONObject(json) }.getOrNull() ?: return emptyList()
+        val links = linkedSetOf<String>()
+        obj.optString("hlsVideoTiktok").takeIf { it.isNotBlank() }?.let { fixUrl(it, playerOrigin)?.let(links::add) }
+        obj.optString("source").takeIf { it.isNotBlank() }?.let { fixUrl(it, playerOrigin)?.let(links::add) }
+        return links.filter { it.isPlayableMedia() }.map { ResolvedPlayerLink(it, "$playerOrigin/", "$name Sf21") }
+    }
+
+    private fun decryptSf21Payload(value: String): String? = runCatching {
+        val cipherBytes = value.trim().chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(sf21Key, "AES"), IvParameterSpec(sf21Iv))
+        String(cipher.doFinal(cipherBytes))
+    }.getOrNull()
+
+    private fun buildXFileShareStream(html: String, baseUrl: String): String? {
+        val host = runCatching { URI(baseUrl).host.orEmpty() }.getOrNull().orEmpty()
+        if (!host.contains("minochinos.com", true) && !host.contains("earnvidjav.online", true)) return null
+        val fileId = Regex("""\$\.cookie\(['"]file_id['"]\s*,\s*['"](\d+)['"]""").find(html)?.groupValues?.getOrNull(1) ?: return null
+        val stream = Regex("""\|(\d{10})\|([a-z0-9]+)\|([A-Za-z0-9_-]{16,})\|""").findAll(html)
+            .map { it.groupValues }
+            .firstOrNull { it[3].length >= 20 } ?: return null
+        return "${origin(baseUrl)}/stream/${stream[3]}/${stream[2]}/${stream[1]}/$fileId/master.m3u8"
     }
 
     private fun sourceType(document: Document, html: String): String? {
@@ -478,7 +547,8 @@ class GudangFilm : MainAPI() {
             lower.contains("huazai6.com") || lower.contains("sht") || lower.contains("short") || lower.contains("embed") || lower.contains("player") ||
                 lower.contains("stream") || lower.contains("drive") || lower.contains("gofile") || lower.contains("dood") || lower.contains("filemoon") ||
                 lower.contains("vidhide") || lower.contains("vidguard") || lower.contains("voe") || lower.contains("mp4upload") || lower.contains("uqload") ||
-                lower.contains("hubcloud") || lower.contains("gdplayer") || lower.contains("gdriveplayer") || lower.contains("krakenfiles") || lower.contains("filelions")
+                lower.contains("hubcloud") || lower.contains("gdplayer") || lower.contains("gdriveplayer") || lower.contains("krakenfiles") || lower.contains("filelions") ||
+                lower.contains("sf21.vidplayer.live") || lower.contains("minochinos.com") || lower.contains("earnvidjav.online") || lower.contains("upload18.org")
             )
     }
 
@@ -622,7 +692,12 @@ class GudangFilm : MainAPI() {
     private fun String.isPlayableMedia(): Boolean {
         val lower = lowercase(Locale.ROOT)
         if (lower.endsWith(".html") || lower.endsWith(".htm") || lower.endsWith(".php") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") || lower.endsWith(".webp") || lower.endsWith(".gif") || lower.contains("mime=image") || lower.contains("=image/")) return false
-        return lower.contains(".m3u8") || lower.contains("m3u8") || lower.contains(".mp4") || lower.contains(".webm") || lower.contains("videoplayback") || lower.contains("mime=video") || lower.contains("/hls/") || (lower.contains("googlevideo.com") && lower.contains("videoplayback"))
+        return lower.isM3u8Like() || lower.contains(".mp4") || lower.contains(".webm") || lower.contains("videoplayback") || lower.contains("mime=video") || (lower.contains("googlevideo.com") && lower.contains("videoplayback"))
+    }
+
+    private fun String.isM3u8Like(): Boolean {
+        val lower = lowercase(Locale.ROOT)
+        return lower.contains(".m3u8") || lower.contains("m3u8") || lower.contains("/hls/") || lower.contains("/stream/") || lower.contains("/play/token_hash")
     }
 
     private fun String.isNoiseUrl(): Boolean {
@@ -642,6 +717,9 @@ class GudangFilm : MainAPI() {
             else -> Qualities.Unknown.value
         }
     }
+
+    private val sf21Key = "kiemtienmua911ca".toByteArray()
+    private val sf21Iv = "1234567890oiuytr".toByteArray()
 
     private val cardSelector = listOf(
         "article", ".post", ".item", ".movie", ".film", ".ml-item", ".result-item", ".owl-item", ".swiper-slide", ".poster", ".thumbnail", ".box", ".col"
