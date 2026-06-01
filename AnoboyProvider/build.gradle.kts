@@ -1,4 +1,4 @@
-version = 17
+version = 18
 
 cloudstream {
     description = "AnoBoy — Streaming Anime Subtitle Indonesia"
@@ -19,5 +19,5 @@ cloudstream {
         "Anime",
     )
 
-    iconUrl = "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://ww1.anoboy.boo&size=%size%"
+    iconUrl = "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://anoboy.be&size=%size%"
 }

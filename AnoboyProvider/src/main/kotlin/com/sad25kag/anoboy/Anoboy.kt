@@ -4,11 +4,12 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import java.net.URI
 import java.net.URLEncoder
+import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
 class Anoboy : MainAPI() {
-    override var mainUrl = "https://ww1.anoboy.boo"
+    override var mainUrl = "https://anoboy.be"
     override var name = "AnoBoy"
     override val hasMainPage = true
     override val hasQuickSearch = true
@@ -238,6 +239,8 @@ class Anoboy : MainAPI() {
 
             if (isDirectMedia(url)) {
                 emitDirect(url, referer, ::callbackOnce)
+            } else if (url.contains("blogger.com/video.g", ignoreCase = true)) {
+                emitBloggerVideo(url, baseUrl, ::callbackOnce)
             } else {
                 try {
                     loadExtractor(url, referer, subtitleCallback, ::callbackOnce)
@@ -277,7 +280,8 @@ class Anoboy : MainAPI() {
         val candidates = linkedSetOf<String>()
 
         document.select(
-            "iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src], " +
+            "#pembed iframe[src], .player-embed iframe[src], .video-content iframe[src], " +
+                "iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src], " +
                 "video[src], video[data-src], source[src], embed[src], object[data]"
         ).forEach { element ->
             candidates.add(element.iframeAttr().orEmpty())
@@ -286,6 +290,21 @@ class Anoboy : MainAPI() {
             candidates.add(element.attr("data-litespeed-src"))
             candidates.add(element.attr("data-lazy-src"))
             candidates.add(element.attr("data"))
+        }
+
+        document.select(".mobius select.mirror option[value], select.mirror option[value]").forEach { option ->
+            val value = option.attr("value").trim()
+            if (value.isBlank()) return@forEach
+
+            val decoded = runCatching { base64Decode(value) }.getOrNull()
+                ?: runCatching { String(android.util.Base64.decode(value, android.util.Base64.DEFAULT)) }.getOrNull()
+                ?: return@forEach
+
+            val decodedDoc = Jsoup.parse(decoded)
+            decodedDoc.select("iframe[src], video[src], source[src], embed[src]").forEach { embedded ->
+                candidates.add(embedded.iframeAttr().orEmpty())
+                candidates.add(embedded.attr("src"))
+            }
         }
 
         document.select(
@@ -301,7 +320,8 @@ class Anoboy : MainAPI() {
 
         document.select(
             "a[href*='gofile.io'], a[href*='mp4upload.com'], a[href*='mir.cr'], " +
-                "a[href*='ranoz.gg'], a[href*='.mp4'], a[href*='.m3u8']"
+                "a[href*='ranoz.gg'], a[href*='playerwish.com'], a[href*='blogger.com/video.g'], " +
+                "a[href*='.mp4'], a[href*='.m3u8']"
         ).forEach { element ->
             candidates.add(element.attr("href"))
         }
@@ -411,6 +431,143 @@ class Anoboy : MainAPI() {
             }
             .distinctBy { it.data }
             .sortedBy { it.episode ?: Int.MAX_VALUE }
+    }
+
+    private suspend fun emitBloggerVideo(
+        url: String,
+        referer: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val videos = extractBloggerDirectVideos(url, referer)
+        if (videos.isEmpty()) return false
+
+        videos.forEach { videoUrl ->
+            callback(
+                newExtractorLink(
+                    source = "Blogger",
+                    name = "Blogger",
+                    url = videoUrl,
+                    type = ExtractorLinkType.VIDEO
+                ) {
+                    this.referer = "https://www.blogger.com/"
+                    this.quality = qualityFromBloggerUrl(videoUrl)
+                    this.headers = mapOf(
+                        "User-Agent" to USER_AGENT,
+                        "Referer" to "https://www.blogger.com/",
+                        "Accept" to "*/*"
+                    )
+                }
+            )
+        }
+
+        return true
+    }
+
+    private suspend fun extractBloggerDirectVideos(url: String, referer: String): List<String> {
+        val token = Regex("""[?&]token=([^&]+)""")
+            .find(url)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: return emptyList()
+
+        val page = runCatching {
+            app.get(
+                url,
+                referer = referer,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                )
+            )
+        }.getOrNull() ?: return emptyList()
+
+        val html = page.text
+        val cookies = page.cookies
+        val fSid = Regex("""FdrFJe":"(-?\d+)""")
+            .find(html)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: return extractGoogleVideoUrls(html)
+        val bl = Regex("""cfb2h":"([^"]+)""")
+            .find(html)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: return extractGoogleVideoUrls(html)
+        val hl = Regex("""lang="([^"]+)""")
+            .find(html)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.ifBlank { null }
+            ?: "id"
+
+        val rpcId = "WcwnYd"
+        val reqId = (System.currentTimeMillis() % 90000L + 10000L).toString()
+        val payload = """[[["$rpcId","[\"$token\",null,0]",null,"generic"]]]"""
+        val apiUrl = "https://www.blogger.com/_/BloggerVideoPlayerUi/data/batchexecute" +
+            "?rpcids=$rpcId&source-path=%2Fvideo.g&f.sid=$fSid&bl=$bl&hl=$hl&_reqid=$reqId&rt=c"
+
+        val response = runCatching {
+            app.post(
+                apiUrl,
+                data = mapOf("f.req" to payload),
+                referer = url,
+                cookies = cookies,
+                headers = mapOf(
+                    "Origin" to "https://www.blogger.com",
+                    "Accept" to "*/*",
+                    "Content-Type" to "application/x-www-form-urlencoded;charset=UTF-8",
+                    "X-Same-Domain" to "1"
+                )
+            ).text
+        }.getOrNull() ?: return emptyList()
+
+        return extractGoogleVideoUrls(response)
+    }
+
+    private fun extractGoogleVideoUrls(raw: String): List<String> {
+        val decoded = decodeBloggerEscapes(raw)
+        return Regex("""https://[^\s"'\\]+""")
+            .findAll(decoded)
+            .map { decodeBloggerEscapes(it.value) }
+            .filter { it.contains("googlevideo.com/videoplayback", ignoreCase = true) }
+            .distinct()
+            .toList()
+    }
+
+    private fun decodeBloggerEscapes(input: String): String {
+        var output = input
+        repeat(2) {
+            output = Regex("""\\u([0-9a-fA-F]{4})""").replace(output) { match ->
+                match.groupValues[1].toInt(16).toChar().toString()
+            }
+        }
+
+        return output
+            .replace("\\/", "/")
+            .replace("\\u003d", "=")
+            .replace("\\u0026", "&")
+            .replace("\\=", "=")
+            .replace("\\&", "&")
+            .replace("\\\"", "\"")
+            .replace("&amp;", "&")
+    }
+
+    private fun qualityFromBloggerUrl(url: String): Int {
+        val itag = Regex("""[?&]itag=(\d+)""")
+            .find(url)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
+
+        return when (itag) {
+            37, 96, 137, 248, 299 -> Qualities.P1080.value
+            22, 59, 136, 247, 298 -> Qualities.P720.value
+            135 -> Qualities.P480.value
+            18, 134, 244 -> Qualities.P360.value
+            36 -> Qualities.P240.value
+            17 -> Qualities.P144.value
+            else -> Qualities.Unknown.value
+        }
     }
 
     private suspend fun emitDirect(
@@ -539,7 +696,9 @@ class Anoboy : MainAPI() {
         if (isBadUrl(url)) return false
         if (isDirectMedia(url)) return true
 
-        return lower.contains("gofile.io") ||
+        return lower.contains("blogger.com/video.g") ||
+            lower.contains("playerwish.com") ||
+            lower.contains("gofile.io") ||
             lower.contains("mp4upload.com") ||
             lower.contains("mir.cr") ||
             lower.contains("ranoz.gg")
