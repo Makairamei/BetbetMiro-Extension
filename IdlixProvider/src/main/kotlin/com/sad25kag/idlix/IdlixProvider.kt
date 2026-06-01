@@ -32,7 +32,10 @@ import com.lagradost.cloudstream3.toNewSearchResponseList
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.delay
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -219,6 +222,7 @@ class IdlixProvider : MainAPI() {
                 LoadData(
                     id = data.id.orEmpty(),
                     type = "movie",
+                    refererUrl = webUrl,
                 ).toJson(),
             ) {
                 this.posterUrl = poster
@@ -244,7 +248,7 @@ class IdlixProvider : MainAPI() {
 
         data.firstSeason?.episodes?.forEach { ep ->
             val id = ep.id ?: return@forEach
-            episodes.add(ep.toCloudstreamEpisode(data.firstSeason.seasonNumber ?: 1, id))
+            episodes.add(ep.toCloudstreamEpisode(data.firstSeason.seasonNumber ?: 1, id, slug))
         }
 
         data.seasons.orEmpty().forEach { season ->
@@ -262,7 +266,7 @@ class IdlixProvider : MainAPI() {
 
             seasonData?.episodes?.forEach { ep ->
                 val id = ep.id ?: return@forEach
-                episodes.add(ep.toCloudstreamEpisode(seasonNumber, id))
+                episodes.add(ep.toCloudstreamEpisode(seasonNumber, id, slug))
             }
         }
 
@@ -274,11 +278,13 @@ class IdlixProvider : MainAPI() {
     private fun com.sad25kag.idlix.Episode.toCloudstreamEpisode(
         seasonNumber: Int,
         id: String,
+        seriesSlug: String,
     ): Episode {
         return newEpisode(
             LoadData(
                 id = id,
                 type = "episode",
+                refererUrl = "$mainUrl/series/$seriesSlug/season/$seasonNumber/episode/${episodeNumber ?: 1}",
             ).toJson(),
         ) {
             this.name = name
@@ -322,38 +328,36 @@ class IdlixProvider : MainAPI() {
         val parsed = runCatching { parseJson<LoadData>(data) }.getOrNull() ?: return false
         if (parsed.id.isBlank() || parsed.type.isBlank()) return false
 
-        val headers = mapOf(
-            "Referer" to "$mainUrl/",
+        val contentReferer = parsed.refererUrl
+            ?.takeIf { it.isNotBlank() }
+            ?.fixAgainstMainUrl()
+            ?: "$mainUrl/"
+
+        val jsonHeaders = mapOf(
+            "Referer" to contentReferer,
             "Origin" to mainUrl,
-            "Accept" to "application/json, text/plain, */*",
+            "Accept" to "*/*",
             "Content-Type" to "application/json",
         )
 
         val playResponse = app.get(
             "$mainUrl/api/watch/play-info/${parsed.type}/${parsed.id}",
-            headers = headers,
-            referer = mainUrl,
+            headers = mapOf(
+                "Referer" to contentReferer,
+                "Accept" to "*/*",
+            ),
+            referer = contentReferer,
             timeout = 10000L,
         )
 
-        val cookies = playResponse.cookies
         val playInfo = playResponse.parsedSafe<Res>() ?: return false
-
-        val waitTime = (playInfo.unlockAt - playInfo.serverNow).coerceAtLeast(0)
-        val totalWait = (waitTime / 1000).coerceAtLeast(0)
-        var elapsed = 0L
-
-        while (elapsed < totalWait) {
-            Log.d(name, "Waiting IDLIX gate: ${elapsed}s / ${totalWait}s")
-            delay(1000)
-            elapsed++
-        }
+        waitForGate(playInfo)
 
         val claimResponse = app.post(
             "$mainUrl/api/watch/session/claim",
-            headers = headers,
-            cookies = cookies,
-            referer = mainUrl,
+            headers = jsonHeaders,
+            cookies = playResponse.cookies,
+            referer = contentReferer,
             requestBody = """{"gateToken":"${playInfo.gateToken}"}"""
                 .toRequestBody("application/json".toMediaType()),
             timeout = 10000L,
@@ -362,11 +366,14 @@ class IdlixProvider : MainAPI() {
         val redeemUrl = claimResponse.redeemUrl.fixAgainstMainUrl() ?: return false
         val iframeResponse = app.post(
             redeemUrl,
-            headers = headers,
-            cookies = cookies,
-            referer = mainUrl,
+            headers = mapOf(
+                "Referer" to "$mainUrl/",
+                "Origin" to mainUrl,
+                "Accept" to "*/*",
+            ),
+            referer = "$mainUrl/",
             requestBody = """{"claim":"${claimResponse.claim}"}"""
-                .toRequestBody("application/json".toMediaType()),
+                .toRequestBody("text/plain".toMediaType()),
             timeout = 10000L,
         ).parsedSafe<Iframe>() ?: return false
 
@@ -374,13 +381,30 @@ class IdlixProvider : MainAPI() {
         var delivered = false
 
         if (!streamUrl.isNullOrBlank()) {
+            val streamHeaders = mapOf(
+                "Referer" to "$mainUrl/",
+                "Origin" to mainUrl,
+                "Accept" to "*/*",
+            )
+
             generateM3u8(
                 source = name,
                 streamUrl = streamUrl,
-                referer = mainUrl,
-                headers = mapOf("Referer" to mainUrl, "Origin" to mainUrl),
+                referer = "$mainUrl/",
+                headers = streamHeaders,
             ).forEach { link ->
                 callback(link)
+                delivered = true
+            }
+
+            if (!delivered) {
+                callback(
+                    newExtractorLink(name, "$name Majorplay", streamUrl, ExtractorLinkType.M3U8) {
+                        this.referer = "$mainUrl/"
+                        this.headers = streamHeaders
+                        this.quality = claimResponse.maxHeight?.toQuality() ?: Qualities.Unknown.value
+                    },
+                )
                 delivered = true
             }
         }
@@ -396,6 +420,29 @@ class IdlixProvider : MainAPI() {
         }
 
         return delivered
+    }
+
+    private suspend fun waitForGate(playInfo: Res) {
+        val waitTime = (playInfo.unlockAt - playInfo.serverNow).coerceAtLeast(0)
+        val totalWait = (waitTime / 1000).coerceAtLeast(0)
+        var elapsed = 0L
+
+        while (elapsed < totalWait) {
+            Log.d(name, "Waiting IDLIX gate: ${elapsed}s / ${totalWait}s")
+            delay(1000)
+            elapsed++
+        }
+    }
+
+    private fun Long.toQuality(): Int {
+        return when {
+            this >= 2160L -> Qualities.P2160.value
+            this >= 1080L -> Qualities.P1080.value
+            this >= 720L -> Qualities.P720.value
+            this >= 480L -> Qualities.P480.value
+            this >= 360L -> Qualities.P360.value
+            else -> Qualities.Unknown.value
+        }
     }
 
     private fun ApiItem.toSearchResponse(defaultType: String?): SearchResponse? {

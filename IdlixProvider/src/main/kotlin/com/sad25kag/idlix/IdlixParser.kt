@@ -147,6 +147,7 @@ data class SearchApiResult(
 data class LoadData(
     val id: String,
     val type: String,
+    val refererUrl: String? = null,
 )
 
 data class Res(
