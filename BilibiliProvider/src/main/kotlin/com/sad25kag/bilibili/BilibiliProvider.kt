@@ -5,10 +5,11 @@ package com.sad25kag.bilibili
 import android.content.Context
 import android.util.Log
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.newSubtitleFile
@@ -52,6 +53,14 @@ class BilibiliProvider : MainAPI() {
         "Accept-Language" to "en-US,en;q=0.9"
     )
 
+    private val jsonMapper = jacksonObjectMapper().apply {
+        configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+    }
+
+    private inline fun <reified T> parseBiliJson(text: String): T {
+        return jsonMapper.readValue(text, T::class.java)
+    }
+
     // Content access error types
     private enum class ContentAccessError {
         NONE, GEO_LOCKED, PREMIUM_REQUIRED
@@ -94,7 +103,7 @@ class BilibiliProvider : MainAPI() {
                 "Referer" to "$mainUrl/"
             )).text
             
-            val json = parseJson<BiliPlayurlResponse>(response)
+            val json = parseBiliJson<BiliPlayurlResponse>(response)
             
             return when {
                 // Code 10015001 = geo-restricted ("版权地区受限")
@@ -164,7 +173,7 @@ class BilibiliProvider : MainAPI() {
                     val response = app.get(searchUrl, headers = headers).text
                     Log.d(TAG, "For you response: ${response.take(500)}")
                     
-                    val json = parseJson<BiliSearchResponse>(response)
+                    val json = parseBiliJson<BiliSearchResponse>(response)
                     
                     // Parse all modules - both OGV and UGC
                     json.data?.modules?.forEach { module ->
@@ -193,7 +202,7 @@ class BilibiliProvider : MainAPI() {
                     val response = app.get(timelineUrl, headers = headers).text
                     Log.d(TAG, "Timeline response: ${response.take(500)}")
                     
-                    val json = parseJson<BiliTimelineResponse>(response)
+                    val json = parseBiliJson<BiliTimelineResponse>(response)
                     
                     // Collect cards from all days
                     json.data?.items?.forEach { day ->
@@ -216,7 +225,7 @@ class BilibiliProvider : MainAPI() {
                     val response = app.get(searchUrl, headers = headers).text
                     Log.d(TAG, "Search main page response: ${response.take(500)}")
                     
-                    val json = parseJson<BiliSearchResponse>(response)
+                    val json = parseBiliJson<BiliSearchResponse>(response)
                     
                     // Parse all modules - OGV contains anime/movies
                     json.data?.modules?.forEach { module ->
@@ -244,7 +253,7 @@ class BilibiliProvider : MainAPI() {
                     // Fallback to search
                     val searchUrl = "$WEB_API/search_v2?keyword=${request.data}&platform=web&pn=$page&ps=30"
                     val response = app.get(searchUrl, headers = headers).text
-                    val json = parseJson<BiliSearchResponse>(response)
+                    val json = parseBiliJson<BiliSearchResponse>(response)
                     
                     json.data?.modules?.forEach { module ->
                         module.items?.forEach { item ->
@@ -281,7 +290,7 @@ class BilibiliProvider : MainAPI() {
             val response = app.get(searchUrl, headers = headers).text
             Log.d(TAG, "Search response: ${response.take(500)}")
             
-            val json = parseJson<BiliSearchResponse>(response)
+            val json = parseBiliJson<BiliSearchResponse>(response)
             
             json.data?.modules?.forEach { module ->
                 when (module.type) {
@@ -339,7 +348,7 @@ class BilibiliProvider : MainAPI() {
             val seasonResponse = app.get(seasonInfoUrl, headers = headers).text
             Log.d(TAG, "Season info response: ${seasonResponse.take(1000)}")
             
-            val seasonJson = parseJson<BiliSeasonInfoResponse>(seasonResponse)
+            val seasonJson = parseBiliJson<BiliSeasonInfoResponse>(seasonResponse)
             val season = seasonJson.data?.season ?: return null
             
             val title = season.title ?: return null
@@ -349,7 +358,7 @@ class BilibiliProvider : MainAPI() {
             // Check content access restrictions using first episode
             val episodesUrl = "$WEB_API/ogv/play/episodes?season_id=$seasonId&platform=web"
             val episodesResponse = app.get(episodesUrl, headers = headers).text
-            val episodesJson = parseJson<BiliEpisodesResponse>(episodesResponse)
+            val episodesJson = parseBiliJson<BiliEpisodesResponse>(episodesResponse)
             val firstEpId = episodesJson.data?.sections?.firstOrNull()?.episodes?.firstOrNull()?.episodeId
             
             if (firstEpId != null) {
@@ -469,7 +478,7 @@ class BilibiliProvider : MainAPI() {
         Log.d(TAG, "Loading links for: $data")
         
         try {
-            val episodeData = parseJson<EpisodeData>(data)
+            val episodeData = parseBiliJson<EpisodeData>(data)
             
             val epId = episodeData.epId
             val seasonId = episodeData.seasonId
@@ -573,7 +582,7 @@ class BilibiliProvider : MainAPI() {
             )).text
             Log.d(TAG, "Playurl response: ${response.take(2000)}")
             
-            val json = parseJson<BiliPlayurlResponse>(response)
+            val json = parseBiliJson<BiliPlayurlResponse>(response)
             
             if (json.code != 0) {
                 Log.d(TAG, "Playurl API error code: ${json.code}, message: ${json.message}")
@@ -880,7 +889,7 @@ class BilibiliProvider : MainAPI() {
                         val playInfoJson = playInfoMatch.groupValues[1]
                         Log.d(TAG, "Found playInfo: ${playInfoJson.take(500)}")
                         
-                        val playInfo = parseJson<BiliPlayInfo>(playInfoJson)
+                        val playInfo = parseBiliJson<BiliPlayInfo>(playInfoJson)
                         
                         playInfo.data?.dash?.video?.forEach { video ->
                             val videoUrl = video.baseUrl ?: video.base_url ?: return@forEach
@@ -1112,7 +1121,7 @@ class BilibiliProvider : MainAPI() {
         try {
             val subtitleUrl = "$WEB_API/subtitle?ep_id=$epId&platform=web&s_locale=en_US"
             val response = app.get(subtitleUrl, headers = headers).text
-            val json = parseJson<BiliSubtitleResponse>(response)
+            val json = parseBiliJson<BiliSubtitleResponse>(response)
             
             json.data?.subtitles?.forEach { subtitle ->
                 val subUrl = subtitle.url?.ensureHttps() ?: return@forEach
