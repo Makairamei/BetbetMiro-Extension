@@ -1,9 +1,9 @@
-version = 35
+version = 36
 
 cloudstream {
     language = "id"
     authors = listOf("BetbetMiro")
-    description = "Idlix provider using the current z2.idlixku.com API catalogue and play-session flow, with refreshed homepage rows, genre/country/year/network categories, metadata, subtitles, and HLS playback."
+    description = "Idlix provider temporarily disabled while unresolved Majorplay playback returns zero links from the current z2.idlixku.com play-session flow."
 
     /**
      * Status int as the following:
@@ -12,7 +12,7 @@ cloudstream {
      * 2: Slow
      * 3: Beta only
      */
-    status = 1
+    status = 0
 
     tvTypes = listOf(
         "Movie",
