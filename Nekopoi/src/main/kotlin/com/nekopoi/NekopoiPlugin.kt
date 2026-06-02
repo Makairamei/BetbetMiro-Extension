@@ -10,5 +10,7 @@ class NekopoiPlugin: Plugin() {
         // Resmi sebagai milik BetbetMiro
         registerMainAPI(Nekopoi())
         registerExtractorAPI(ZippyShare())
+        registerExtractorAPI(Playmogo())
+        registerExtractorAPI(Streampoi())
     }
 }
