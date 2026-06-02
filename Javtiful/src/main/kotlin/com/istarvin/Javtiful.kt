@@ -3,10 +3,16 @@ package com.istarvin
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import org.jsoup.nodes.Element
+import org.jsoup.parser.Parser
 
 class Javtiful : MainAPI() {
+    private val jsonMapper = jacksonObjectMapper()
+
     override var mainUrl = "https://javtiful.com"
     override var name = "Javtiful"
     override val hasMainPage = true
@@ -128,46 +134,123 @@ class Javtiful : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val res = app.get(data).text
-        val configRaw = res.substringAfter("id=\"frontWatchConfig\" type=\"application/json\">")
-            .substringBefore("</script>")
+        val response = app.get(data)
+        val text = response.text
+        val document = response.document
+        val configRaw = document.selectFirst("script#frontWatchConfig")?.html()
+            ?: text.substringAfter("id=\"frontWatchConfig\" type=\"application/json\">", "")
+                .substringBefore("</script>", "")
+        val configJson = configRaw.cleanupJson()
 
-        val configData = parseJson<WatchConfig>(configRaw)
+        val configData = parseWatchConfig(configJson)
+        val playerSources = configData?.allSources().orEmpty()
+            .ifEmpty { extractPlayerSources(configJson) }
+            .filter { !it.resolvedSrc().isNullOrBlank() }
+            .distinctBy { it.resolvedSrc() }
 
-        configData.videoTitle?.substringBefore(" ")?.let { code ->
-            getExtractorApiFromName("SubtitleCat").getUrl(
-                url = code,
-                subtitleCallback = subtitleCallback,
-                callback = callback
-            )
-        }
+        (configData?.resolvedVideoTitle() ?: document.selectFirst("div.front-watch-title h1")?.text())
+            ?.substringBefore(" ")
+            ?.takeIf { it.contains("-") }
+            ?.let { code ->
+                getExtractorApiFromName("SubtitleCat").getUrl(
+                    url = code,
+                    subtitleCallback = subtitleCallback,
+                    callback = callback
+                )
+            }
 
-        configData.playerSources?.forEach { source ->
+        playerSources.forEach { source ->
+            val sourceUrl = source.resolvedSrc()?.normalizeSourceUrl() ?: return@forEach
             callback.invoke(
                 newExtractorLink(
                     this.name,
                     this.name,
-                    source.src
+                    sourceUrl
                 ) {
-                    this.quality = source.size ?: Qualities.Unknown.value
+                    this.quality = source.qualityValue()
                     this.referer = "$mainUrl/"
-                    this.type =
-                        if (source.src.contains(".mp4")) ExtractorLinkType.VIDEO else ExtractorLinkType.M3U8
+                    this.type = source.linkType(sourceUrl)
                 }
             )
         }
 
-        return !configData.playerSources.isNullOrEmpty()
+        return playerSources.isNotEmpty()
     }
 
+    private fun parseWatchConfig(json: String): WatchConfig? {
+        if (json.isBlank()) return null
+        return runCatching { jsonMapper.readValue<WatchConfig>(json) }.getOrNull()
+    }
+
+    private fun extractPlayerSources(json: String): List<PlayerSource> {
+        if (json.isBlank()) return emptyList()
+        return Regex("""[\"'](?:src|file)[\"']\s*:\s*[\"']([^\"']+)[\"']""")
+            .findAll(json)
+            .mapNotNull { match ->
+                match.groupValues.getOrNull(1)
+                    ?.cleanupJsonString()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { PlayerSource(src = it) }
+            }
+            .toList()
+    }
+
+    private fun String.cleanupJson(): String {
+        return Parser.unescapeEntities(this, false)
+            .trim()
+            .removePrefix("<!--")
+            .removeSuffix("-->")
+            .replace("\\/", "/")
+    }
+
+    private fun String.cleanupJsonString(): String {
+        return Parser.unescapeEntities(this, false)
+            .replace("\\/", "/")
+            .replace("\\u0026", "&")
+            .trim()
+    }
+
+    private fun String.normalizeSourceUrl(): String {
+        return when {
+            startsWith("//") -> "https:$this"
+            startsWith("/") -> fixUrl(this)
+            else -> this
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class WatchConfig(
         val playerSources: List<PlayerSource>? = null,
-        val videoTitle: String? = null
-    )
+        val sources: List<PlayerSource>? = null,
+        val videos: List<PlayerSource>? = null,
+        val videoTitle: String? = null,
+        @JsonProperty("video_title") val videoTitleAlt: String? = null
+    ) {
+        fun allSources(): List<PlayerSource> = playerSources ?: sources ?: videos ?: emptyList()
+        fun resolvedVideoTitle(): String? = videoTitle ?: videoTitleAlt
+    }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class PlayerSource(
-        val src: String,
+        val src: String? = null,
+        val file: String? = null,
         val type: String? = null,
-        val size: Int? = null
-    )
+        val size: Any? = null,
+        val label: Any? = null,
+        val quality: Any? = null
+    ) {
+        fun resolvedSrc(): String? = src ?: file
+
+        fun qualityValue(): Int {
+            return listOf(size, label, quality)
+                .asSequence()
+                .mapNotNull { value -> Regex("""(\d{3,4})""").find(value?.toString().orEmpty())?.value?.toIntOrNull() }
+                .firstOrNull() ?: Qualities.Unknown.value
+        }
+
+        fun linkType(url: String): ExtractorLinkType {
+            val text = listOf(type, url).joinToString(" ").lowercase()
+            return if (text.contains("mp4")) ExtractorLinkType.VIDEO else ExtractorLinkType.M3U8
+        }
+    }
 }
