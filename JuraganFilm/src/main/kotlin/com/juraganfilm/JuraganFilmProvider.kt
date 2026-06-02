@@ -25,8 +25,10 @@ import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.toNewSearchResponseList
-import com.lagradost.cloudstream3.utils.AppUtils
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
@@ -41,6 +43,12 @@ import java.net.URLEncoder
 import java.util.Base64
 
 class JuraganFilmProvider : MainAPI() {
+    private val jsonMapper by lazy {
+        jacksonObjectMapper().apply {
+            configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+        }
+    }
+
     override var mainUrl = "https://tv44.juragan.film"
     override var name = "JuraganFilm"
     override val hasMainPage = true
@@ -153,7 +161,7 @@ class JuraganFilmProvider : MainAPI() {
                 title,
                 fixedUrl,
                 TvType.Movie,
-                LoadData(url = fixedUrl, title = title, poster = poster, episode = null).toJson()
+                encodeLoadData(LoadData(url = fixedUrl, title = title, poster = poster, episode = null))
             ) {
                 posterUrl = poster
                 this.year = year
@@ -173,7 +181,7 @@ class JuraganFilmProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val parsed = runCatching { AppUtils.parseJson<LoadData>(data) }.getOrNull()
+        val parsed = decodeLoadData(data)
             ?: LoadData(url = data, title = null, poster = null, episode = null)
 
         val startUrl = fixUrl(parsed.url, mainUrl) ?: return false
@@ -187,6 +195,7 @@ class JuraganFilmProvider : MainAPI() {
             val key = canonicalUrl(fixed)
             if (!emitted.add(key)) return false
 
+            val mediaReferer = if (fixed.contains("scroll.web.id", true)) mainUrl else referer
             callback(
                 newExtractorLink(
                     source = name,
@@ -194,13 +203,13 @@ class JuraganFilmProvider : MainAPI() {
                     url = fixed,
                     type = if (isHls(fixed)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                 ) {
-                    this.referer = referer
+                    this.referer = mediaReferer
                     this.quality = getQualityFromName(fixed).takeIf { it != Qualities.Unknown.value }
                         ?: qualityFromUrl(fixed)
                     this.headers = mapOf(
                         "User-Agent" to USER_AGENT,
-                        "Referer" to referer,
-                        "Origin" to origin(referer),
+                        "Referer" to mediaReferer,
+                        "Origin" to origin(mediaReferer),
                         "Accept" to "*/*"
                     )
                 }
@@ -380,7 +389,7 @@ class JuraganFilmProvider : MainAPI() {
             val key = canonicalUrl(fixedUrl)
             if (episodes.containsKey(key)) return
             episodes[key] = newEpisode(
-                LoadData(url = fixedUrl, title = title, poster = poster, episode = number).toJson()
+                encodeLoadData(LoadData(url = fixedUrl, title = title, poster = poster, episode = number))
             ) {
                 this.name = label ?: number?.let { "Episode $it" } ?: title
                 this.episode = number
@@ -526,7 +535,7 @@ class JuraganFilmProvider : MainAPI() {
             ).filter { it.isNotBlank() }.forEach { raw ->
                 extractPlayableUrls(raw, baseUrl).forEach(links::add)
                 fixUrl(raw, baseUrl)?.let { fixed ->
-                    if (isLikelyPlayable(fixed)) links.add(fixed)
+                    if (isLikelyPlayable(fixed) || isJuraganFilePlayer(fixed)) links.add(fixed)
                 }
             }
         }
@@ -571,6 +580,12 @@ class JuraganFilmProvider : MainAPI() {
     private fun extractPlayableUrls(text: String, baseUrl: String): List<String> {
         val urls = linkedSetOf<String>()
         val clean = text.cleanEscaped()
+
+        Regex("""https?://[^"'\\\s<>]+?(?:/file/\?[^"'\\\s<>]+|scroll\.web\.id/?\?id=[^"'\\\s<>]+)""", RegexOption.IGNORE_CASE)
+            .findAll(clean)
+            .mapNotNull { fixUrl(it.value, baseUrl) }
+            .filter { isLikelyPlayable(it) || isJuraganFilePlayer(it) }
+            .forEach(urls::add)
 
         Regex("""https?://[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.webm|\.txt)(?:\?[^"'\\\s<>]*)?""", RegexOption.IGNORE_CASE)
             .findAll(clean)
@@ -686,6 +701,21 @@ class JuraganFilmProvider : MainAPI() {
         }
     }
 
+    private fun encodeLoadData(data: LoadData): String {
+        return runCatching { jsonMapper.writeValueAsString(data) }.getOrDefault(data.url)
+    }
+
+    private fun decodeLoadData(data: String): LoadData? {
+        val clean = data.cleanEscaped()
+        if (!clean.trimStart().startsWith("{")) return null
+        return runCatching { jsonMapper.readValue<LoadData>(clean) }.getOrNull()
+    }
+
+    private fun isJuraganFilePlayer(url: String): Boolean {
+        val value = url.lowercase()
+        return value.startsWith(mainUrl.lowercase()) && value.contains("/file/?id=")
+    }
+
     private fun fixUrl(url: String?, baseUrl: String): String? {
         val clean = url.cleanEscaped().trim().trim('"', '\'', ',', ';')
         if (clean.isBlank() || clean == "#" || clean.startsWith("javascript:", true) || clean.startsWith("mailto:", true)) return null
@@ -718,7 +748,8 @@ class JuraganFilmProvider : MainAPI() {
         val value = url.lowercase()
         return isDirectMedia(value) || listOf(
             "embed", "player", "stream", "majorplay", "jeniusplay", "filemoon", "streamwish", "wishfast",
-            "vidhide", "vidguard", "voe.", "mixdrop", "mp4upload", "streamtape", "dood", "lulu"
+            "vidhide", "vidguard", "voe.", "mixdrop", "mp4upload", "streamtape", "dood", "lulu",
+            "scroll.web.id", "/file/?id=", "action=download", "fallback_json"
         ).any { value.contains(it) }
     }
 
@@ -790,6 +821,7 @@ class JuraganFilmProvider : MainAPI() {
     private fun String.cleanSpaces(): String = replace(Regex("""\s+"""), " ").trim()
 }
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class LoadData(
     val url: String,
     val title: String? = null,
