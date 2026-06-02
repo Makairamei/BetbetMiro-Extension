@@ -727,6 +727,7 @@ class Melongmovie : MainAPI() {
 
         val fixed = normalizeUrl(raw.cleanEscaped(), baseUrl)
             .replace(".txt", ".m3u8")
+            .replace(Regex("""(?:&|\?)(?:amp;)?dl=1$""", RegexOption.IGNORE_CASE), "")
             .trim()
 
         if (fixed.isBlank() || isBadPlayableUrl(fixed)) return
@@ -809,14 +810,14 @@ class Melongmovie : MainAPI() {
             .forEach { urls.add(it) }
 
         Regex(
-            """https?://[^"'\\\s<>]+?(?:melongfilm|strp2p|4meplayer|dingtezuni|dintezuvio|hglink|earnvids|streamwish|wishfast|filemoon|dood|streamtape|vidhide|vidguard|voe|mixdrop|mp4upload)[^"'\\\s<>]*""",
+            """https?://[^"'\\\s<>]*?(?:melongfilm|strp2p|4meplayer|minochinos|dingtezuni|dintezuvio|hglink|earnvids|streamwish|wishfast|filemoon|dood|streamtape|vidhide|vidguard|voe|mixdrop|mp4upload)[^"'\\\s<>]*""",
             RegexOption.IGNORE_CASE
         ).findAll(clean)
             .map { it.value.cleanEscaped() }
             .forEach { urls.add(it) }
 
         Regex(
-            """https?%3A%2F%2F[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.webm|\.txt|melongfilm|strp2p|4meplayer|dingtezuni|dintezuvio|hglink|earnvids|streamwish|wishfast|filemoon|dood|streamtape|vidhide|vidguard|voe|mixdrop|mp4upload)[^"'\\\s<>]*""",
+            """https?%3A%2F%2F[^"'\\\s<>]*?(?:\.m3u8|\.mp4|\.webm|\.txt|melongfilm|strp2p|4meplayer|minochinos|dingtezuni|dintezuvio|hglink|earnvids|streamwish|wishfast|filemoon|dood|streamtape|vidhide|vidguard|voe|mixdrop|mp4upload)[^"'\\\s<>]*""",
             RegexOption.IGNORE_CASE
         ).findAll(clean)
             .map {
@@ -855,7 +856,10 @@ class Melongmovie : MainAPI() {
         val value = url.lowercase()
 
         return when {
+            value.contains("melongfilm.upns.blog") -> 0
+            value.contains("melongfilm.4meplayer.com") -> 0
             value.contains("melongfilm.strp2p") -> 0
+            value.contains("minochinos.com") -> 1
             value.contains("4meplayer") -> 1
             value.contains("ukokoko") -> 1
             value.contains("dingtezuni") -> 2
@@ -881,7 +885,10 @@ class Melongmovie : MainAPI() {
         val value = url.lowercase()
 
         return listOf(
+            "melongfilm.upns.blog",
+            "melongfilm.4meplayer.com",
             "melongfilm.strp2p",
+            "minochinos.com",
             "4meplayer",
             "ukokoko",
             "dingtezuni",
@@ -1135,6 +1142,9 @@ class Melongmovie : MainAPI() {
             .replace("\\/", "/")
             .replace("\\u0026", "&")
             .replace("&amp;", "&")
+            .replace("&#038;", "&")
+            .replace("&#38;", "&")
+            .replace("\\u003d", "=")
             .trim()
     }
 

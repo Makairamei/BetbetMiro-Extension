@@ -13,7 +13,10 @@ class MelongmoviePlugin : Plugin() {
 
         registerExtractorAPI(Dingtezuni())
         registerExtractorAPI(Dintezuvio())
+        registerExtractorAPI(Minochinos())
         registerExtractorAPI(Melongfilmstrp2p())
+        registerExtractorAPI(MelongfilmUpnShare())
+        registerExtractorAPI(Melongfilm4MePlayer())
         registerExtractorAPI(Ukokoko())
         registerExtractorAPI(Hglink())
     }

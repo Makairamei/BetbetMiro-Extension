@@ -18,6 +18,18 @@ class Melongfilmstrp2p : VidStack() {
     override var requiresReferer = true
 }
 
+class MelongfilmUpnShare : VidStack() {
+    override var name = "MelongfilmUpnShare"
+    override var mainUrl = "https://melongfilm.upns.blog"
+    override var requiresReferer = true
+}
+
+class Melongfilm4MePlayer : VidStack() {
+    override var name = "Melongfilm4MePlayer"
+    override var mainUrl = "https://melongfilm.4meplayer.com"
+    override var requiresReferer = true
+}
+
 class Ukokoko : VidStack() {
     override var name = "Ukokoko"
     override var mainUrl = "https://ukokoko.4meplayer.com"
@@ -37,6 +49,11 @@ open class Dingtezuni : EarnvidsLike() {
 open class Dintezuvio : EarnvidsLike() {
     override val name = "Earnvids"
     override val mainUrl = "https://dintezuvio.com"
+}
+
+open class Minochinos : EarnvidsLike() {
+    override val name = "Minochinos"
+    override val mainUrl = "https://minochinos.com"
 }
 
 open class EarnvidsLike : ExtractorApi() {
@@ -159,5 +176,8 @@ private fun String.cleanEscaped(): String {
         .replace("\\/", "/")
         .replace("\\u0026", "&")
         .replace("&amp;", "&")
+        .replace("&#038;", "&")
+        .replace("&#38;", "&")
+        .replace("\\u003d", "=")
         .trim()
 }
