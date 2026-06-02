@@ -81,7 +81,7 @@ class Jeniusplay : ExtractorApi() {
 
 class Majorplay : ExtractorApi() {
     override var name = "Majorplay"
-    override var mainUrl = "https://*.majorplay.net"
+    override var mainUrl = "https://e2e.majorplay.net"
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -90,10 +90,24 @@ class Majorplay : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
-        val document = app.get(url, referer = mainUrl).document
-        val m3uLink = document.select("source").attr("src")
-        Log.d(name, m3uLink)
-        generateM3u8(name, m3uLink, mainUrl).forEach(callback)
+        val document = app.get(
+            url,
+            referer = referer ?: mainUrl,
+            headers = mapOf(
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            ),
+        ).document
+        val m3uLink = document.select("source[src], video[src]").firstOrNull()?.attr("src").orEmpty()
+        val fixedM3uLink = when {
+            m3uLink.startsWith("//") -> "https:$m3uLink"
+            m3uLink.startsWith("http", true) -> m3uLink
+            m3uLink.isNotBlank() -> runCatching { java.net.URI(url).resolve(m3uLink).toString() }.getOrDefault(m3uLink)
+            else -> ""
+        }
+        Log.d(name, fixedM3uLink)
+        if (fixedM3uLink.isNotBlank()) {
+            generateM3u8(name, fixedM3uLink, referer ?: mainUrl).forEach(callback)
+        }
 
         val scripts = document.selectFirst("script:containsData(subtitles)")?.data() ?: return
 

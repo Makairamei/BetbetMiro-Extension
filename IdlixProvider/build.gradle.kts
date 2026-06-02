@@ -1,9 +1,9 @@
-version = 36
+version = 37
 
 cloudstream {
     language = "id"
     authors = listOf("BetbetMiro")
-    description = "Idlix provider temporarily disabled while unresolved Majorplay playback returns zero links from the current z2.idlixku.com play-session flow."
+    description = "Idlix provider for movies, series, anime, and Asian drama with updated play-session and Majorplay iframe playback handling."
 
     /**
      * Status int as the following:
@@ -12,7 +12,7 @@ cloudstream {
      * 2: Slow
      * 3: Beta only
      */
-    status = 0
+    status = 1
 
     tvTypes = listOf(
         "Movie",

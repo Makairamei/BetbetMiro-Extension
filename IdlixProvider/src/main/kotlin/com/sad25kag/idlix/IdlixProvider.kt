@@ -352,8 +352,9 @@ class IdlixProvider : MainAPI() {
         val jsonHeaders = mapOf(
             "Referer" to contentReferer,
             "Origin" to mainUrl,
-            "Accept" to "*/*",
+            "Accept" to "application/json, text/plain, */*",
             "Content-Type" to "application/json",
+            "User-Agent" to USER_AGENT,
         )
 
         val baseCookies = playbackCookies
@@ -361,7 +362,9 @@ class IdlixProvider : MainAPI() {
             "$mainUrl/api/watch/play-info/${parsed.type}/${parsed.id}",
             headers = mapOf(
                 "Referer" to contentReferer,
-                "Accept" to "*/*",
+                "Origin" to mainUrl,
+                "Accept" to "application/json, text/plain, */*",
+                "User-Agent" to USER_AGENT,
             ),
             cookies = baseCookies,
             referer = contentReferer,
@@ -369,55 +372,64 @@ class IdlixProvider : MainAPI() {
         )
 
         val playInfo = playResponse.parsedSafe<WatchSessionResponse>() ?: return false
-        val claimSession = resolvePlaySession(
+        val resolvedSession = resolvePlaySession(
             initial = playInfo,
             contentReferer = contentReferer,
             cookies = baseCookies + playResponse.cookies,
             headers = jsonHeaders,
         ) ?: return false
+        val claimSession = resolvedSession.first
+        val sessionCookies = resolvedSession.second
 
         val claim = claimSession.claim?.takeIf { it.isNotBlank() } ?: return false
         val redeemUrl = claimSession.redeemUrl?.fixAgainstMainUrl() ?: return false
         val iframeResponse = app.post(
             redeemUrl,
             headers = mapOf(
-                "Referer" to "$mainUrl/",
+                "Referer" to contentReferer,
                 "Origin" to mainUrl,
-                "Accept" to "*/*",
+                "Accept" to "application/json, text/plain, */*",
+                "Content-Type" to "application/json",
+                "User-Agent" to USER_AGENT,
             ),
-            referer = "$mainUrl/",
+            cookies = sessionCookies,
+            referer = contentReferer,
             requestBody = """{"claim":"$claim"}"""
-                .toRequestBody("text/plain".toMediaType()),
+                .toRequestBody("application/json".toMediaType()),
             timeout = 10000L,
         ).parsedSafe<Iframe>() ?: return false
 
-        val streamUrl = iframeResponse.url?.takeIf { it.isNotBlank() }?.fixAgainstMainUrl()
         var delivered = false
+        val streamUrls = resolveIframeCandidates(iframeResponse, redeemUrl, contentReferer)
+        val inlineCode = iframeResponse.code.orEmpty().unescapeEmbedPayload()
 
-        if (!streamUrl.isNullOrBlank()) {
+        for (streamUrl in streamUrls) {
             val iframePage = runCatching {
                 app.get(
                     url = streamUrl,
                     headers = mapOf(
-                        "Referer" to "$mainUrl/",
+                        "Referer" to contentReferer,
                         "Origin" to mainUrl,
-                        "Accept" to "*/*",
+                        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "User-Agent" to USER_AGENT,
                     ),
-                    referer = "$mainUrl/",
+                    cookies = sessionCookies,
+                    referer = contentReferer,
                     timeout = 10000L,
                 )
             }.getOrNull()
 
             val iframeText = iframePage?.text.orEmpty()
             val iframeDoc = iframePage?.document
+            val sourceCandidate = iframeText.trimStart().startsWith("#EXTM3U") || streamUrl.isLikelyPlayableUrl()
             val mediaUrls = extractIframeMediaUrls(
                 iframeText = iframeText,
                 iframeUrl = streamUrl,
                 sourceUrl = streamUrl,
-                sourceCandidate = iframeText.trimStart().startsWith("#EXTM3U"),
+                sourceCandidate = sourceCandidate,
             ).ifEmpty {
                 iframeDoc
-                    ?.select("source[src]")
+                    ?.select("source[src], video[src], track[src]")
                     ?.mapNotNull { it.attr("src").fixAgainst(streamUrl) }
                     ?.filter { it.isLikelyPlayableUrl() }
                     ?.distinct()
@@ -426,65 +438,49 @@ class IdlixProvider : MainAPI() {
                 if (streamUrl.isLikelyPlayableUrl()) listOf(streamUrl) else emptyList()
             }
 
-            for (actualM3uLink in mediaUrls) {
-                val streamReferer = if (actualM3uLink == streamUrl) "$mainUrl/" else streamUrl
-                val streamHeaders = mapOf(
-                    "Referer" to streamReferer,
-                    "Origin" to mainUrl,
-                    "Accept" to "*/*",
-                    "User-Agent" to USER_AGENT,
+            if (emitMediaLinks(
+                    mediaUrls = mediaUrls,
+                    iframeUrl = streamUrl,
+                    contentReferer = contentReferer,
+                    quality = claimSession.maxHeight?.toQuality() ?: Qualities.Unknown.value,
+                    callback = callback,
                 )
-
-                if (actualM3uLink.isMajorplayManifestUrl()) {
-                    val directLink = buildDirectPlayableLink(
-                        url = actualM3uLink,
-                        referer = streamReferer,
-                        headers = streamHeaders,
-                        quality = claimSession.maxHeight?.toQuality() ?: Qualities.Unknown.value,
-                    )
-                    if (directLink != null) {
-                        callback(directLink)
-                        delivered = true
-                    }
-                    continue
-                }
-
-                var helperDelivered = false
-                runCatching {
-                    generateM3u8(
-                        source = name,
-                        streamUrl = actualM3uLink,
-                        referer = streamReferer,
-                        headers = streamHeaders,
-                    ).forEach { link ->
-                        callback(link)
-                        delivered = true
-                        helperDelivered = true
-                    }
-                }.onFailure { error ->
-                    Log.d(name, "M3U8 helper failed for Majorplay manifest: ${error.message}")
-                }
-
-                if (!helperDelivered) {
-                    val directLink = buildDirectPlayableLink(
-                        url = actualM3uLink,
-                        referer = streamReferer,
-                        headers = streamHeaders,
-                        quality = claimSession.maxHeight?.toQuality() ?: Qualities.Unknown.value,
-                    )
-                    if (directLink != null) {
-                        callback(directLink)
-                        delivered = true
-                    }
-                }
+            ) {
+                delivered = true
             }
 
             if (!delivered) {
-                Log.d(name, "Direct source extraction failed, delegating to loadExtractor.")
-                delivered = loadExtractor(streamUrl, "$mainUrl/", subtitleCallback, callback)
+                Log.d(name, "Direct source extraction failed for $streamUrl, delegating to loadExtractor.")
+                if (loadExtractor(streamUrl, contentReferer, subtitleCallback, callback)) {
+                    delivered = true
+                }
             }
 
             for (subtitle in extractIframeSubtitles(iframeText, streamUrl)) {
+                subtitleCallback(subtitle)
+            }
+        }
+
+        if (!delivered && inlineCode.isNotBlank()) {
+            val mediaUrls = extractIframeMediaUrls(
+                iframeText = inlineCode,
+                iframeUrl = redeemUrl,
+                sourceUrl = redeemUrl,
+                sourceCandidate = false,
+            )
+
+            if (emitMediaLinks(
+                    mediaUrls = mediaUrls,
+                    iframeUrl = redeemUrl,
+                    contentReferer = contentReferer,
+                    quality = claimSession.maxHeight?.toQuality() ?: Qualities.Unknown.value,
+                    callback = callback,
+                )
+            ) {
+                delivered = true
+            }
+
+            for (subtitle in extractIframeSubtitles(inlineCode, redeemUrl)) {
                 subtitleCallback(subtitle)
             }
         }
@@ -497,6 +493,115 @@ class IdlixProvider : MainAPI() {
                     path,
                 ),
             )
+        }
+
+        return delivered
+    }
+
+
+    private fun resolveIframeCandidates(
+        iframeResponse: Iframe,
+        redeemUrl: String,
+        contentReferer: String,
+    ): List<String> {
+        val urls = mutableListOf<String>()
+
+        iframeResponse.url
+            ?.takeIf { it.isNotBlank() }
+            ?.fixAgainstMainUrl()
+            ?.let(urls::add)
+
+        val code = iframeResponse.code.orEmpty().unescapeEmbedPayload()
+        val patterns = listOf(
+            Regex("""<iframe[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex("""<embed[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex("""["'](?:iframe|embed|file|src|url)["']\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex("""https?://[^"'\\\s<>]+""", RegexOption.IGNORE_CASE),
+        )
+
+        patterns.forEach { regex ->
+            regex.findAll(code).forEach { match ->
+                val candidate = match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() }
+                    ?: match.value
+                candidate
+                    .unescapeEmbedPayload()
+                    .fixAgainst(redeemUrl)
+                    ?.takeIf { it.contains("majorplay", true) || it.isLikelyPlayableUrl() }
+                    ?.let(urls::add)
+            }
+        }
+
+        if (urls.isEmpty() && contentReferer.isNotBlank()) {
+            Log.d(name, "IDLIX redeem returned no iframe URL for $contentReferer")
+        }
+
+        return urls.distinct()
+    }
+
+    private suspend fun emitMediaLinks(
+        mediaUrls: List<String>,
+        iframeUrl: String,
+        contentReferer: String,
+        quality: Int,
+        callback: (ExtractorLink) -> Unit,
+    ): Boolean {
+        var delivered = false
+
+        for (actualM3uLink in mediaUrls.distinct()) {
+            val streamReferer = when {
+                actualM3uLink == iframeUrl -> contentReferer
+                iframeUrl.startsWith("http", true) -> iframeUrl
+                else -> contentReferer
+            }
+            val streamHeaders = mapOf(
+                "Referer" to streamReferer,
+                "Origin" to streamReferer.originOfUrl(),
+                "Accept" to "*/*",
+                "User-Agent" to USER_AGENT,
+            )
+
+            if (actualM3uLink.isMajorplayManifestUrl()) {
+                val directLink = buildDirectPlayableLink(
+                    url = actualM3uLink,
+                    referer = streamReferer,
+                    headers = streamHeaders,
+                    quality = quality,
+                )
+                if (directLink != null) {
+                    callback(directLink)
+                    delivered = true
+                }
+                continue
+            }
+
+            var helperDelivered = false
+            runCatching {
+                generateM3u8(
+                    source = name,
+                    streamUrl = actualM3uLink,
+                    referer = streamReferer,
+                    headers = streamHeaders,
+                ).forEach { link ->
+                    callback(link)
+                    delivered = true
+                    helperDelivered = true
+                }
+            }.onFailure { error ->
+                Log.d(name, "M3U8 helper failed for $actualM3uLink: ${error.message}")
+            }
+
+            if (!helperDelivered) {
+                val directLink = buildDirectPlayableLink(
+                    url = actualM3uLink,
+                    referer = streamReferer,
+                    headers = streamHeaders,
+                    quality = quality,
+                )
+                if (directLink != null) {
+                    callback(directLink)
+                    delivered = true
+                }
+            }
         }
 
         return delivered
@@ -585,35 +690,38 @@ class IdlixProvider : MainAPI() {
         contentReferer: String,
         cookies: Map<String, String>,
         headers: Map<String, String>,
-    ): WatchSessionResponse? {
+    ): Pair<WatchSessionResponse, Map<String, String>>? {
         var session = initial
+        val sessionCookies = cookies.toMutableMap()
 
         repeat(12) {
             if (session.kind.equals("pentos", true) &&
                 !session.claim.isNullOrBlank() &&
                 !session.redeemUrl.isNullOrBlank()
             ) {
-                return session
+                return session to sessionCookies.toMap()
             }
 
             val gateToken = session.gateToken?.takeIf { it.isNotBlank() } ?: return null
             waitForGate(session)
 
-            session = app.post(
+            val claimResponse = app.post(
                 "$mainUrl/api/watch/session/claim",
-                headers = headers,
-                cookies = cookies,
+                headers = headers + mapOf("User-Agent" to USER_AGENT),
+                cookies = sessionCookies,
                 referer = contentReferer,
                 requestBody = """{"gateToken":"$gateToken"}"""
                     .toRequestBody("application/json".toMediaType()),
                 timeout = 10000L,
-            ).parsedSafe<WatchSessionResponse>() ?: return null
+            )
+            sessionCookies.putAll(claimResponse.cookies)
+            session = claimResponse.parsedSafe<WatchSessionResponse>() ?: return null
 
             if (session.kind.equals("pentos", true) &&
                 !session.claim.isNullOrBlank() &&
                 !session.redeemUrl.isNullOrBlank()
             ) {
-                return session
+                return session to sessionCookies.toMap()
             }
 
             val remaining = session.remainingMs?.coerceAtLeast(0L) ?: 0L
@@ -709,6 +817,15 @@ class IdlixProvider : MainAPI() {
         return if (startsWith("http", true)) this else "https://image.tmdb.org/t/p/$size$this"
     }
 
+
+
+    private fun String.unescapeEmbedPayload(): String {
+        return replace("\\/", "/")
+            .replace("\\u0026", "&")
+            .replace("&amp;", "&")
+            .replace("\\\"", "\"")
+            .trim()
+    }
 
     private fun String.fixAgainst(baseUrl: String): String? {
         val value = trim()
