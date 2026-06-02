@@ -119,7 +119,13 @@ class IdlixProvider : MainAPI() {
         "Referer" to "$mainUrl/",
         "Origin" to mainUrl,
         "Accept" to "application/json, text/plain, */*",
+        "User-Agent" to USER_AGENT,
     )
+
+    private companion object {
+        const val USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Mobile Safari/537.36"
+    }
 
     override suspend fun getMainPage(
         page: Int,
@@ -420,13 +426,28 @@ class IdlixProvider : MainAPI() {
                 if (streamUrl.isLikelyPlayableUrl()) listOf(streamUrl) else emptyList()
             }
 
-            mediaUrls.forEach { actualM3uLink ->
+            for (actualM3uLink in mediaUrls) {
                 val streamReferer = if (actualM3uLink == streamUrl) "$mainUrl/" else streamUrl
                 val streamHeaders = mapOf(
                     "Referer" to streamReferer,
-                    "Origin" to if (actualM3uLink == streamUrl) mainUrl else streamUrl.originOfUrl(),
+                    "Origin" to mainUrl,
                     "Accept" to "*/*",
+                    "User-Agent" to USER_AGENT,
                 )
+
+                if (actualM3uLink.isMajorplayManifestUrl()) {
+                    val directLink = buildDirectPlayableLink(
+                        url = actualM3uLink,
+                        referer = streamReferer,
+                        headers = streamHeaders,
+                        quality = claimSession.maxHeight?.toQuality() ?: Qualities.Unknown.value,
+                    )
+                    if (directLink != null) {
+                        callback(directLink)
+                        delivered = true
+                    }
+                    continue
+                }
 
                 var helperDelivered = false
                 runCatching {
@@ -463,13 +484,13 @@ class IdlixProvider : MainAPI() {
                 delivered = loadExtractor(streamUrl, "$mainUrl/", subtitleCallback, callback)
             }
 
-            extractIframeSubtitles(iframeText, streamUrl).forEach { subtitle ->
+            for (subtitle in extractIframeSubtitles(iframeText, streamUrl)) {
                 subtitleCallback(subtitle)
             }
         }
 
-        iframeResponse.subtitles.forEach { subtitle ->
-            val path = subtitle.path?.takeIf { it.isNotBlank() }?.fixAgainstMainUrl() ?: return@forEach
+        for (subtitle in iframeResponse.subtitles) {
+            val path = subtitle.path?.takeIf { it.isNotBlank() }?.fixAgainstMainUrl() ?: continue
             subtitleCallback(
                 newSubtitleFile(
                     subtitle.label?.takeIf { it.isNotBlank() } ?: subtitle.lang ?: "Subtitle",
@@ -706,11 +727,18 @@ class IdlixProvider : MainAPI() {
         }.getOrDefault(mainUrl)
     }
 
+    private fun String.isMajorplayManifestUrl(): Boolean {
+        val value = lowercase()
+        return value.contains("e2e.majorplay.net") &&
+            (value.contains("config-") || value.contains("data-")) &&
+            value.contains(".json")
+    }
+
     private fun String.isHlsManifestUrl(): Boolean {
         val value = lowercase()
         return value.contains(".m3u8") ||
             value.contains("config-") ||
-            value.contains("data-") && value.contains(".json") ||
+            (value.contains("data-") && value.contains(".json")) ||
             value.contains("application/vnd.apple.mpegurl")
     }
 
