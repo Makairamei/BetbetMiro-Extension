@@ -143,7 +143,7 @@ class IdlixProvider : MainAPI() {
         return headers
     }
 
-    private suspend inline fun <reified T> getIdlixJson(
+    private suspend inline fun <reified T : Any> getIdlixJson(
         url: String,
         referer: String = "$baseUrl/",
         timeout: Long = 10000L,
