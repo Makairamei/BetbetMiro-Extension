@@ -19,6 +19,27 @@ import java.net.URI
 import java.net.URLDecoder
 
 object KazefuriExtractorHelper {
+    private const val MAX_NESTED_TEXT_BYTES = 5_000_000L
+
+    private val extractorOnlyHosts = listOf(
+        "dailymotion.com",
+        "geo.dailymotion.com",
+        "ok.ru",
+        "rumble.com",
+        "streamruby",
+        "turbovid",
+        "streamtape",
+        "filemoon",
+        "streamwish",
+        "wishfast",
+        "dood",
+        "vidhide",
+        "vidguard",
+        "voe",
+        "mixdrop",
+        "mp4upload",
+    )
+
     private val playableHostRegex = Regex(
         """https?://[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.webm|dailymotion|geo\.dailymotion|ok\.ru|rumble|streamruby|turbovid|streamtape|filemoon|streamwish|wishfast|dood|vidhide|vidguard|voe|mixdrop|mp4upload)[^"'\\\s<>]*""",
         RegexOption.IGNORE_CASE
@@ -137,7 +158,7 @@ object KazefuriExtractorHelper {
                     loadExtractor(fixed, referer, subtitleCallback, callback)
                 }.getOrDefault(false)
 
-                if (!success) {
+                if (!success && !shouldOnlyUseLoadExtractor(fixed)) {
                     resolveNested(
                         url = fixed,
                         referer = referer,
@@ -170,14 +191,17 @@ object KazefuriExtractorHelper {
             )
         }.getOrNull() ?: return
 
-        val texts = mutableListOf(response.text.cleanEscaped())
+        if (shouldSkipBodyRead(response.headers, url)) return
+
+        val body = runCatching { response.text.cleanEscaped() }.getOrNull() ?: return
+        val texts = mutableListOf(body)
 
         val unpacked = runCatching {
-            if (!getPacked(response.text).isNullOrEmpty()) getAndUnpack(response.text) else null
+            if (!getPacked(body).isNullOrEmpty()) getAndUnpack(body) else null
         }.getOrNull()
         if (!unpacked.isNullOrBlank()) texts.add(unpacked.cleanEscaped())
 
-        response.document.select("iframe[src], iframe[data-src], source[src], video[src], a[href]")
+        Jsoup.parse(body, url).select("iframe[src], iframe[data-src], source[src], video[src], a[href]")
             .mapNotNull { element ->
                 element.attr("data-src")
                     .ifBlank { element.attr("src") }
@@ -208,6 +232,32 @@ object KazefuriExtractorHelper {
                     callback = callback
                 )
             }
+    }
+
+    private fun shouldOnlyUseLoadExtractor(url: String): Boolean {
+        val value = url.lowercase()
+        return extractorOnlyHosts.any { host -> value.contains(host) }
+    }
+
+    private fun shouldSkipBodyRead(headers: Map<String, String>, url: String): Boolean {
+        val contentType = headers.headerValue("Content-Type").lowercase()
+        val contentLength = headers.headerValue("Content-Length").toLongOrNull()
+
+        if (contentLength != null && contentLength > MAX_NESTED_TEXT_BYTES) return true
+
+        return contentType.contains("video/") ||
+            contentType.contains("audio/") ||
+            contentType.contains("application/octet-stream") ||
+            contentType.contains("application/zip") ||
+            contentType.contains("application/x-rar") ||
+            contentType.contains("application/pdf") ||
+            url.endsWith(".zip", true) ||
+            url.endsWith(".rar", true) ||
+            url.endsWith(".7z", true)
+    }
+
+    private fun Map<String, String>.headerValue(name: String): String {
+        return entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value.orEmpty()
     }
 
     private fun extractPlayableUrls(text: String): List<String> {
