@@ -68,6 +68,11 @@ open class Playcinematic(
             extractPlayableUrls(unpacked.cleanEscaped()).forEach { candidates.add(normalizeUrl(it, fixedUrl)) }
         }
 
+        // Evidence from active Playcinematic pages shows /video/<id> maps to /stream/k/<id>.
+        // Keep this as a bounded fallback so loadLinks can still emit a callback when the
+        // packed script parser misses a changed JWPlayer wrapper.
+        streamFromVideoUrl(fixedUrl)?.let { candidates.add(it) }
+
         val emitted = linkedSetOf<String>()
         candidates
             .map { it.cleanEscaped().replace(".txt", ".m3u8") }
@@ -133,8 +138,18 @@ open class Playcinematic(
             .map { "https:${it.value.cleanEscaped()}" }
             .forEach { results.add(it) }
 
+        // Current Playcinematic/Midasfilm pages hide the real MP4 behind a packed JWPlayer
+        // config like {'file':'/stream/k/<id>'}.  The previous parser only matched
+        // absolute URLs and unquoted keys, so provider tests saw callback link count 0.
         Regex(
-            """(?:file|src|source|url|videoUrl|video_url|hls|hlsUrl|hls_url)\s*[:=]\s*["']([^"']+)["']""",
+            """(?<![A-Za-z0-9])/(?:stream/k/[^"'\\\s<>)}\],]+)""",
+            RegexOption.IGNORE_CASE
+        ).findAll(clean)
+            .map { it.value.cleanEscaped() }
+            .forEach { results.add(it) }
+
+        Regex(
+            """["']?(?:file|src|source|url|videoUrl|video_url|hls|hlsUrl|hls_url)["']?\s*[:=]\s*["']([^"']+)["']""",
             RegexOption.IGNORE_CASE
         ).findAll(clean)
             .mapNotNull { it.groupValues.getOrNull(1) }
@@ -143,6 +158,17 @@ open class Playcinematic(
             .forEach { results.add(it) }
 
         return results.toList()
+    }
+
+
+    private fun streamFromVideoUrl(url: String): String? {
+        val uri = runCatching { URI(url) }.getOrNull() ?: return null
+        val id = uri.path
+            ?.substringAfter("/video/", "")
+            ?.substringBefore("/")
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        return "${uri.scheme}://${uri.host}/stream/k/$id"
     }
 
     private fun isPlayableCandidate(url: String): Boolean {
