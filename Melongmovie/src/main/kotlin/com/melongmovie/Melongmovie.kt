@@ -18,6 +18,7 @@ import com.lagradost.cloudstream3.addDate
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.fixUrlNull
 import com.lagradost.cloudstream3.mainPageOf
+import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
@@ -108,12 +109,19 @@ class Melongmovie : MainAPI() {
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
     )
 
+    private val cfInterceptor by lazy { CloudflareKiller() }
+
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        val url = "$mainUrl/${request.data.format(page.coerceAtLeast(1)).trimStart('/')}"
-        val document = app.get(url, headers = headers, timeout = 25L).document
+        val url = buildMainPageUrl(request.data, page)
+        val document = app.get(
+            url,
+            headers = headers,
+            interceptor = cfInterceptor,
+            timeout = 25L
+        ).document
 
         val items = parseCards(document)
             .distinctBy { it.url }
@@ -142,7 +150,12 @@ class Melongmovie : MainAPI() {
 
         for (url in attempts) {
             val document = runCatching {
-                app.get(url, headers = headers, timeout = 25L).document
+                app.get(
+                    url,
+                    headers = headers,
+                    interceptor = cfInterceptor,
+                    timeout = 25L
+                ).document
             }.getOrNull() ?: continue
 
             val results = parseCards(document).distinctBy { it.url }
@@ -154,7 +167,12 @@ class Melongmovie : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url, headers = headers, timeout = 25L).document
+        val document = app.get(
+            url,
+            headers = headers,
+            interceptor = cfInterceptor,
+            timeout = 25L
+        ).document
 
         val title = listOf(
             document.selectFirst("h1.entry-title, h1")?.text(),
@@ -284,6 +302,7 @@ class Melongmovie : MainAPI() {
             pageUrl,
             headers = headers,
             referer = mainUrl,
+            interceptor = cfInterceptor,
             timeout = 25L
         )
 
@@ -368,6 +387,28 @@ class Melongmovie : MainAPI() {
             }
 
         return false
+    }
+
+    private fun buildMainPageUrl(
+        data: String,
+        page: Int
+    ): String {
+        val currentPage = page.coerceAtLeast(1)
+        val path = if (currentPage == 1) {
+            data
+                .replace("/page/%d/", "/")
+                .replace("page/%d/", "")
+                .replace("/page/%d", "")
+                .replace("page/%d", "")
+        } else {
+            data.format(currentPage)
+        }.trimStart('/')
+
+        return if (path.startsWith("http", true)) {
+            path
+        } else {
+            "${mainUrl.trimEnd('/')}/$path"
+        }
     }
 
     private fun parseCards(document: Document): List<SearchResponse> {
@@ -535,6 +576,7 @@ class Melongmovie : MainAPI() {
                         "X-Requested-With" to "XMLHttpRequest",
                         "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
                     ),
+                    interceptor = cfInterceptor,
                     timeout = 18L
                 ).text.cleanEscaped()
             }.getOrNull().orEmpty()
@@ -573,6 +615,7 @@ class Melongmovie : MainAPI() {
                         "X-Requested-With" to "XMLHttpRequest",
                         "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
                     ),
+                    interceptor = cfInterceptor,
                     timeout = 18L
                 ).text.cleanEscaped()
             }.getOrNull().orEmpty()
@@ -687,12 +730,22 @@ class Melongmovie : MainAPI() {
         if (isBadPlayableUrl(url)) return emptyList()
 
         val response = runCatching {
-            app.get(
-                url,
-                headers = headers,
-                referer = referer,
-                timeout = 18L
-            )
+            if (url.startsWith(mainUrl, true)) {
+                app.get(
+                    url,
+                    headers = headers,
+                    referer = referer,
+                    interceptor = cfInterceptor,
+                    timeout = 18L
+                )
+            } else {
+                app.get(
+                    url,
+                    headers = headers,
+                    referer = referer,
+                    timeout = 18L
+                )
+            }
         }.getOrNull() ?: return emptyList()
 
         val results = linkedSetOf<String>()

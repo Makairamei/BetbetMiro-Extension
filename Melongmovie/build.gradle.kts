@@ -1,4 +1,4 @@
-version = 12
+version = 13
 
 cloudstream {
     description = "Melongmovie provider maintained by BetbetMiro"
