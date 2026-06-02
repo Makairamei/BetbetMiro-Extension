@@ -46,8 +46,14 @@ import java.util.UUID
 import java.text.Normalizer
 
 class IdlixProvider : MainAPI() {
-    override var mainUrl = "https://z2.idlixku.com"
+    override var mainUrl = "https://178.62.105.101/"
     override var name = "Idlix"
+
+    private val baseUrl: String
+        get() = mainUrl.trimEnd('/')
+
+    private val hostHeader: Map<String, String>
+        get() = if (baseUrl.isIpv4HttpsUrl()) mapOf("Host" to IDLIX_HOST) else emptyMap()
     override val hasMainPage = true
     override val hasQuickSearch = true
     override var lang = "id"
@@ -61,50 +67,50 @@ class IdlixProvider : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "$mainUrl/api/movies?page=%d&limit=36&sort=createdAt" to "Film Terbaru",
-        "$mainUrl/api/series?page=%d&limit=36&sort=createdAt" to "Serial TV Terbaru",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest" to "Update Terbaru",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=popular" to "Populer",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=rating" to "Papan Peringkat",
+        "$baseUrl/api/movies?page=%d&limit=36&sort=createdAt" to "Film Terbaru",
+        "$baseUrl/api/series?page=%d&limit=36&sort=createdAt" to "Serial TV Terbaru",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest" to "Update Terbaru",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=popular" to "Populer",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=rating" to "Papan Peringkat",
 
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=action" to "Action",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=adventure" to "Adventure",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=animation" to "Animation",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=comedy" to "Comedy",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=crime" to "Crime",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=documentary" to "Documentary",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=drama" to "Drama",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=family" to "Family",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=fantasy" to "Fantasy",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=history" to "History",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=horror" to "Horror",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=kids" to "Kids",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=music" to "Music",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=mystery" to "Mystery",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=reality" to "Reality",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=romance" to "Romance",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=science-fiction" to "Science Fiction",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=soap" to "Soap",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=talk" to "Talk",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=thriller" to "Thriller",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=tv-movie" to "TV Movie",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=war" to "War",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&genre=western" to "Western",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=action" to "Action",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=adventure" to "Adventure",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=animation" to "Animation",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=comedy" to "Comedy",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=crime" to "Crime",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=documentary" to "Documentary",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=drama" to "Drama",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=family" to "Family",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=fantasy" to "Fantasy",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=history" to "History",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=horror" to "Horror",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=kids" to "Kids",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=music" to "Music",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=mystery" to "Mystery",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=reality" to "Reality",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=romance" to "Romance",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=science-fiction" to "Science Fiction",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=soap" to "Soap",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=talk" to "Talk",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=thriller" to "Thriller",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=tv-movie" to "TV Movie",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=war" to "War",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&genre=western" to "Western",
 
 
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&year=2026" to "2026",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&year=2025" to "2025",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&year=2024" to "2024",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&year=2023" to "2023",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&year=2022" to "2022",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&year=2021" to "2021",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&year=2020" to "2020",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&year=2026" to "2026",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&year=2025" to "2025",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&year=2024" to "2024",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&year=2023" to "2023",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&year=2022" to "2022",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&year=2021" to "2021",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&year=2020" to "2020",
 
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&network=netflix" to "Netflix",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&network=hbo" to "HBO",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&network=prime-video" to "Prime Video",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&network=disney-plus" to "Disney+",
-        "$mainUrl/api/browse?page=%d&limit=36&sort=latest&network=apple-tv-plus" to "Apple TV+",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&network=netflix" to "Netflix",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&network=hbo" to "HBO",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&network=prime-video" to "Prime Video",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&network=disney-plus" to "Disney+",
+        "$baseUrl/api/browse?page=%d&limit=36&sort=latest&network=apple-tv-plus" to "Apple TV+",
     )
 
     private val deviceId = UUID.randomUUID().toString().replace("-", "")
@@ -115,14 +121,54 @@ class IdlixProvider : MainAPI() {
             "did" to deviceId,
         )
 
-    private val apiHeaders = mapOf(
-        "Referer" to "$mainUrl/",
-        "Origin" to mainUrl,
-        "Accept" to "application/json, text/plain, */*",
-        "User-Agent" to USER_AGENT,
-    )
+    private val apiHeaders: Map<String, String>
+        get() = idlixHeadersFor(baseUrl, "$baseUrl/")
+
+    private val idlixOrigins: List<String>
+        get() = listOf(baseUrl, LEGACY_MAIN_URL).distinct()
+
+    private fun idlixHeadersFor(
+        origin: String,
+        referer: String,
+        accept: String = "application/json, text/plain, */*",
+        contentType: String? = null,
+    ): Map<String, String> {
+        val headers = mutableMapOf<String, String>()
+        if (origin.isIpv4HttpsUrl()) headers["Host"] = IDLIX_HOST
+        headers["Referer"] = referer
+        headers["Origin"] = origin
+        headers["Accept"] = accept
+        headers["User-Agent"] = USER_AGENT
+        if (!contentType.isNullOrBlank()) headers["Content-Type"] = contentType
+        return headers
+    }
+
+    private suspend inline fun <reified T> getIdlixJson(
+        url: String,
+        referer: String = "$baseUrl/",
+        timeout: Long = 10000L,
+    ): T? {
+        for (origin in idlixOrigins) {
+            val requestUrl = url.fixAgainstOrigin(origin) ?: continue
+            val requestReferer = referer.fixAgainstOrigin(origin) ?: "$origin/"
+            val parsed = runCatching {
+                app.get(
+                    requestUrl,
+                    headers = idlixHeadersFor(origin, requestReferer),
+                    referer = requestReferer,
+                    timeout = timeout,
+                ).parsedSafe<T>()
+            }.getOrNull()
+
+            if (parsed != null) return parsed
+        }
+
+        return null
+    }
 
     private companion object {
+        const val IDLIX_HOST = "z2.idlixku.com"
+        const val LEGACY_MAIN_URL = "https://z2.idlixku.com"
         const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Mobile Safari/537.36"
     }
@@ -137,8 +183,7 @@ class IdlixProvider : MainAPI() {
             request.data
         }
 
-        val parsed = app.get(url, headers = apiHeaders, referer = mainUrl, timeout = 10000L)
-            .parsedSafe<ApiResponse>()
+        val parsed = getIdlixJson<ApiResponse>(url)
             ?: return newHomePageResponse(request.name, emptyList(), hasNext = false)
 
         val fallbackType = when {
@@ -172,9 +217,8 @@ class IdlixProvider : MainAPI() {
         if (keyword.isBlank()) return emptyList<SearchResponse>().toNewSearchResponseList()
 
         val encoded = URLEncoder.encode(keyword, "UTF-8")
-        val url = "$mainUrl/api/search?q=$encoded&page=${page.coerceAtLeast(1)}&limit=12"
-        val parsed = app.get(url, headers = apiHeaders, referer = mainUrl, timeout = 10000L)
-            .parsedSafe<SearchApiResponse>() ?: return null
+        val url = "$baseUrl/api/search?q=$encoded&page=${page.coerceAtLeast(1)}&limit=12"
+        val parsed = getIdlixJson<SearchApiResponse>(url) ?: return null
 
         val results = parsed.results
             .mapNotNull { it.toSearchResponse() }
@@ -184,8 +228,8 @@ class IdlixProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val data = app.get(url, headers = apiHeaders, referer = mainUrl, timeout = 10000L)
-            .parsedSafe<DetailResponse>()
+        val contentUrl = url.toProviderUrl()
+        val data = getIdlixJson<DetailResponse>(contentUrl)
             ?: throw ErrorLoadingException("Invalid IDLIX API response")
 
         val title = data.title?.takeIf { it.isNotBlank() } ?: "Unknown"
@@ -205,9 +249,9 @@ class IdlixProvider : MainAPI() {
 
         val isSeries = !data.seasons.isNullOrEmpty()
         val webUrl = if (isSeries) {
-            "$mainUrl/series/${data.slug.orEmpty()}"
+            "$baseUrl/series/${data.slug.orEmpty()}"
         } else {
-            "$mainUrl/movie/${data.slug.orEmpty()}"
+            "$baseUrl/movie/${data.slug.orEmpty()}"
         }
 
         val recommendations = loadRecommendations(data, isSeries)
@@ -272,12 +316,7 @@ class IdlixProvider : MainAPI() {
             if (seasonNumber == data.firstSeason?.seasonNumber) return@forEach
 
             val seasonData = runCatching {
-                app.get(
-                    "$mainUrl/api/series/$slug/season/$seasonNumber",
-                    headers = apiHeaders,
-                    referer = mainUrl,
-                    timeout = 10000L,
-                ).parsedSafe<SeasonWrapper>()?.season
+                getIdlixJson<SeasonWrapper>("$baseUrl/api/series/$slug/season/$seasonNumber")?.season
             }.getOrNull()
 
             seasonData?.episodes?.forEach { ep ->
@@ -300,7 +339,7 @@ class IdlixProvider : MainAPI() {
             LoadData(
                 id = id,
                 type = "episode",
-                refererUrl = "$mainUrl/series/$seriesSlug/season/$seasonNumber/episode/${episodeNumber ?: 1}",
+                refererUrl = "$baseUrl/series/$seriesSlug/season/$seasonNumber/episode/${episodeNumber ?: 1}",
             ).toJson(),
         ) {
             this.name = name
@@ -320,14 +359,13 @@ class IdlixProvider : MainAPI() {
     ): List<SearchResponse> {
         val slug = data.slug ?: return emptyList()
         val relatedUrl = if (isSeries) {
-            "$mainUrl/api/series/$slug/related"
+            "$baseUrl/api/series/$slug/related"
         } else {
-            "$mainUrl/api/movies/$slug/related"
+            "$baseUrl/api/movies/$slug/related"
         }
 
         return runCatching {
-            app.get(relatedUrl, headers = apiHeaders, referer = mainUrl, timeout = 10000L)
-                .parsedSafe<ApiResponse>()
+            getIdlixJson<ApiResponse>(relatedUrl)
                 ?.data
                 ?.mapNotNull { it.toSearchResponse(null) }
                 ?.distinctBy { it.url }
@@ -346,156 +384,175 @@ class IdlixProvider : MainAPI() {
 
         val contentReferer = parsed.refererUrl
             ?.takeIf { it.isNotBlank() }
+            ?.toProviderUrl()
             ?.fixAgainstMainUrl()
-            ?: "$mainUrl/"
-
-        val jsonHeaders = mapOf(
-            "Referer" to contentReferer,
-            "Origin" to mainUrl,
-            "Accept" to "application/json, text/plain, */*",
-            "Content-Type" to "application/json",
-            "User-Agent" to USER_AGENT,
-        )
-
-        val baseCookies = playbackCookies
-        val playResponse = app.get(
-            "$mainUrl/api/watch/play-info/${parsed.type}/${parsed.id}",
-            headers = mapOf(
-                "Referer" to contentReferer,
-                "Origin" to mainUrl,
-                "Accept" to "application/json, text/plain, */*",
-                "User-Agent" to USER_AGENT,
-            ),
-            cookies = baseCookies,
-            referer = contentReferer,
-            timeout = 10000L,
-        )
-
-        val playInfo = playResponse.parsedSafe<WatchSessionResponse>() ?: return false
-        val resolvedSession = resolvePlaySession(
-            initial = playInfo,
-            contentReferer = contentReferer,
-            cookies = baseCookies + playResponse.cookies,
-            headers = jsonHeaders,
-        ) ?: return false
-        val claimSession = resolvedSession.first
-        val sessionCookies = resolvedSession.second
-
-        val claim = claimSession.claim?.takeIf { it.isNotBlank() } ?: return false
-        val redeemUrl = claimSession.redeemUrl?.fixAgainstMainUrl() ?: return false
-        val iframeResponse = app.post(
-            redeemUrl,
-            headers = mapOf(
-                "Referer" to contentReferer,
-                "Origin" to mainUrl,
-                "Accept" to "application/json, text/plain, */*",
-                "Content-Type" to "application/json",
-                "User-Agent" to USER_AGENT,
-            ),
-            cookies = sessionCookies,
-            referer = contentReferer,
-            requestBody = """{"claim":"$claim"}"""
-                .toRequestBody("application/json".toMediaType()),
-            timeout = 10000L,
-        ).parsedSafe<Iframe>() ?: return false
+            ?: "$baseUrl/"
 
         var delivered = false
-        val streamUrls = resolveIframeCandidates(iframeResponse, redeemUrl, contentReferer)
-        val inlineCode = iframeResponse.code.orEmpty().unescapeEmbedPayload()
 
-        for (streamUrl in streamUrls) {
-            val iframePage = runCatching {
+        for (playbackOrigin in idlixOrigins) {
+            val originReferer = contentReferer.fixAgainstOrigin(playbackOrigin) ?: "$playbackOrigin/"
+            val jsonHeaders = idlixHeadersFor(
+                origin = playbackOrigin,
+                referer = originReferer,
+                contentType = "application/json",
+            )
+            val baseCookies = playbackCookies
+            val playResponse = runCatching {
                 app.get(
-                    url = streamUrl,
-                    headers = mapOf(
-                        "Referer" to contentReferer,
-                        "Origin" to mainUrl,
-                        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                        "User-Agent" to USER_AGENT,
-                    ),
-                    cookies = sessionCookies,
-                    referer = contentReferer,
+                    "$playbackOrigin/api/watch/play-info/${parsed.type}/${parsed.id}",
+                    headers = idlixHeadersFor(playbackOrigin, originReferer),
+                    cookies = baseCookies,
+                    referer = originReferer,
                     timeout = 10000L,
                 )
-            }.getOrNull()
+            }.getOrNull() ?: continue
 
-            val iframeText = iframePage?.text.orEmpty()
-            val iframeDoc = iframePage?.document
-            val sourceCandidate = iframeText.trimStart().startsWith("#EXTM3U") || streamUrl.isLikelyPlayableUrl()
-            val mediaUrls = extractIframeMediaUrls(
-                iframeText = iframeText,
-                iframeUrl = streamUrl,
-                sourceUrl = streamUrl,
-                sourceCandidate = sourceCandidate,
-            ).ifEmpty {
-                iframeDoc
-                    ?.select("source[src], video[src], track[src]")
-                    ?.mapNotNull { it.attr("src").fixAgainst(streamUrl) }
-                    ?.filter { it.isLikelyPlayableUrl() }
-                    ?.distinct()
-                    .orEmpty()
-            }.ifEmpty {
-                if (streamUrl.isLikelyPlayableUrl()) listOf(streamUrl) else emptyList()
-            }
+            val playInfo = playResponse.parsedSafe<WatchSessionResponse>() ?: continue
+            val resolvedSession = resolvePlaySession(
+                initial = playInfo,
+                playbackOrigin = playbackOrigin,
+                contentReferer = originReferer,
+                cookies = baseCookies + playResponse.cookies,
+                headers = jsonHeaders,
+            ) ?: continue
+            val claimSession = resolvedSession.first
+            val sessionCookies = resolvedSession.second
 
-            if (emitMediaLinks(
-                    mediaUrls = mediaUrls,
-                    iframeUrl = streamUrl,
-                    contentReferer = contentReferer,
-                    quality = claimSession.maxHeight?.toQuality() ?: Qualities.Unknown.value,
-                    callback = callback,
+            val claim = claimSession.claim?.takeIf { it.isNotBlank() } ?: continue
+            val redeemUrl = claimSession.redeemUrl
+                ?.unescapeEmbedPayload()
+                ?.fixAgainstOrigin(playbackOrigin)
+                ?: continue
+            val redeemResponse = runCatching {
+                app.post(
+                    redeemUrl,
+                    headers = idlixHeadersFor(
+                        origin = playbackOrigin,
+                        referer = originReferer,
+                        contentType = "application/json",
+                    ),
+                    cookies = sessionCookies,
+                    referer = originReferer,
+                    requestBody = mapOf("claim" to claim)
+                        .toJson()
+                        .toRequestBody("application/json".toMediaType()),
+                    timeout = 10000L,
                 )
-            ) {
-                delivered = true
-            }
+            }.getOrNull() ?: continue
 
-            if (!delivered) {
-                Log.d(name, "Direct source extraction failed for $streamUrl, delegating to loadExtractor.")
-                if (loadExtractor(streamUrl, contentReferer, subtitleCallback, callback)) {
+            val redeemText = redeemResponse.text
+            val iframeResponse = mergeIframeResponse(
+                parsed = redeemResponse.parsedSafe<Iframe>(),
+                fallback = redeemText.toIframeFallback(),
+            )
+
+            val streamUrls = resolveIframeCandidates(
+                iframeResponse = iframeResponse,
+                redeemUrl = redeemUrl,
+                contentReferer = originReferer,
+                playbackOrigin = playbackOrigin,
+            )
+            val inlineCode = iframeResponse.code.orEmpty().unescapeEmbedPayload()
+
+            for (streamUrl in streamUrls) {
+                val iframePage = runCatching {
+                    app.get(
+                        url = streamUrl,
+                        headers = hostHeadersFor(streamUrl) + mapOf(
+                            "Referer" to originReferer,
+                            "Origin" to playbackOrigin,
+                            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                            "User-Agent" to USER_AGENT,
+                        ),
+                        cookies = sessionCookies,
+                        referer = originReferer,
+                        timeout = 10000L,
+                    )
+                }.getOrNull()
+
+                val iframeText = iframePage?.text.orEmpty()
+                val iframeDoc = iframePage?.document
+                val sourceCandidate = iframeText.trimStart().startsWith("#EXTM3U") || streamUrl.isLikelyPlayableUrl()
+                val mediaUrls = extractIframeMediaUrls(
+                    iframeText = iframeText,
+                    iframeUrl = streamUrl,
+                    sourceUrl = streamUrl,
+                    sourceCandidate = sourceCandidate,
+                ).ifEmpty {
+                    iframeDoc
+                        ?.select("source[src], video[src], track[src]")
+                        ?.mapNotNull { it.attr("src").fixAgainst(streamUrl) }
+                        ?.filter { it.isLikelyPlayableUrl() }
+                        ?.distinct()
+                        .orEmpty()
+                }.ifEmpty {
+                    if (streamUrl.isLikelyPlayableUrl()) listOf(streamUrl) else emptyList()
+                }
+
+                if (emitMediaLinks(
+                        mediaUrls = mediaUrls,
+                        iframeUrl = streamUrl,
+                        contentReferer = originReferer,
+                        quality = claimSession.maxHeight?.toQuality() ?: Qualities.Unknown.value,
+                        callback = callback,
+                    )
+                ) {
                     delivered = true
+                }
+
+                if (!delivered) {
+                    Log.d(name, "Direct source extraction failed for $streamUrl, delegating to loadExtractor.")
+                    if (loadExtractor(streamUrl, originReferer, subtitleCallback, callback) ||
+                        loadExtractor(streamUrl, streamUrl, subtitleCallback, callback)
+                    ) {
+                        delivered = true
+                    }
+                }
+
+                for (subtitle in extractIframeSubtitles(iframeText, streamUrl)) {
+                    subtitleCallback(subtitle)
                 }
             }
 
-            for (subtitle in extractIframeSubtitles(iframeText, streamUrl)) {
-                subtitleCallback(subtitle)
-            }
-        }
-
-        if (!delivered && inlineCode.isNotBlank()) {
-            val mediaUrls = extractIframeMediaUrls(
-                iframeText = inlineCode,
-                iframeUrl = redeemUrl,
-                sourceUrl = redeemUrl,
-                sourceCandidate = false,
-            )
-
-            if (emitMediaLinks(
-                    mediaUrls = mediaUrls,
+            if (!delivered && inlineCode.isNotBlank()) {
+                val mediaUrls = extractIframeMediaUrls(
+                    iframeText = inlineCode,
                     iframeUrl = redeemUrl,
-                    contentReferer = contentReferer,
-                    quality = claimSession.maxHeight?.toQuality() ?: Qualities.Unknown.value,
-                    callback = callback,
+                    sourceUrl = redeemUrl,
+                    sourceCandidate = false,
                 )
-            ) {
-                delivered = true
+
+                if (emitMediaLinks(
+                        mediaUrls = mediaUrls,
+                        iframeUrl = redeemUrl,
+                        contentReferer = originReferer,
+                        quality = claimSession.maxHeight?.toQuality() ?: Qualities.Unknown.value,
+                        callback = callback,
+                    )
+                ) {
+                    delivered = true
+                }
+
+                for (subtitle in extractIframeSubtitles(inlineCode, redeemUrl)) {
+                    subtitleCallback(subtitle)
+                }
             }
 
-            for (subtitle in extractIframeSubtitles(inlineCode, redeemUrl)) {
-                subtitleCallback(subtitle)
+            for (subtitle in iframeResponse.subtitles.orEmpty()) {
+                val path = subtitle.path?.takeIf { it.isNotBlank() }?.fixAgainstOrigin(playbackOrigin) ?: continue
+                subtitleCallback(
+                    newSubtitleFile(
+                        subtitle.label?.takeIf { it.isNotBlank() } ?: subtitle.lang ?: "Subtitle",
+                        path,
+                    ),
+                )
             }
+
+            if (delivered) return true
         }
 
-        for (subtitle in iframeResponse.subtitles) {
-            val path = subtitle.path?.takeIf { it.isNotBlank() }?.fixAgainstMainUrl() ?: continue
-            subtitleCallback(
-                newSubtitleFile(
-                    subtitle.label?.takeIf { it.isNotBlank() } ?: subtitle.lang ?: "Subtitle",
-                    path,
-                ),
-            )
-        }
-
-        return delivered
+        return false
     }
 
 
@@ -503,19 +560,23 @@ class IdlixProvider : MainAPI() {
         iframeResponse: Iframe,
         redeemUrl: String,
         contentReferer: String,
+        playbackOrigin: String,
     ): List<String> {
         val urls = mutableListOf<String>()
 
         iframeResponse.url
             ?.takeIf { it.isNotBlank() }
-            ?.fixAgainstMainUrl()
+            ?.unescapeEmbedPayload()
+            ?.fixAgainstOrigin(playbackOrigin)
+            ?.takeIf { it.isCandidateEmbedOrPlayableUrl() }
             ?.let(urls::add)
 
         val code = iframeResponse.code.orEmpty().unescapeEmbedPayload()
         val patterns = listOf(
             Regex("""<iframe[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
             Regex("""<embed[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
-            Regex("""["'](?:iframe|embed|file|src|url)["']\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex("""<(?:source|video)[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex("""["'](?:iframe|embed|file|src|url|link|source)["']\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE),
             Regex("""https?://[^"'\\\s<>]+""", RegexOption.IGNORE_CASE),
         )
 
@@ -526,7 +587,7 @@ class IdlixProvider : MainAPI() {
                 candidate
                     .unescapeEmbedPayload()
                     .fixAgainst(redeemUrl)
-                    ?.takeIf { it.contains("majorplay", true) || it.isLikelyPlayableUrl() }
+                    ?.takeIf { it.isCandidateEmbedOrPlayableUrl() }
                     ?.let(urls::add)
             }
         }
@@ -538,6 +599,7 @@ class IdlixProvider : MainAPI() {
         return urls.distinct()
     }
 
+
     private suspend fun emitMediaLinks(
         mediaUrls: List<String>,
         iframeUrl: String,
@@ -546,8 +608,13 @@ class IdlixProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
         var delivered = false
+        val queue = mediaUrls.distinct().toMutableList()
+        val visited = mutableSetOf<String>()
 
-        for (actualM3uLink in mediaUrls.distinct()) {
+        while (queue.isNotEmpty()) {
+            val actualM3uLink = queue.removeAt(0)
+            if (!visited.add(actualM3uLink)) continue
+
             val streamReferer = when {
                 actualM3uLink == iframeUrl -> contentReferer
                 iframeUrl.startsWith("http", true) -> iframeUrl
@@ -560,34 +627,32 @@ class IdlixProvider : MainAPI() {
                 "User-Agent" to USER_AGENT,
             )
 
-            if (actualM3uLink.isMajorplayManifestUrl()) {
-                val directLink = buildDirectPlayableLink(
+            if (actualM3uLink.isConfigJsonUrl()) {
+                val nested = resolveNestedMediaUrls(
                     url = actualM3uLink,
                     referer = streamReferer,
                     headers = streamHeaders,
-                    quality = quality,
                 )
-                if (directLink != null) {
-                    callback(directLink)
-                    delivered = true
-                }
+                queue.addAll(nested.filterNot { it in visited || it in queue })
                 continue
             }
 
             var helperDelivered = false
-            runCatching {
-                generateM3u8(
-                    source = name,
-                    streamUrl = actualM3uLink,
-                    referer = streamReferer,
-                    headers = streamHeaders,
-                ).forEach { link ->
-                    callback(link)
-                    delivered = true
-                    helperDelivered = true
+            if (actualM3uLink.isHlsManifestUrl()) {
+                runCatching {
+                    generateM3u8(
+                        source = name,
+                        streamUrl = actualM3uLink,
+                        referer = streamReferer,
+                        headers = streamHeaders,
+                    ).forEach { link ->
+                        callback(link)
+                        delivered = true
+                        helperDelivered = true
+                    }
+                }.onFailure { error ->
+                    Log.d(name, "M3U8 helper failed for $actualM3uLink: ${error.message}")
                 }
-            }.onFailure { error ->
-                Log.d(name, "M3U8 helper failed for $actualM3uLink: ${error.message}")
             }
 
             if (!helperDelivered) {
@@ -608,6 +673,31 @@ class IdlixProvider : MainAPI() {
     }
 
 
+    private suspend fun resolveNestedMediaUrls(
+        url: String,
+        referer: String,
+        headers: Map<String, String>,
+    ): List<String> {
+        val responseText = runCatching {
+            app.get(
+                url = url,
+                headers = headers,
+                referer = referer,
+                timeout = 10000L,
+            ).text
+        }.getOrNull().orEmpty()
+
+        if (responseText.isBlank()) return emptyList()
+
+        return extractIframeMediaUrls(
+            iframeText = responseText,
+            iframeUrl = url,
+            sourceUrl = url,
+            sourceCandidate = responseText.trimStart().startsWith("#EXTM3U"),
+        ).filter { it != url }
+    }
+
+
     private fun extractIframeMediaUrls(
         iframeText: String,
         iframeUrl: String,
@@ -615,6 +705,7 @@ class IdlixProvider : MainAPI() {
         sourceCandidate: Boolean,
     ): List<String> {
         val urls = mutableListOf<String>()
+        val normalizedText = iframeText.unescapeEmbedPayload()
 
         if (sourceCandidate) {
             urls.add(sourceUrl)
@@ -622,16 +713,17 @@ class IdlixProvider : MainAPI() {
 
         val patterns = listOf(
             Regex("""<source[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
-            Regex("""["'](?:file|src|url)["']\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE),
-            Regex("""https?://[^"'\\\s<>]+(?:m3u8|mp4|config-[^"'\\\s<>]+?\.json)[^"'\\\s<>]*""", RegexOption.IGNORE_CASE),
+            Regex("""<(?:video|track)[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex("""["'](?:file|src|url|link|source|hls|dash)["']\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex("""https?://[^"'\\\s<>]+(?:m3u8|mp4|(?:config|data)-[^"'\\\s<>]+?\.json)[^"'\\\s<>]*""", RegexOption.IGNORE_CASE),
         )
 
         patterns.forEach { regex ->
-            regex.findAll(iframeText).forEach { match ->
+            regex.findAll(normalizedText).forEach { match ->
                 val candidate = match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() }
                     ?: match.value
                 candidate
-                    .replace("\\/", "/")
+                    .unescapeEmbedPayload()
                     .fixAgainst(iframeUrl)
                     ?.takeIf { it.isLikelyPlayableUrl() }
                     ?.let(urls::add)
@@ -687,6 +779,7 @@ class IdlixProvider : MainAPI() {
 
     private suspend fun resolvePlaySession(
         initial: WatchSessionResponse,
+        playbackOrigin: String,
         contentReferer: String,
         cookies: Map<String, String>,
         headers: Map<String, String>,
@@ -705,15 +798,18 @@ class IdlixProvider : MainAPI() {
             val gateToken = session.gateToken?.takeIf { it.isNotBlank() } ?: return null
             waitForGate(session)
 
-            val claimResponse = app.post(
-                "$mainUrl/api/watch/session/claim",
-                headers = headers + mapOf("User-Agent" to USER_AGENT),
-                cookies = sessionCookies,
-                referer = contentReferer,
-                requestBody = """{"gateToken":"$gateToken"}"""
-                    .toRequestBody("application/json".toMediaType()),
-                timeout = 10000L,
-            )
+            val claimResponse = runCatching {
+                app.post(
+                    "$playbackOrigin/api/watch/session/claim",
+                    headers = headers + mapOf("User-Agent" to USER_AGENT),
+                    cookies = sessionCookies,
+                    referer = contentReferer,
+                    requestBody = mapOf("gateToken" to gateToken)
+                        .toJson()
+                        .toRequestBody("application/json".toMediaType()),
+                    timeout = 10000L,
+                )
+            }.getOrNull() ?: return null
             sessionCookies.putAll(claimResponse.cookies)
             session = claimResponse.parsedSafe<WatchSessionResponse>() ?: return null
 
@@ -767,14 +863,14 @@ class IdlixProvider : MainAPI() {
         val qualityText = quality
 
         return if (type.isSeriesType()) {
-            newTvSeriesSearchResponse(title, "$mainUrl/api/series/$slug", TvType.TvSeries) {
+            newTvSeriesSearchResponse(title, "$baseUrl/api/series/$slug", TvType.TvSeries) {
                 this.posterUrl = poster
                 this.year = year
                 this.score = Score.from10(rating)
                 this.quality = getSearchQuality(qualityText)
             }
         } else {
-            newMovieSearchResponse(title, "$mainUrl/api/movies/$slug", TvType.Movie) {
+            newMovieSearchResponse(title, "$baseUrl/api/movies/$slug", TvType.Movie) {
                 this.posterUrl = poster
                 this.year = year
                 this.score = Score.from10(rating)
@@ -792,14 +888,14 @@ class IdlixProvider : MainAPI() {
         val qualityText = quality
 
         return if (contentType.isSeriesType()) {
-            newTvSeriesSearchResponse(title, "$mainUrl/api/series/$slug", TvType.TvSeries) {
+            newTvSeriesSearchResponse(title, "$baseUrl/api/series/$slug", TvType.TvSeries) {
                 this.posterUrl = poster
                 this.year = year
                 this.score = Score.from10(rating)
                 this.quality = getSearchQuality(qualityText)
             }
         } else {
-            newMovieSearchResponse(title, "$mainUrl/api/movies/$slug", TvType.Movie) {
+            newMovieSearchResponse(title, "$baseUrl/api/movies/$slug", TvType.Movie) {
                 this.posterUrl = poster
                 this.year = year
                 this.score = Score.from10(rating)
@@ -821,11 +917,81 @@ class IdlixProvider : MainAPI() {
 
     private fun String.unescapeEmbedPayload(): String {
         return replace("\\/", "/")
-            .replace("\\u0026", "&")
+            .replace("\\u002F", "/", ignoreCase = true)
+            .replace("\\u0026", "&", ignoreCase = true)
+            .replace("\\u003D", "=", ignoreCase = true)
+            .replace("\\u003F", "?", ignoreCase = true)
+            .replace("\\u0025", "%", ignoreCase = true)
             .replace("&amp;", "&")
+            .replace("&quot;", "\"")
+            .replace("&#34;", "\"")
             .replace("\\\"", "\"")
             .trim()
     }
+
+    private fun hostHeadersFor(url: String): Map<String, String> {
+        return if (baseUrl.isIpv4HttpsUrl() && url.trim().startsWith(baseUrl, true)) hostHeader else emptyMap()
+    }
+
+    private fun String.toIdlixPathOrNull(): String? {
+        val value = trim()
+        if (value.isBlank()) return null
+        if (value.startsWith("/")) return value
+
+        val knownOrigins = listOf(
+            baseUrl,
+            LEGACY_MAIN_URL,
+            "https://www.idlixku.com",
+            "https://idlixku.com",
+            "https://idlix.com",
+        ).distinct()
+
+        for (origin in knownOrigins) {
+            val trimmedOrigin = origin.trimEnd('/')
+            if (value.equals(trimmedOrigin, true) || value.equals("$trimmedOrigin/", true)) return "/"
+            if (value.startsWith("$trimmedOrigin/", true)) {
+                return value.substring(trimmedOrigin.length).ifBlank { "/" }
+            }
+        }
+
+        return null
+    }
+
+    private fun String.fixAgainstOrigin(origin: String): String? {
+        val value = trim()
+        if (value.isBlank()) return null
+        if (value.startsWith("//")) return "https:$value"
+
+        val idlixPath = value.toIdlixPathOrNull()
+        if (idlixPath != null) {
+            val path = if (idlixPath.startsWith("/")) idlixPath else "/$idlixPath"
+            return origin.trimEnd('/') + path
+        }
+
+        if (value.startsWith("http://", true) || value.startsWith("https://", true)) return value
+        return runCatching { URI("${origin.trimEnd('/')}/").resolve(value).toString() }.getOrNull()
+    }
+
+    private fun String.toProviderUrl(): String {
+        val value = trim()
+        if (value.isBlank()) return value
+        return when {
+            value.startsWith(LEGACY_MAIN_URL, true) -> baseUrl + value.substring(LEGACY_MAIN_URL.length)
+            value.startsWith("https://www.idlixku.com", true) -> baseUrl + value.substring("https://www.idlixku.com".length)
+            value.startsWith("https://idlixku.com", true) -> baseUrl + value.substring("https://idlixku.com".length)
+            value.startsWith("https://idlix.com", true) -> baseUrl + value.substring("https://idlix.com".length)
+            else -> value
+        }
+    }
+
+    private fun String.isIpv4HttpsUrl(): Boolean {
+        return runCatching {
+            val uri = URI(this)
+            uri.scheme.equals("https", true) &&
+                Regex("""\d{1,3}(?:\.\d{1,3}){3}""").matches(uri.host.orEmpty())
+        }.getOrDefault(false)
+    }
+
 
     private fun String.fixAgainst(baseUrl: String): String? {
         val value = trim()
@@ -839,38 +1005,117 @@ class IdlixProvider : MainAPI() {
         return runCatching {
             val uri = URI(this)
             val scheme = uri.scheme ?: "https"
-            val host = uri.host ?: return@runCatching mainUrl
+            val host = uri.host ?: return@runCatching baseUrl
             "$scheme://$host"
-        }.getOrDefault(mainUrl)
+        }.getOrDefault(baseUrl)
     }
 
-    private fun String.isMajorplayManifestUrl(): Boolean {
+    private fun String.isConfigJsonUrl(): Boolean {
         val value = lowercase()
-        return value.contains("e2e.majorplay.net") &&
-            (value.contains("config-") || value.contains("data-")) &&
-            value.contains(".json")
+        return value.contains(".json") &&
+            (value.contains("config-") || value.contains("data-") || value.contains("/config") || value.contains("/data"))
     }
 
     private fun String.isHlsManifestUrl(): Boolean {
         val value = lowercase()
-        return value.contains(".m3u8") ||
-            value.contains("config-") ||
-            (value.contains("data-") && value.contains(".json")) ||
-            value.contains("application/vnd.apple.mpegurl")
+        return value.contains(".m3u8") || value.contains("application/vnd.apple.mpegurl")
     }
 
     private fun String.isLikelyPlayableUrl(): Boolean {
         val value = lowercase()
-        return isHlsManifestUrl() || value.contains(".mp4")
+        return isHlsManifestUrl() || value.contains(".mp4") || isConfigJsonUrl()
+    }
+
+    private fun String.isCandidateEmbedOrPlayableUrl(): Boolean {
+        val value = lowercase()
+        if (isLikelyPlayableUrl()) return true
+        if (!value.startsWith("http")) return false
+        if (value.contains("majorplay", true) || value.contains("jeniusplay", true)) return true
+        if (value.contains("/embed", true) || value.contains("/player", true) || value.contains("/watch", true)) return true
+        return !value.containsAny(
+            ".js", ".css", ".png", ".jpg", ".jpeg", ".webp", ".svg", ".ico", ".woff", ".ttf"
+        )
+    }
+
+    private fun String.containsAny(vararg needles: String): Boolean {
+        return needles.any { contains(it, true) }
     }
 
     private fun String.fixAgainstMainUrl(): String? {
-        val value = trim()
+        val value = trim().toProviderUrl()
         if (value.isBlank()) return null
         if (value.startsWith("//")) return "https:$value"
         if (value.startsWith("http://", true) || value.startsWith("https://", true)) return value
-        return runCatching { URI(mainUrl).resolve(value).toString() }.getOrNull()
+        return runCatching { URI("$baseUrl/").resolve(value).toString() }.getOrNull()
     }
+
+    private fun mergeIframeResponse(parsed: Iframe?, fallback: Iframe): Iframe {
+        if (parsed == null) return fallback
+
+        return Iframe(
+            code = parsed.code?.takeIf { it.isNotBlank() } ?: fallback.code,
+            url = parsed.url?.takeIf { it.isNotBlank() } ?: fallback.url,
+            expiresAt = parsed.expiresAt ?: fallback.expiresAt,
+            subtitles = (parsed.subtitles.orEmpty() + fallback.subtitles.orEmpty())
+                .distinctBy { it.path ?: it.label ?: it.lang },
+            videoId = parsed.videoId?.takeIf { it.isNotBlank() } ?: fallback.videoId,
+        )
+    }
+
+
+    private fun String.toIframeFallback(): Iframe {
+        val normalized = unescapeEmbedPayload()
+        val url = normalized.firstJsonStringValue("url")
+            ?: normalized.firstJsonStringValue("iframe")
+            ?: normalized.firstJsonStringValue("embed")
+            ?: normalized.firstJsonStringValue("embedUrl")
+            ?: normalized.firstJsonStringValue("player")
+            ?: normalized.firstJsonStringValue("src")
+            ?: Regex("""<iframe[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .find(normalized)
+                ?.groupValues
+                ?.getOrNull(1)
+
+        val code = normalized.firstJsonStringValue("code")
+            ?: normalized.firstJsonStringValue("html")
+            ?: normalized.firstJsonStringValue("embedCode")
+            ?: normalized.takeIf { it.contains("<iframe", true) || it.contains("<source", true) || it.contains("<video", true) }
+
+        return Iframe(
+            code = code,
+            url = url,
+            subtitles = extractSubtitleObjects(normalized),
+        )
+    }
+
+    private fun String.firstJsonStringValue(key: String): String? {
+        val pattern = Regex("""["']$key["']\s*:\s*["']((?:\\.|[^"'])*)["']""", RegexOption.IGNORE_CASE)
+        return pattern.find(this)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.unescapeEmbedPayload()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun extractSubtitleObjects(text: String): List<Subtitle> {
+        val subtitles = mutableListOf<Subtitle>()
+        val objectRegex = Regex("""\{[^{}]*(?:"lang"|"label"|"path"|"file")[^{}]*\}""", RegexOption.IGNORE_CASE)
+        for (match in objectRegex.findAll(text)) {
+            val block = match.value
+            val path = block.firstJsonStringValue("path")
+                ?: block.firstJsonStringValue("file")
+                ?: continue
+            subtitles.add(
+                Subtitle(
+                    lang = block.firstJsonStringValue("lang"),
+                    label = block.firstJsonStringValue("label"),
+                    path = path,
+                ),
+            )
+        }
+        return subtitles.distinctBy { it.path }
+    }
+
 }
 
 fun getSearchQuality(check: String?): SearchQuality? {

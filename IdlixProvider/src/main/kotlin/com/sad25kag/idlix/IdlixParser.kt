@@ -169,7 +169,7 @@ data class Iframe(
     val code: String? = null,
     val url: String? = null,
     val expiresAt: Long? = null,
-    val subtitles: List<Subtitle> = emptyList(),
+    val subtitles: List<Subtitle>? = emptyList(),
     val videoId: String? = null,
 )
 

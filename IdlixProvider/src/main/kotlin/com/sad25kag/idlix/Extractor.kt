@@ -8,8 +8,12 @@ import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
+import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
+import com.lagradost.cloudstream3.utils.newExtractorLink
+import java.net.URI
 
 class Jeniusplay : ExtractorApi() {
     override var name = "Jeniusplay"
@@ -90,40 +94,181 @@ class Majorplay : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
-        val document = app.get(
+        val streamReferer = referer ?: mainUrl
+        val response = app.get(
             url,
-            referer = referer ?: mainUrl,
+            referer = streamReferer,
             headers = mapOf(
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "User-Agent" to IdlixUserAgent,
             ),
-        ).document
-        val m3uLink = document.select("source[src], video[src]").firstOrNull()?.attr("src").orEmpty()
-        val fixedM3uLink = when {
-            m3uLink.startsWith("//") -> "https:$m3uLink"
-            m3uLink.startsWith("http", true) -> m3uLink
-            m3uLink.isNotBlank() -> runCatching { java.net.URI(url).resolve(m3uLink).toString() }.getOrDefault(m3uLink)
-            else -> ""
+        )
+        val document = response.document
+        val mediaUrls = mutableListOf<String>()
+
+        document.select("source[src], video[src]").forEach { source ->
+            source.attr("src")
+                .fixAgainst(url)
+                ?.takeIf { it.isLikelyMediaUrl() }
+                ?.let(mediaUrls::add)
         }
-        Log.d(name, fixedM3uLink)
-        if (fixedM3uLink.isNotBlank()) {
-            generateM3u8(name, fixedM3uLink, referer ?: mainUrl).forEach(callback)
+
+        document.select("script").forEach { script ->
+            mediaUrls.addAll(extractMediaUrls(script.data(), url))
         }
+
+        emitMajorplayMedia(mediaUrls.distinct(), url, streamReferer, callback)
 
         val scripts = document.selectFirst("script:containsData(subtitles)")?.data() ?: return
-
         val subRegex = Regex("""\\"label\\":\\"([^\\"]*?)\\"[^}]*?\\"path\\":\\"([^\\"]*?)\\"""")
 
         for (match in subRegex.findAll(scripts)) {
             val label = match.groupValues[1]
-            var vttUrl = match.groupValues[2]
-
-            if (!vttUrl.startsWith("http")) {
-                vttUrl = mainUrl.trimEnd('/') + vttUrl
-            }
+            val vttUrl = match.groupValues[2]
+                .unescapeMajorplayPayload()
+                .fixAgainst(url)
+                ?: continue
 
             subtitleCallback.invoke(
                 newSubtitleFile(label, vttUrl),
             )
         }
     }
+
+    private suspend fun emitMajorplayMedia(
+        initialUrls: List<String>,
+        iframeUrl: String,
+        referer: String,
+        callback: (ExtractorLink) -> Unit,
+    ) {
+        val queue = initialUrls.distinct().toMutableList()
+        val visited = mutableSetOf<String>()
+
+        while (queue.isNotEmpty()) {
+            val mediaUrl = queue.removeAt(0)
+            if (!visited.add(mediaUrl)) continue
+
+            if (mediaUrl.isConfigJsonUrl()) {
+                val nestedText = runCatching {
+                    app.get(
+                        mediaUrl,
+                        referer = iframeUrl,
+                        headers = mapOf(
+                            "Referer" to iframeUrl,
+                            "Origin" to iframeUrl.originOfUrl(),
+                            "User-Agent" to IdlixUserAgent,
+                            "Accept" to "*/*",
+                        ),
+                    ).text
+                }.getOrNull().orEmpty()
+
+                queue.addAll(extractMediaUrls(nestedText, mediaUrl).filterNot { it in visited || it in queue })
+                continue
+            }
+
+            if (mediaUrl.contains(".m3u8", true)) {
+                var emitted = false
+                runCatching {
+                    generateM3u8(name, mediaUrl, iframeUrl).forEach { link ->
+                        callback(link)
+                        emitted = true
+                    }
+                }.onFailure { error ->
+                    Log.d(name, "M3U8 helper failed for $mediaUrl: ${error.message}")
+                }
+                if (!emitted) {
+                    callback(
+                        newExtractorLink(
+                            source = name,
+                            name = name,
+                            url = mediaUrl,
+                            type = ExtractorLinkType.M3U8,
+                        ) {
+                            this.referer = iframeUrl
+                            this.quality = Qualities.Unknown.value
+                        },
+                    )
+                }
+            } else if (mediaUrl.contains(".mp4", true)) {
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = name,
+                        url = mediaUrl,
+                        type = ExtractorLinkType.VIDEO,
+                    ) {
+                        this.referer = iframeUrl
+                        this.quality = Qualities.Unknown.value
+                    },
+                )
+            }
+        }
+    }
+
+    private fun extractMediaUrls(text: String, baseUrl: String): List<String> {
+        val normalized = text.unescapeMajorplayPayload()
+        val urls = mutableListOf<String>()
+        val patterns = listOf(
+            Regex("""["'](?:file|src|url|link|source|hls)["']\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex("""https?://[^"'\\\s<>]+(?:m3u8|mp4|(?:config|data)-[^"'\\\s<>]+?\.json)[^"'\\\s<>]*""", RegexOption.IGNORE_CASE),
+        )
+
+        patterns.forEach { regex ->
+            regex.findAll(normalized).forEach { match ->
+                val candidate = match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() }
+                    ?: match.value
+                candidate
+                    .unescapeMajorplayPayload()
+                    .fixAgainst(baseUrl)
+                    ?.takeIf { it.isLikelyMediaUrl() }
+                    ?.let(urls::add)
+            }
+        }
+
+        return urls.distinct()
+    }
+
+    private fun String.isLikelyMediaUrl(): Boolean {
+        val value = lowercase()
+        return value.contains(".m3u8") || value.contains(".mp4") || isConfigJsonUrl()
+    }
+
+    private fun String.isConfigJsonUrl(): Boolean {
+        val value = lowercase()
+        return value.contains(".json") &&
+            (value.contains("config-") || value.contains("data-") || value.contains("/config") || value.contains("/data"))
+    }
+
+    private fun String.unescapeMajorplayPayload(): String {
+        return replace("\\/", "/")
+            .replace("\\u002F", "/", ignoreCase = true)
+            .replace("\\u0026", "&", ignoreCase = true)
+            .replace("\\u003D", "=", ignoreCase = true)
+            .replace("\\u003F", "?", ignoreCase = true)
+            .replace("&amp;", "&")
+            .replace("&quot;", "\"")
+            .replace("&#34;", "\"")
+            .replace("\\\"", "\"")
+            .trim()
+    }
+
+    private fun String.fixAgainst(baseUrl: String): String? {
+        val value = trim()
+        if (value.isBlank()) return null
+        if (value.startsWith("//")) return "https:$value"
+        if (value.startsWith("http://", true) || value.startsWith("https://", true)) return value
+        return runCatching { URI(baseUrl).resolve(value).toString() }.getOrNull()
+    }
+
+    private fun String.originOfUrl(): String {
+        return runCatching {
+            val uri = URI(this)
+            val scheme = uri.scheme ?: "https"
+            val host = uri.host ?: return@runCatching mainUrl
+            "$scheme://$host"
+        }.getOrDefault(mainUrl)
+    }
 }
+
+private const val IdlixUserAgent =
+    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Mobile Safari/537.36"

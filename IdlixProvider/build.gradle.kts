@@ -1,9 +1,9 @@
-version = 37
+version = 43
 
 cloudstream {
     language = "id"
     authors = listOf("BetbetMiro")
-    description = "Idlix provider for movies, series, anime, and Asian drama with updated play-session and Majorplay iframe playback handling."
+    description = "Idlix provider with direct IP main URL, origin fallback routing, safe play-session JSON bodies, compile-safe extractor emission, merged redeem fallback parsing, and hardened iframe playback handling."
 
     /**
      * Status int as the following:
