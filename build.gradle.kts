@@ -8,7 +8,7 @@ buildscript {
     val cloudstreamGradlePluginVersion = project
         .findProperty("cloudstream.gradle.plugin.version")
         ?.toString()
-        ?: "22be73619eb679c2df2c685fa3ba48ce923e68cb"
+        ?: "master-SNAPSHOT"
 
     repositories {
         google()
