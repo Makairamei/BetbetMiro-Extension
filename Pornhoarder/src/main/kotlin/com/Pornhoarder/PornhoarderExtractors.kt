@@ -7,7 +7,6 @@ import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.fixUrl
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
 open class PornhoarderPlaymogo : ExtractorApi() {
@@ -26,7 +25,7 @@ open class PornhoarderPlaymogo : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val embedUrl = fixUrl(url, mainUrl)
+        val embedUrl = normalizeUrl(url, mainUrl)
         val html = app.get(
             embedUrl,
             referer = referer ?: mainUrl,
@@ -42,7 +41,7 @@ open class PornhoarderPlaymogo : ExtractorApi() {
         val passPath = passMatch.value.cleanEscaped()
         val expiry = passMatch.groupValues.getOrNull(1).orEmpty()
         val token = passMatch.groupValues.getOrNull(2).orEmpty()
-        val passUrl = fixUrl(passPath, mainUrl)
+        val passUrl = normalizeUrl(passPath, mainUrl)
         val base = app.get(
             passUrl,
             referer = embedUrl,
@@ -65,7 +64,19 @@ open class PornhoarderPlaymogo : ExtractorApi() {
         emitVideo(finalUrl, embedUrl, callback)
     }
 
-    private fun emitVideo(
+
+    private fun normalizeUrl(url: String, base: String = mainUrl): String {
+        val cleaned = url.cleanEscaped().trim()
+        return when {
+            cleaned.startsWith("http://", ignoreCase = true) ||
+                cleaned.startsWith("https://", ignoreCase = true) -> cleaned
+            cleaned.startsWith("//") -> "https:$cleaned"
+            cleaned.startsWith("/") -> base.trimEnd('/') + cleaned
+            else -> base.trimEnd('/') + "/" + cleaned.trimStart('/')
+        }
+    }
+
+    private suspend fun emitVideo(
         videoUrl: String,
         referer: String,
         callback: (ExtractorLink) -> Unit
