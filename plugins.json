@@ -2246,10 +2246,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=rebahinxxi3.hair&sz=%size%",
-        "fileHash": "sha256-b48ef674be02558084ba97e92d0f266f98afeaccce742959cfa1bc4a86995d72",
+        "fileHash": "sha256-6310324962263aa2ea6f076eb1552ee0c00add7b9ca1d8c807df6fe6ba6037bd",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
-        "fileSize": 36230,
+        "fileSize": 33055,
         "status": 1,
         "language": "id",
         "authors": [
@@ -2260,7 +2260,7 @@
             "TvSeries",
             "Anime"
         ],
-        "version": 7,
+        "version": 9,
         "internalName": "Rebahin",
         "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Rebahin.cs3",
         "name": "Rebahin"
