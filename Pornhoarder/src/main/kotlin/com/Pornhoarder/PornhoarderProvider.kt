@@ -5,7 +5,6 @@ import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
 import com.lagradost.cloudstream3.extractors.StreamTape
 import com.lagradost.cloudstream3.extractors.Wishonly
-import com.lagradost.cloudstream3.extractors.Playmogo
 
 @CloudstreamPlugin
 class PornhoarderProvider: Plugin() {
@@ -13,6 +12,6 @@ class PornhoarderProvider: Plugin() {
         registerMainAPI(PornhoarderPlugin())
         registerExtractorAPI(StreamTape())
         registerExtractorAPI(Wishonly())
-        registerExtractorAPI(Playmogo())
+        registerExtractorAPI(PornhoarderPlaymogo())
     }
 }
