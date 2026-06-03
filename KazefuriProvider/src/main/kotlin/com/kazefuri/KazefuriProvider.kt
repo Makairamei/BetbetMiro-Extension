@@ -165,8 +165,15 @@ class KazefuriProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data, referer = "$mainUrl/").document
-        val emitted = linkedSetOf<String>()
+        val visited = linkedSetOf<String>()
+        val emittedLinks = linkedSetOf<String>()
         val candidates = linkedSetOf<Pair<String, String>>()
+
+        val countedCallback: (ExtractorLink) -> Unit = { link ->
+            if (emittedLinks.add(link.url)) {
+                callback(link)
+            }
+        }
 
         document.select("#pembed iframe[src], .player-embed iframe[src], .video-content iframe[src]").forEach { iframe ->
             iframe.attr("abs:src").ifBlank { iframe.attr("src") }
@@ -181,25 +188,41 @@ class KazefuriProvider : MainAPI() {
             }
         }
 
-        candidates
+        val topLevelCandidates = candidates
+            .asSequence()
             .filterNot { (url, _) -> KazefuriExtractorHelper.isNoiseFrame(url) }
-            .amap { (url, label) ->
-                KazefuriExtractorHelper.resolveLink(
-                    url = KazefuriExtractorHelper.normalizeUrl(url, data) ?: return@amap,
-                    label = label,
-                    referer = data,
-                    emitted = emitted,
-                    subtitleCallback = subtitleCallback,
-                    callback = callback,
-                )
+            .mapNotNull { (url, label) ->
+                val fixed = KazefuriExtractorHelper.normalizeUrl(url, data) ?: return@mapNotNull null
+                fixed to label
             }
+            .distinctBy { it.first }
+            .take(KazefuriExtractorHelper.MAX_TOP_LEVEL_CANDIDATES)
+            .toList()
 
-        document.select(".soraddlx a[href], .dlbox a[href], .download a[href], a[href*='mirrored.to']")
+        for ((url, label) in topLevelCandidates) {
+            KazefuriExtractorHelper.resolveLink(
+                url = url,
+                label = label,
+                referer = data,
+                visited = visited,
+                subtitleCallback = subtitleCallback,
+                callback = countedCallback,
+            )
+        }
+
+        val downloadCandidates = document.select(".soraddlx a[href], .dlbox a[href], .download a[href], a[href*='mirrored.to']")
             .mapNotNull { it.attr("abs:href").ifBlank { it.attr("href") }.takeIf(String::isNotBlank) }
+            .mapNotNull { KazefuriExtractorHelper.normalizeUrl(it, data) }
+            .filter { KazefuriExtractorHelper.shouldUseLoadExtractor(it) }
+            .filterNot { KazefuriExtractorHelper.isNoiseFrame(it) }
             .distinct()
-            .forEach { runCatching { loadExtractor(it, data, subtitleCallback, callback) } }
+            .take(KazefuriExtractorHelper.MAX_DOWNLOAD_CANDIDATES)
 
-        return candidates.isNotEmpty()
+        for (url in downloadCandidates) {
+            runCatching { loadExtractor(url, data, subtitleCallback, countedCallback) }
+        }
+
+        return emittedLinks.isNotEmpty()
     }
 
     private fun Element.toSearchResult(): SearchResponse? {

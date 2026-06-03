@@ -19,7 +19,13 @@ import java.net.URI
 import java.net.URLDecoder
 
 object KazefuriExtractorHelper {
-    private const val MAX_NESTED_TEXT_BYTES = 5_000_000L
+    const val MAX_TOP_LEVEL_CANDIDATES = 8
+    const val MAX_DOWNLOAD_CANDIDATES = 4
+    private const val MAX_NESTED_LINKS = 8
+    private const val MAX_PLAYABLE_TEXT_URLS = 8
+    private const val MAX_RESOLVE_DEPTH = 1
+    private const val MAX_VISITED_URLS = 24
+    private const val MAX_NESTED_TEXT_BYTES = 800_000L
 
     private val extractorOnlyHosts = listOf(
         "dailymotion.com",
@@ -116,19 +122,37 @@ object KazefuriExtractorHelper {
             value.contains("doubleclick") ||
             value.contains("googlesyndication") ||
             value.contains("analytics") ||
-            value.contains("tracking")
+            value.contains("tracking") ||
+            value.contains("popads") ||
+            value.contains("shortlink") ||
+            value.contains("safelink")
+    }
+
+    fun shouldUseLoadExtractor(url: String): Boolean {
+        val value = url.lowercase()
+        return extractorOnlyHosts.any { host -> value.contains(host) }
+    }
+
+    private fun shouldReadNestedPage(url: String): Boolean {
+        val value = url.lowercase()
+        return value.contains("kazefuri.cloud") ||
+            value.contains("/embed") ||
+            value.contains("/player") ||
+            value.contains("/video") ||
+            value.contains("/v/")
     }
 
     suspend fun resolveLink(
         url: String,
         label: String,
         referer: String,
-        emitted: MutableSet<String>,
+        visited: MutableSet<String>,
         subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+        callback: (ExtractorLink) -> Unit,
+        depth: Int = 0
     ) {
         val fixed = normalizeUrl(url, referer)?.replace(".txt", ".m3u8") ?: return
-        if (isNoiseFrame(fixed) || !emitted.add(fixed)) return
+        if (isNoiseFrame(fixed) || visited.size >= MAX_VISITED_URLS || !visited.add(fixed)) return
 
         when {
             fixed.contains(".m3u8", true) -> {
@@ -153,20 +177,18 @@ object KazefuriExtractorHelper {
                     }
                 )
             }
-            else -> {
-                val success = runCatching {
-                    loadExtractor(fixed, referer, subtitleCallback, callback)
-                }.getOrDefault(false)
-
-                if (!success && !shouldOnlyUseLoadExtractor(fixed)) {
-                    resolveNested(
-                        url = fixed,
-                        referer = referer,
-                        emitted = emitted,
-                        subtitleCallback = subtitleCallback,
-                        callback = callback
-                    )
-                }
+            shouldUseLoadExtractor(fixed) -> {
+                runCatching { loadExtractor(fixed, referer, subtitleCallback, callback) }
+            }
+            depth < MAX_RESOLVE_DEPTH && shouldReadNestedPage(fixed) -> {
+                resolveNested(
+                    url = fixed,
+                    referer = referer,
+                    visited = visited,
+                    subtitleCallback = subtitleCallback,
+                    callback = callback,
+                    depth = depth + 1
+                )
             }
         }
     }
@@ -174,9 +196,10 @@ object KazefuriExtractorHelper {
     private suspend fun resolveNested(
         url: String,
         referer: String,
-        emitted: MutableSet<String>,
+        visited: MutableSet<String>,
         subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+        callback: (ExtractorLink) -> Unit,
+        depth: Int
     ) {
         val response = runCatching {
             app.get(
@@ -203,48 +226,50 @@ object KazefuriExtractorHelper {
         }.getOrNull()
         if (!unpacked.isNullOrBlank()) texts.add(unpacked.cleanEscaped())
 
-        Jsoup.parse(body, url).select("iframe[src], iframe[data-src], source[src], video[src], a[href]")
+        val nestedFrames = Jsoup.parse(body, url).select("iframe[src], iframe[data-src], source[src], video[src]")
             .mapNotNull { element ->
                 element.attr("data-src")
                     .ifBlank { element.attr("src") }
-                    .ifBlank { element.attr("href") }
                     .trim()
                     .takeIf { it.isNotBlank() }
             }
-            .forEach { nested ->
-                resolveLink(
-                    url = normalizeUrl(nested, url) ?: nested,
-                    label = "Kazefuri",
-                    referer = url,
-                    emitted = emitted,
-                    subtitleCallback = subtitleCallback,
-                    callback = callback
-                )
-            }
-
-        texts.flatMap { extractPlayableUrls(it) }
             .distinct()
-            .forEach { nested ->
-                resolveLink(
-                    url = normalizeUrl(nested, url) ?: nested,
-                    label = "Kazefuri",
-                    referer = url,
-                    emitted = emitted,
-                    subtitleCallback = subtitleCallback,
-                    callback = callback
-                )
-            }
+            .take(MAX_NESTED_LINKS)
+
+        for (nested in nestedFrames) {
+            resolveLink(
+                url = normalizeUrl(nested, url) ?: nested,
+                label = "Kazefuri",
+                referer = url,
+                visited = visited,
+                subtitleCallback = subtitleCallback,
+                callback = callback,
+                depth = depth
+            )
+        }
+
+        val playableUrls = texts.flatMap { extractPlayableUrls(it) }
+            .distinct()
+            .take(MAX_PLAYABLE_TEXT_URLS)
+
+        for (nested in playableUrls) {
+            resolveLink(
+                url = normalizeUrl(nested, url) ?: nested,
+                label = "Kazefuri",
+                referer = url,
+                visited = visited,
+                subtitleCallback = subtitleCallback,
+                callback = callback,
+                depth = depth
+            )
+        }
     }
 
-    private fun shouldOnlyUseLoadExtractor(url: String): Boolean {
-        val value = url.lowercase()
-        return extractorOnlyHosts.any { host -> value.contains(host) }
-    }
 
     private fun shouldSkipBodyRead(contentTypeRaw: String, contentLength: Long?, url: String): Boolean {
         val contentType = contentTypeRaw.lowercase()
 
-        if (contentLength != null && contentLength > MAX_NESTED_TEXT_BYTES) return true
+        if (contentLength == null || contentLength > MAX_NESTED_TEXT_BYTES) return true
 
         return contentType.contains("video/") ||
             contentType.contains("audio/") ||
@@ -252,6 +277,10 @@ object KazefuriExtractorHelper {
             contentType.contains("application/zip") ||
             contentType.contains("application/x-rar") ||
             contentType.contains("application/pdf") ||
+            !(contentType.contains("text/") ||
+                contentType.contains("html") ||
+                contentType.contains("json") ||
+                contentType.contains("javascript")) ||
             url.endsWith(".zip", true) ||
             url.endsWith(".rar", true) ||
             url.endsWith(".7z", true)
@@ -322,7 +351,7 @@ open class KazefuriGenericExtractor : ExtractorApi() {
             url = url,
             label = name,
             referer = referer ?: mainUrl,
-            emitted = linkedSetOf(),
+            visited = linkedSetOf(),
             subtitleCallback = subtitleCallback,
             callback = callback
         )
