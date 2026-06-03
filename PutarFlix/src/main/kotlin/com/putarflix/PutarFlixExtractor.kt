@@ -25,6 +25,9 @@ import org.jsoup.nodes.Element
 import org.json.JSONObject
 import java.net.URI
 import java.net.URLDecoder
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 internal object PutarFlixExtractor {
     private const val EXTRACT_TIMEOUT_MS = 45_000L
@@ -1243,6 +1246,136 @@ class PutarFlixMeplayer : VidStack() {
     override var requiresReferer = true
 }
 
+open class PutarFlixEncryptedVidStackHost : ExtractorApi() {
+    override var name = "PutarFlix Encrypted VidStack"
+    override var mainUrl = ""
+    override val requiresReferer = true
+
+    private val aesKey = "kiemtienmua911ca".toByteArray(Charsets.UTF_8)
+    private val aesIv = "1234567890oiuytr".toByteArray(Charsets.UTF_8)
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val pageUrl = url.replace(" ", "%20")
+        val uri = runCatching { URI(pageUrl) }.getOrNull()
+        val origin = runCatching {
+            if (uri?.scheme != null && uri.host != null) "${uri.scheme}://${uri.host}" else mainUrl
+        }.getOrDefault(mainUrl).ifBlank { mainUrl }
+        val id = uri?.rawFragment?.trim().orEmpty()
+            .ifBlank { Regex("""[#/]([A-Za-z0-9_-]{4,})(?:[?&/]|$)""").find(pageUrl)?.groupValues?.getOrNull(1).orEmpty() }
+            .ifBlank { pageUrl.substringAfter("id=", "").substringBefore("&").substringBefore("?").trim() }
+        if (id.isBlank() || origin.isBlank()) return
+
+        val sourceHost = runCatching { URI(referer ?: PutarFlixSeeds.MAIN_URL).host?.removePrefix("www.") }
+            .getOrNull()
+            .takeUnless { it.isNullOrBlank() }
+            ?: "putarflix.com"
+        val apiReferer = "$origin/"
+        val headers = putarFlixExtractorHeaders(apiReferer) + mapOf(
+            "Accept" to "*/*",
+            "X-Requested-With" to "XMLHttpRequest"
+        )
+
+        listOf(
+            "$origin/api/v1/video?id=$id&w=421&h=935&r=$sourceHost",
+            "$origin/api/v1/video?id=$id&w=1280&h=720&r=$sourceHost",
+            "$origin/api/v1/info?id=$id"
+        ).forEach { endpoint ->
+            val raw = runCatching {
+                app.get(
+                    endpoint,
+                    referer = apiReferer,
+                    headers = headers,
+                    timeout = 15L
+                ).text.trim()
+            }.getOrNull().orEmpty()
+
+            val jsonText = decryptPayload(raw)?.putarFlixCleanEscaped() ?: raw.putarFlixCleanEscaped()
+            val streams = parseStreams(jsonText, origin)
+            streams.forEach { stream ->
+                val fixed = putarFlixNormalizeExtractorUrl(stream, origin).replace(".txt", ".m3u8")
+                if (fixed.putarFlixIsDirectVideoUrl()) {
+                    putarFlixEmitExtractorLink(name, fixed, apiReferer, callback)
+                }
+            }
+        }
+    }
+
+    private fun decryptPayload(payload: String): String? {
+        val clean = payload.trim().removePrefix("\uFEFF").trim()
+        if (clean.isBlank() || clean.startsWith("{") || !clean.matches(Regex("^[0-9a-fA-F]+$")) || clean.length % 2 != 0) return null
+        return runCatching {
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                SecretKeySpec(aesKey, "AES"),
+                IvParameterSpec(aesIv)
+            )
+            String(cipher.doFinal(hexToBytes(clean)), Charsets.UTF_8)
+        }.getOrNull()
+    }
+
+    private fun hexToBytes(value: String): ByteArray {
+        val result = ByteArray(value.length / 2)
+        for (index in result.indices) {
+            val start = index * 2
+            result[index] = value.substring(start, start + 2).toInt(16).toByte()
+        }
+        return result
+    }
+
+    private fun parseStreams(jsonText: String, baseUrl: String): List<String> {
+        val streams = linkedSetOf<String>()
+        putarFlixExtractExtractorUrls(jsonText).forEach { streams += putarFlixNormalizeExtractorUrl(it, baseUrl) }
+
+        runCatching { JSONObject(jsonText) }.getOrNull()?.let { json ->
+            listOf(
+                "source",
+                "cf",
+                "file",
+                "url",
+                "src",
+                "hls",
+                "hlsUrl",
+                "hlsVideoTiktok",
+                "hlsVideoGoogle",
+                "hlsVideoCloudflare",
+                "ttStream",
+                "ggStream",
+                "cfStream"
+            ).forEach { key ->
+                json.optString(key).takeIf { it.isNotBlank() }?.let { streams += it }
+            }
+        }
+
+        return streams.toList()
+    }
+}
+
+class PutarFlixBangjago : PutarFlixEncryptedVidStackHost() {
+    override var name = "Bangjago"
+    override var mainUrl = "https://bangjago.upns.blog"
+}
+
+class PutarFlixHiguys : PutarFlixEncryptedVidStackHost() {
+    override var name = "Higuys"
+    override var mainUrl = "https://higuys.rpmvid.com"
+}
+
+class PutarFlixCallistanise : PutarFlixHostExtractor() {
+    override var name = "Callistanise"
+    override var mainUrl = "https://callistanise.com"
+}
+
+class PutarFlixBoosterx : PutarFlixHostExtractor() {
+    override var name = "Boosterx"
+    override var mainUrl = "https://boosterx.stream"
+}
+
 private fun putarFlixAddExtractorCandidate(
     raw: String,
     baseUrl: String,
@@ -1332,7 +1465,7 @@ private fun putarFlixExtractExtractorUrls(text: String): List<String> {
         .forEach { urls.add(it) }
 
     Regex(
-        """https?%3A%2F%2F[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.webm|\.txt|emturbovid|hownetwork|f16|jeniusplay|majorplay|streamwish|filemoon|dood|streamtape|vidhide|voe|mixdrop|play\.putar\.in|gdplayer|awstream|megaplay|luluvdo|filedon|blogger|blogspot|streamplay|movearnpre)[^"'\\\s<>]*""",
+        """https?%3A%2F%2F[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.webm|\.txt|emturbovid|hownetwork|f16|jeniusplay|majorplay|streamwish|filemoon|dood|streamtape|vidhide|voe|mixdrop|play\.putar\.in|gdplayer|awstream|megaplay|luluvdo|filedon|blogger|blogspot|streamplay|movearnpre|callistanise|boosterx|bangjago\.upns\.blog|upns\.blog|higuys\.rpmvid\.com|rpmvid)[^"'\\\s<>]*""",
         RegexOption.IGNORE_CASE
     ).findAll(clean)
         .map { runCatching { URLDecoder.decode(it.value, "UTF-8") }.getOrDefault(it.value) }
@@ -1341,7 +1474,7 @@ private fun putarFlixExtractExtractorUrls(text: String): List<String> {
         .forEach { urls.add(it) }
 
     Regex(
-        """https?://[^"'\\\s<>]+?(?:emturbovid|hownetwork|playeriframe|f16|jeniusplay|majorplay|streamwish|filemoon|dood|streamtape|vidhide|vidguard|voe|mixdrop|hglink|ghbrisk|dhcplay|streamcasthub|embed4me|upns\.live|4meplayer|play\.putar\.in|gdplayer|awstream|megaplay|luluvdo|filedon|blogger|blogspot|streamplay|movearnpre|vidsrc|embed|player|stream)[^"'\\\s<>]*""",
+        """https?://[^"'\\\s<>]+?(?:emturbovid|hownetwork|playeriframe|f16|jeniusplay|majorplay|streamwish|filemoon|dood|streamtape|vidhide|vidguard|voe|mixdrop|hglink|ghbrisk|dhcplay|streamcasthub|embed4me|upns\.live|4meplayer|play\.putar\.in|gdplayer|awstream|megaplay|luluvdo|filedon|blogger|blogspot|streamplay|movearnpre|callistanise|boosterx|bangjago\.upns\.blog|upns\.blog|higuys\.rpmvid\.com|rpmvid|vidsrc|embed|player|stream)[^"'\\\s<>]*""",
         RegexOption.IGNORE_CASE
     ).findAll(clean)
         .map { it.value.putarFlixCleanEscaped().replace(".txt", ".m3u8") }
@@ -1349,7 +1482,7 @@ private fun putarFlixExtractExtractorUrls(text: String): List<String> {
         .forEach { urls.add(it) }
 
     Regex(
-        """//[^"'\\\s<>]+?(?:emturbovid|hownetwork|playeriframe|f16|jeniusplay|majorplay|streamwish|filemoon|dood|streamtape|vidhide|vidguard|voe|mixdrop|hglink|ghbrisk|dhcplay|streamcasthub|embed4me|upns\.live|4meplayer|play\.putar\.in|gdplayer|awstream|megaplay|luluvdo|filedon|blogger|blogspot|streamplay|movearnpre|vidsrc|embed|player|stream)[^"'\\\s<>]*""",
+        """//[^"'\\\s<>]+?(?:emturbovid|hownetwork|playeriframe|f16|jeniusplay|majorplay|streamwish|filemoon|dood|streamtape|vidhide|vidguard|voe|mixdrop|hglink|ghbrisk|dhcplay|streamcasthub|embed4me|upns\.live|4meplayer|play\.putar\.in|gdplayer|awstream|megaplay|luluvdo|filedon|blogger|blogspot|streamplay|movearnpre|callistanise|boosterx|bangjago\.upns\.blog|upns\.blog|higuys\.rpmvid\.com|rpmvid|vidsrc|embed|player|stream)[^"'\\\s<>]*""",
         RegexOption.IGNORE_CASE
     ).findAll(clean)
         .map { "https:${it.value.putarFlixCleanEscaped().replace(".txt", ".m3u8")}" }
@@ -1406,6 +1539,10 @@ private fun putarFlixIsKnownExtractorHost(url: String): Boolean {
         "streamcasthub",
         "embed4me",
         "upns.live",
+        "upns.blog",
+        "bangjago.upns.blog",
+        "rpmvid",
+        "higuys.rpmvid.com",
         "4meplayer",
         "play.putar.in",
         "gdplayer",
@@ -1418,6 +1555,10 @@ private fun putarFlixIsKnownExtractorHost(url: String): Boolean {
         "blogspot",
         "play.streamplay.co.in",
         "movearnpre",
+        "callistanise",
+        "boosterx",
+        "short.ink",
+        "short.icu",
         "vidsrc",
         "googlevideo",
         "ok.ru",

@@ -22,7 +22,7 @@ internal object PutarFlixUtils {
 
     private val shortenerHosts = listOf(
         "semawur.com", "linkduit.net", "safelinku.com", "safelinku.net", "ouo.io", "shrinkme.io",
-        "shortlinkto", "adlinkfly", "linksly.co", "droplink.co", "duit.cc", "cuty.io"
+        "shortlinkto", "adlinkfly", "linksly.co", "droplink.co", "duit.cc", "cuty.io", "short.ink", "short.icu"
     )
 
     private val playableHosts = listOf(
@@ -34,7 +34,7 @@ internal object PutarFlixUtils {
         "vidguard", "vidplay", "filepursuit", "filegram", "pixeldrain.com", "krakenfiles.com",
         "emturbovid", "hownetwork", "playeriframe", "p2p", "f16", "jeniusplay", "majorplay",
         "e2e.majorplay", "m3u8.majorplay", "hglink", "ghbrisk", "dhcplay", "streamcasthub",
-        "embed4me", "upns.live", "4meplayer", "play.putar.in", "gdplayer", "z.awstream.net", "awstream", "megaplay", "luluvdo", "filedon", "blogger.com", "blogspot", "play.streamplay.co.in", "movearnpre",
+        "embed4me", "upns.live", "upns.blog", "bangjago.upns.blog", "rpmvid.com", "higuys.rpmvid.com", "4meplayer", "play.putar.in", "gdplayer", "z.awstream.net", "awstream", "megaplay", "luluvdo", "filedon", "blogger.com", "blogspot", "play.streamplay.co.in", "movearnpre", "callistanise.com", "boosterx.stream",
         "abysscdn", "vidsrc", "vidsrc.to", "vidsrc.xyz", "streamvid", "streamhub", "videy.co", "cdn", "mcloud", "upstream", "dropboxusercontent.com", "lh3.googleusercontent.com", "googlevideo.com", "ok.ru", "rumble.com", "sbfull", "listeamed", "streamhide", "vidsrcme", "vidlink"
     )
 

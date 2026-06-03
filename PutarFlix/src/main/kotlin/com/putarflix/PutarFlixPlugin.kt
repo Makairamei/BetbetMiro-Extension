@@ -25,6 +25,8 @@ class PutarFlixPlugin : Plugin() {
         registerExtractorAPI(PutarFlixDm21embed())
         registerExtractorAPI(PutarFlixDm21upns())
         registerExtractorAPI(PutarFlixDm21())
+        registerExtractorAPI(PutarFlixBangjago())
+        registerExtractorAPI(PutarFlixHiguys())
         registerExtractorAPI(PutarFlixMeplayer())
         registerExtractorAPI(PutarFlixPlayPutarIn())
         registerExtractorAPI(PutarFlixLk21PlayerPage())
@@ -36,5 +38,7 @@ class PutarFlixPlugin : Plugin() {
         registerExtractorAPI(PutarFlixBloggerVideo())
         registerExtractorAPI(PutarFlixPlayStreamplay())
         registerExtractorAPI(PutarFlixMovearnpre())
+        registerExtractorAPI(PutarFlixCallistanise())
+        registerExtractorAPI(PutarFlixBoosterx())
     }
 }
