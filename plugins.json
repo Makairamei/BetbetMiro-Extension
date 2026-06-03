@@ -2245,11 +2245,11 @@
         "name": "PutarFlix"
     },
     {
-        "iconUrl": "https://www.google.com/s2/favicons?domain=rebahinxxi3.com&sz=%size%",
-        "fileHash": "sha256-887fc9c31961c48328c2bad9b0833eeb982feb574154d96e65aa99a55d4b241f",
+        "iconUrl": "https://www.google.com/s2/favicons?domain=rebahinxxi3.hair&sz=%size%",
+        "fileHash": "sha256-b48ef674be02558084ba97e92d0f266f98afeaccce742959cfa1bc4a86995d72",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
-        "fileSize": 27323,
+        "fileSize": 36230,
         "status": 1,
         "language": "id",
         "authors": [
@@ -2260,7 +2260,7 @@
             "TvSeries",
             "Anime"
         ],
-        "version": 6,
+        "version": 7,
         "internalName": "Rebahin",
         "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Rebahin.cs3",
         "name": "Rebahin"
