@@ -11,6 +11,7 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import org.jsoup.nodes.Element
 import java.net.URI
+import java.net.URLDecoder
 import java.util.concurrent.atomic.AtomicInteger
 
 open class Rebahin : MainAPI() {
@@ -72,57 +73,35 @@ open class Rebahin : MainAPI() {
     ): HomePageResponse {
         val urls =
             listOf(
-                MainSection("Featured", tab = "xtab1"),
-                MainSection("Film Terbaru", tab = "xtab2"),
-                MainSection("Romance", path = "genre/romance", tab = "xtab3"),
-                MainSection("Drama", path = "genre/drama", tab = "xtab4"),
-                MainSection("Action", path = "genre/action", tab = "xtab5"),
-                MainSection("Scifi", path = "genre/science-fiction", tab = "xtab6"),
-                MainSection("Tv Series Terbaru", tab = "stab1"),
-                MainSection("Anime Series", path = "genre/animation", tab = "stab2"),
-                MainSection("Drakor Series", path = "genre/drama-korea", tab = "stab3"),
-                MainSection("West Series", path = "genre/westseries", tab = "stab4"),
-                MainSection("China Series", path = "genre/drama-china", tab = "stab5"),
-                MainSection("Japan Series", path = "genre/drama-jepang", tab = "stab6"),
-                MainSection("Series Indonesia", path = "genre/series-indonesia"),
-                MainSection("Thailand Series", path = "genre/thailand-series"),
-                MainSection("Horror", path = "genre/horror"),
-                MainSection("Comedy", path = "genre/comedy"),
-                MainSection("Thriller", path = "genre/thriller"),
-                MainSection("Populer", path = "genre/populer"),
+                Pair("Featured", "xtab1"),
+                Pair("Film Terbaru", "xtab2"),
+                Pair("Romance", "xtab3"),
+                Pair("Drama", "xtab4"),
+                Pair("Action", "xtab5"),
+                Pair("Scifi", "xtab6"),
+                Pair("Tv Series Terbaru", "stab1"),
+                Pair("Anime Series", "stab2"),
+                Pair("Drakor Series", "stab3"),
+                Pair("West Series", "stab4"),
+                Pair("China Series", "stab5"),
+                Pair("Japan Series", "stab6"),
             )
 
+        // Fan out all 12 tab fetches concurrently. Was previously a serial for-loop
+        // which made first paint take 12× longer than necessary.
         val items =
-            urls.amap { section ->
-                val home = section.fetchItems(page)
-                if (home.isNotEmpty()) HomePageList(section.name, home) else null
+            urls.amap { (header, tab) ->
+                val home =
+                    safeGet("$mainUrl/wp-content/themes/indoxxi/ajax-top-$tab.php")
+                        ?.document
+                        ?.select("div.ml-item")
+                        ?.mapNotNull { it.toSearchResult() }
+                        .orEmpty()
+                if (home.isNotEmpty()) HomePageList(header, home) else null
             }.filterNotNull()
 
         if (items.isEmpty()) throw ErrorLoadingException()
         return newHomePageResponse(items)
-    }
-
-    private suspend fun MainSection.fetchItems(page: Int): List<SearchResponse> {
-        path?.let { path ->
-            val categoryUrl = when {
-                page <= 1 -> "$mainUrl/${path.trim('/')}/"
-                else -> "$mainUrl/${path.trim('/')}/page/$page/"
-            }
-            val categoryItems = safeGet(categoryUrl)
-                ?.document
-                ?.select("div.ml-item")
-                ?.mapNotNull { it.toSearchResult() }
-                .orEmpty()
-            if (categoryItems.isNotEmpty()) return categoryItems
-        }
-
-        return tab?.let { tab ->
-            safeGet("$mainUrl/wp-content/themes/indoxxi/ajax-top-$tab.php")
-                ?.document
-                ?.select("div.ml-item")
-                ?.mapNotNull { it.toSearchResult() }
-                .orEmpty()
-        }.orEmpty()
     }
 
     fun Element.toSearchResult(): SearchResponse? {
@@ -206,11 +185,15 @@ open class Rebahin : MainAPI() {
                 safeGet(baseLink)
                     ?.document
                     ?.select("div#list-eps > a")
-                    ?.map { Pair(it.text(), it.attr("data-iframe")) }
+                    ?.mapNotNull { eps ->
+                        val episodeName = eps.text().trim().ifBlank { return@mapNotNull null }
+                        val sourceUrl = decodeDataIframe(eps.attr("data-iframe")) ?: return@mapNotNull null
+                        Pair(episodeName, sourceUrl)
+                    }
                     ?.groupBy { it.first }
                     ?.map { eps ->
                         newEpisode(
-                            eps.value.map { fixUrl(base64Decode(it.second)) }.toString(),
+                            encodeLinkData(eps.value.map { it.second }),
                         ) {
                             this.name = eps.key
                             this.episode = eps.key.filter { it.isDigit() }.toIntOrNull()
@@ -228,13 +211,12 @@ open class Rebahin : MainAPI() {
             }
         } else {
             val links =
-                app
-                    .get(baseLink)
-                    .document
-                    .select("div#server-list div.server-wrapper div[id*=episode]")
-                    .map { fixUrl(base64Decode(it.attr("data-iframe"))) }
-                    .toString()
-            newMovieLoadResponse(title, url, TvType.Movie, links) {
+                safeGet(baseLink)
+                    ?.document
+                    ?.select("div#server-list div.server-wrapper div[id*=episode]")
+                    ?.mapNotNull { decodeDataIframe(it.attr("data-iframe")) }
+                    .orEmpty()
+            newMovieLoadResponse(title, url, TvType.Movie, encodeLinkData(links)) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
@@ -253,108 +235,80 @@ open class Rebahin : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val resolvedCount = AtomicInteger(0)
-        data
-            .removeSurrounding("[", "]")
-            .split(",")
-            .map { it.trim().trim('[', ']', ' ') }
-            .filter { it.startsWith("http") }
-            .distinct()
-            .amap { link ->
-                safeApiCall {
-                    val emitted = when {
-                        link.startsWith(mainServer) ->
-                            invokeLokalSource(link, subtitleCallback, callback)
-                        link.contains("/iembed/", true) ->
-                            invokeIembed(link, subtitleCallback, callback)
-                        link.contains("199.87.210.226/player/", true) ->
-                            invokeJuicyPlayer(link, subtitleCallback, callback)
-                        else ->
-                            invokeExtractorOrFallback(link, subtitleCallback, callback)
-                    }
-                    if (emitted) resolvedCount.incrementAndGet()
+        val emitted = AtomicInteger(0)
+        decodeLinkData(data).amap { link ->
+            safeApiCall {
+                resolveRebahinSource(link, subtitleCallback) { source ->
+                    emitted.incrementAndGet()
+                    callback.invoke(source)
+                }
+            }
+        }
+        return emitted.get() > 0
+    }
+
+    private suspend fun resolveRebahinSource(
+        rawUrl: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        sourceCallback: (ExtractorLink) -> Unit,
+    ): Boolean {
+        val url = rawUrl.trim().trim('[', ']', '"').takeIf { it.isNotBlank() } ?: return false
+        val host = runCatching { URI(url).host?.removePrefix("www.") }.getOrNull().orEmpty()
+        val ref = directUrl?.let { "$it/" } ?: "$mainServer/"
+        val emitted = AtomicInteger(0)
+
+        fun markEmit(source: ExtractorLink) {
+            emitted.incrementAndGet()
+            sourceCallback.invoke(source)
+        }
+
+        when {
+            host == URI(mainServer).host || url.startsWith("$mainServer/iembed/", true) -> {
+                resolveIembed(url)?.let { resolved ->
+                    resolveRebahinSource(resolved, subtitleCallback) { markEmit(it) }
                 }
             }
 
-        return resolvedCount.get() > 0
+            host == "199.87.210.226" && url.contains("/player/", true) -> {
+                invokeJuicyPlayer(url, subtitleCallback) { markEmit(it) }
+            }
+
+            host == "datura.groovy.monster" && url.contains(".m3u8", true) -> {
+                emitM3u8(url, "https://199.87.210.226") { markEmit(it) }
+            }
+
+            else -> {
+                loadExtractor(url, ref, subtitleCallback) { ext -> markEmit(ext) }
+                if (emitted.get() == 0 && url.isDirectMedia()) {
+                    val type = if (url.contains(".m3u8", true)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                    markEmit(
+                        newExtractorLink(name, name, url, type) {
+                            this.referer = ref
+                            this.quality = Qualities.Unknown.value
+                            this.headers = baseHeaders + mapOf("Referer" to ref)
+                        },
+                    )
+                }
+            }
+        }
+
+        return emitted.get() > 0
     }
 
-    private suspend fun invokeLokalSource(
-        url: String,
-        subCallback: (SubtitleFile) -> Unit,
-        sourceCallback: (ExtractorLink) -> Unit,
-    ): Boolean {
-        val document =
-            runCatching {
-                app.get(
-                    url,
-                    allowRedirects = false,
-                    referer = directUrl,
-                    headers = baseHeaders + mapOf("Accept" to
-                        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"),
-                    timeout = 30L,
-                ).document
-            }.getOrNull() ?: return false
+    private suspend fun resolveIembed(url: String): String? {
+        val source = runCatching {
+            URI(url).rawQuery
+                ?.split("&")
+                ?.firstOrNull { it.substringBefore("=") == "source" }
+                ?.substringAfter("=", "")
+                ?.let { URLDecoder.decode(it, "UTF-8") }
+                ?.let { base64Decode(it) }
+        }.getOrNull()
 
-        var emitted = false
-        document.select("script").find { it.data().contains("window.juicyData") }?.data()?.let { script ->
-            Regex("\"file\":\\s?\"(.+.m3u8)\"").find(script)?.groupValues?.getOrNull(1)?.let { link ->
-                M3u8Helper
-                    .generateM3u8(
-                        name,
-                        link,
-                        referer = "$mainServer/",
-                        headers = mapOf("Accept" to "*/*", "Origin" to mainServer),
-                    ).forEach { source ->
-                        emitted = true
-                        sourceCallback.invoke(source)
-                    }
-            }
+        if (!source.isNullOrBlank()) return fixUrl(source)
 
-            val subData =
-                Regex("\"?tracks\"?:\\s\\n?\\[(.*)],").find(script)?.groupValues?.getOrNull(1)
-                    ?: Regex("\"?tracks\"?:\\s\\n?\\[\\s*(?s:(.+)],\\n\\s*\"sources)")
-                        .find(script)
-                        ?.groupValues
-                        ?.getOrNull(1)
-            tryParseJson<List<Tracks>>("[$subData]")?.map {
-                subCallback.invoke(
-                    SubtitleFile(
-                        getLanguage(it.label ?: return@map null),
-                        if (it.file?.contains(".srt") == true) it.file else return@map null,
-                    ),
-                )
-            }
-        }
-        return emitted
-    }
-
-    private suspend fun invokeIembed(
-        url: String,
-        subCallback: (SubtitleFile) -> Unit,
-        sourceCallback: (ExtractorLink) -> Unit,
-    ): Boolean {
-        val source = Regex("[?&]source=([^&]+)").find(url)?.groupValues?.getOrNull(1)
-        val decoded = source?.let { runCatching { base64Decode(it) }.getOrNull() }
-        if (!decoded.isNullOrBlank()) {
-            return when {
-                decoded.contains("199.87.210.226/player/", true) ->
-                    invokeJuicyPlayer(decoded, subCallback, sourceCallback)
-                else -> invokeExtractorOrFallback(decoded, subCallback, sourceCallback)
-            }
-        }
-
-        val iframe = safeGet(url)
-            ?.document
-            ?.selectFirst("iframe[src]")
-            ?.attr("src")
-            ?.let { fixUrl(it) }
-            ?: return false
-        return when {
-            iframe.contains("199.87.210.226/player/", true) ->
-                invokeJuicyPlayer(iframe, subCallback, sourceCallback)
-            else -> invokeExtractorOrFallback(iframe, subCallback, sourceCallback)
-        }
+        val document = safeGet(url, referer = "$mainServer/")?.document ?: return null
+        return document.selectFirst("iframe[src]")?.attr("src")?.takeIf { it.isNotBlank() }?.let { fixUrl(it) }
     }
 
     private suspend fun invokeJuicyPlayer(
@@ -363,122 +317,112 @@ open class Rebahin : MainAPI() {
         sourceCallback: (ExtractorLink) -> Unit,
     ): Boolean {
         val playerBase = getBaseUrl(url)
-        val html = runCatching {
-            app.get(
-                url,
-                referer = "$mainUrl/",
-                headers = baseHeaders,
-                timeout = 30L,
-            ).text
-        }.getOrNull() ?: return false
+        val html = safeGet(url, referer = "$mainServer/")?.text ?: return false
+        val juicyArg = Regex("_juicycodes\\(([\\s\\S]*?)\\);").find(html)?.groupValues?.getOrNull(1)
+            ?: return false
+        val payload = Regex("\"([^\"]*)\"").findAll(juicyArg).joinToString("") { it.groupValues[1] }
+        val decoded = decodeJuicyCodes(payload) ?: return false
+        val m3u8 = Regex("\"sources\"\\s*:\\s*\\{[\\s\\S]*?\"file\"\\s*:\\s*\"([^\"]+?\\.m3u8)\"")
+            .find(decoded)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.cleanJsonUrl()
+            ?: Regex("\"file\"\\s*:\\s*\"([^\"]+?\\.m3u8)\"")
+                .findAll(decoded)
+                .lastOrNull()
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.cleanJsonUrl()
+            ?: return false
 
-        val decodedConfig = decodeJuicyConfig(html)
-            ?: return invokeExtractorOrFallback(url, subCallback, sourceCallback)
-        var emitted = false
-
-        Regex("\"kind\":\"(?!thumbnails)([^\"]+)\"[^{}]*\"file\":\"([^\"]+)\"[^{}]*\"label\":\"([^\"]+)\"")
-            .findAll(decodedConfig)
-            .forEach { match ->
-                val file = unescapeJsUrl(match.groupValues[2])
-                val label = match.groupValues[3]
-                if (file.endsWith(".srt", true) || file.endsWith(".vtt", true)) {
-                    subCallback.invoke(SubtitleFile(getLanguage(label), file))
-                }
-            }
-
-        Regex("\"file\":\"([^\"]+\\.m3u8[^\"]*)\"")
-            .findAll(decodedConfig)
-            .map { unescapeJsUrl(it.groupValues[1]) }
-            .distinct()
-            .forEach { m3u8 ->
-                M3u8Helper.generateM3u8(
-                    "Rebahin Juicy",
-                    m3u8,
-                    referer = "$playerBase/",
-                    headers = mapOf(
-                        "Accept" to "*/*",
-                        "Origin" to playerBase,
-                        "Referer" to "$playerBase/",
-                    ),
-                ).forEach { source ->
-                    emitted = true
-                    sourceCallback.invoke(source)
-                }
-            }
-
-        return emitted
-    }
-
-    private suspend fun invokeExtractorOrFallback(
-        link: String,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit,
-    ): Boolean {
-        val resolvedCount = AtomicInteger(0)
-        val ref = directUrl?.let { "$it/" } ?: "$mainServer/"
-        loadExtractor(link, ref, subtitleCallback) { ext ->
-            resolvedCount.incrementAndGet()
-            callback.invoke(ext)
-        }
-        if (resolvedCount.get() > 0) return true
-
-        val host = runCatching { URI(link).host }.getOrNull()?.removePrefix("www.") ?: "Embed"
-        callback.invoke(
-            newExtractorLink(host, host, link) {
-                this.referer = ref
-                this.quality = Qualities.Unknown.value
-            },
-        )
+        emitM3u8(m3u8, playerBase, sourceCallback)
+        emitSubtitles(decoded, subCallback)
         return true
     }
 
-    private fun decodeJuicyConfig(html: String): String? {
-        val callBody = Regex("_juicycodes\\((?s:(.*?))\\);", RegexOption.DOT_MATCHES_ALL)
-            .find(html)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?: return null
-        val encoded = Regex("\"([^\"]*)\"")
-            .findAll(callBody)
-            .joinToString("") { it.groupValues[1] }
-            .ifBlank { return null }
-        if (encoded.length <= 3) return null
-
-        val salt = encoded.takeLast(3).map { it.code - 100 }.joinToString("").toIntOrNull() ?: return null
-        val payload = encoded
-            .dropLast(3)
-            .replace('_', '+')
-            .replace('-', '/')
-            .let { it + "=".repeat((4 - it.length % 4) % 4) }
-        val rawSymbols = runCatching { base64Decode(payload).rot13().rot13() }.getOrNull() ?: return null
-        val symbolMap = listOf('`', '%', '-', '+', '*', '$', '!', '_', '^', '=')
-        val digits =
-            buildString {
-                rawSymbols.forEach { symbol ->
-                    val index = symbolMap.indexOf(symbol)
-                    if (index < 0) return null
-                    append(index)
-                }
-            }
-        if (digits.length < 4) return null
-
-        return digits.chunked(4).mapNotNull { block ->
-            block.toIntOrNull()?.rem(1000)?.minus(salt)?.takeIf { it > 0 }?.toChar()
-        }.joinToString("")
+    private fun emitM3u8(
+        url: String,
+        playerBase: String,
+        sourceCallback: (ExtractorLink) -> Unit,
+    ) {
+        val fixedUrl = url.cleanJsonUrl()
+        sourceCallback.invoke(
+            newExtractorLink("$name Juicy", "$name Juicy", fixedUrl, ExtractorLinkType.M3U8) {
+                this.referer = "$playerBase/"
+                this.quality = Qualities.Unknown.value
+                this.headers = baseHeaders + mapOf(
+                    "Accept" to "*/*",
+                    "Origin" to playerBase,
+                    "Referer" to "$playerBase/",
+                )
+            },
+        )
     }
 
-    private fun String.rot13(): String = map { char ->
-        when (char) {
-            in 'a'..'m', in 'A'..'M' -> char + 13
-            in 'n'..'z', in 'N'..'Z' -> char - 13
-            else -> char
+    private fun decodeJuicyCodes(payload: String): String? = runCatching {
+        if (payload.length <= 3) return@runCatching ""
+        val salt = payload.takeLast(3).map { it.code - 100 }.joinToString("").toInt()
+        var encoded = payload.dropLast(3).replace('_', '+').replace('-', '/')
+        val padding = (4 - encoded.length % 4) % 4
+        if (padding > 0) encoded += "=".repeat(padding)
+        val decodedSymbols = base64Decode(encoded)
+        val symbolMap = listOf('`', '%', '-', '+', '*', '$', '!', '_', '^', '=')
+        val digits = buildString {
+            decodedSymbols.forEach { symbol ->
+                val index = symbolMap.indexOf(symbol)
+                if (index >= 0) append(index)
+            }
         }
-    }.joinToString("")
+        buildString {
+            Regex(".{4}").findAll(digits).forEach { chunk ->
+                append(((chunk.value.toInt() % 1000) - salt).toChar())
+            }
+        }
+    }.getOrNull()
 
-    private fun unescapeJsUrl(url: String): String = url
-        .replace("\\/", "/")
-        .replace("\\u0026", "&")
-        .replace("\\&", "&")
+    private fun emitSubtitles(
+        decodedConfig: String,
+        subCallback: (SubtitleFile) -> Unit,
+    ) {
+        val subData = Regex("\"tracks\"\\s*:\\s*\\[([\\s\\S]*?)]").find(decodedConfig)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: return
+        tryParseJson<List<Tracks>>("[$subData]")?.map {
+            subCallback.invoke(
+                SubtitleFile(
+                    getLanguage(it.label ?: return@map null),
+                    if (it.file?.contains(".srt") == true) it.file.cleanJsonUrl() else return@map null,
+                ),
+            )
+        }
+    }
+
+    private fun encodeLinkData(links: List<String>): String =
+        links.map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString("|#|")
+
+    private fun decodeLinkData(data: String): List<String> {
+        val clean = data.trim().removeSurrounding("[", "]")
+        val parts = if (clean.contains("|#|")) clean.split("|#|") else clean.split(",")
+        return parts.map { it.trim().trim('"') }.filter { it.isNotBlank() }
+    }
+
+    private fun decodeDataIframe(data: String?): String? =
+        data?.takeIf { it.isNotBlank() }?.let { raw ->
+            runCatching { fixUrl(base64Decode(raw.trim())) }.getOrNull()
+        }
+
+    private fun String.cleanJsonUrl(): String =
+        this.replace("\\/", "/")
+            .replace("\\u0026", "&")
+            .replace("&amp;", "&")
+            .trim()
+
+    private fun String.isDirectMedia(): Boolean =
+        this.contains(".m3u8", true) || this.contains(".mp4", true)
 
     private fun getLanguage(str: String): String = when {
         str.contains("indonesia", true) || str.contains("bahasa", true) -> "Indonesian"
@@ -486,12 +430,6 @@ open class Rebahin : MainAPI() {
     }
 
     private fun getBaseUrl(url: String): String = URI(url).let { "${it.scheme}://${it.host}" }
-
-    private data class MainSection(
-        val name: String,
-        val path: String? = null,
-        val tab: String? = null,
-    )
 
     private data class Tracks(
         @JsonProperty("file") val file: String? = null,
