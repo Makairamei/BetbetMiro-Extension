@@ -1,0 +1,2695 @@
+[
+    {
+        "iconUrl": "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://allpornstream.com/&size=128",
+        "fileHash": "sha256-5b7defbd3ce46638d0510d2e001d26b2d811919f9a2e1275c6c4e24e27d77cb2",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 18618,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 2,
+        "internalName": "Allpornstream",
+        "description": "Semua Aliran Porno - Video HD Porno Gratis. Tonton film seks definisi tinggi terbaik dengan gadis-gadis seksi. Allpornstream.com memberi Anda ribuan video porno 1080p, 4k, dan gratis, hd porn tube",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Allpornstream.cs3",
+        "name": "Allpornstream"
+    },
+    {
+        "iconUrl": "https://cloudstream.zvlz.my.id/icon/alqanime.png",
+        "fileHash": "sha256-9d2f6cdc25c75e27fca8dd773210643846f8321a478e9eccd9df643cd9364946",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 41796,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "OVA",
+            "Anime"
+        ],
+        "version": 11,
+        "internalName": "Alqanime",
+        "description": "Nonton & Download Anime Subtitle Indonesia",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Alqanime.cs3",
+        "name": "Alqanime"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://anichin.club&size=%size%",
+        "fileHash": "sha256-b57126969491e7e2462e509a48cd3e2285761ac7b4cf51a2f073c1380135e884",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 37548,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "Cartoon"
+        ],
+        "version": 30,
+        "internalName": "AnichinMoe",
+        "description": "Anichin Moe",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/AnichinMoe.cs3",
+        "name": "AnichinMoe"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://v1.animasu.work&size=%size%",
+        "fileHash": "sha256-4eeb6ebfded158beb3ed41f77df901185aa03e8c6c69d7854007ec0f0cc9b22b",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 36318,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "OVA",
+            "Anime"
+        ],
+        "version": 19,
+        "internalName": "Animasu",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Animasu.cs3",
+        "name": "Animasu"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=https://anime-indo.lol&sz=%size%",
+        "fileHash": "sha256-4aecd9e46d8449bbbb7e7e6b84142391b184e2fa0067371244ed2ef593765dcb",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 34479,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "OVA",
+            "Anime",
+            "Movie"
+        ],
+        "version": 8,
+        "internalName": "AnimeIndo",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/AnimeIndo.cs3",
+        "name": "AnimeIndo"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=animekhor.org&sz=%size%",
+        "jarFileSize": 113905,
+        "fileHash": "sha256-95192f7080489ade64528f12c2aa1a4325f7470c02ab90bf6fbcb9b6a050a723",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 29670,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime"
+        ],
+        "version": 16,
+        "internalName": "Animekhor",
+        "jarUrl": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Animekhor.jar",
+        "description": "Anime and Movies includes (Donghuaword)",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Animekhor.cs3",
+        "name": "Animekhor",
+        "jarHash": "sha256-0c85213ec7af2b0cdf164884d1b682f8cb788d6b1ef562af98820b5ce1ebbb1e"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://154.26.137.28&size=%size%",
+        "fileHash": "sha256-6daf7999af268117db02be728d16a116cc614f8dc65ef176d8f11ab34c87d5a3",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 69517,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 4,
+        "internalName": "AnimeSailProvider",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/AnimeSailProvider.cs3",
+        "name": "AnimeSailProvider"
+    },
+    {
+        "iconUrl": "https://animexin.dev/wp-content/uploads/2020/06/animexinv1.png",
+        "fileHash": "sha256-96d9a5a8f7936bac778d20ef3b2f7ea8536bb2e01540596c3cf0e2ee8b23e32d",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 20930,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "Cartoon"
+        ],
+        "version": 8,
+        "internalName": "AnimexinProvider",
+        "description": "Animexin \u2014 Streaming Donghua Subtitle Indonesia",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/AnimexinProvider.cs3",
+        "name": "AnimexinProvider"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://anixcafe.com&size=%size%",
+        "fileHash": "sha256-c423026e268d9331ca06fe1cbd59681ef733d58187b218516c31ad568a96ced8",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 41577,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "OVA",
+            "Anime"
+        ],
+        "version": 4,
+        "internalName": "AnixCafeProvider",
+        "description": "AnixCafe / Anixverse donghua provider with safer core categories and guarded playback resolver",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/AnixCafeProvider.cs3",
+        "name": "AnixCafeProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=anizone.to&sz=256",
+        "fileHash": "sha256-de6602a53fc293df227085287035bd0f88bdde085daf417a5e8f14200c9640c4",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 25129,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Anime"
+        ],
+        "version": 4,
+        "internalName": "AnizoneProvider",
+        "description": "AniZone.to - anime subtitle dan multi-dubbing",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/AnizoneProvider.cs3",
+        "name": "AnizoneProvider"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://anoboy.be&size=%size%",
+        "fileHash": "sha256-a880a580f4be341de897c4e589a5268954cb90cb1dd15c43601614e02be904b2",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 39759,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "OVA",
+            "Anime"
+        ],
+        "version": 18,
+        "internalName": "AnoboyProvider",
+        "description": "AnoBoy \u2014 Streaming Anime Subtitle Indonesia",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/AnoboyProvider.cs3",
+        "name": "AnoboyProvider"
+    },
+    {
+        "iconUrl": "https://archivebate.com/logo/app.ico",
+        "fileHash": "sha256-2242d85594a70419d31daa371f0221bb751d189695179d41c2721785365d9665",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 20657,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 1,
+        "internalName": "Archivebate",
+        "description": "Watch your favourite camgirls for free. Cam Videos and Camgirls from Chaturbate, Camsoda, Stripchat etc.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Archivebate.cs3",
+        "name": "Archivebate"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://azmovies.to&size=%size%",
+        "fileHash": "sha256-f2d5ce275b3b4d9458929abb3e471bb10869299815782a5d70c17acb3af8cdac",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 60023,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 2,
+        "internalName": "Azmovies",
+        "description": "AzMovies + Noxx",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Azmovies.cs3",
+        "name": "Azmovies"
+    },
+    {
+        "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.aznude.com/&size=48",
+        "fileHash": "sha256-efcfd7808600807f97312c12ef4c4d1a07367fc0fe1684d00effb20cf476997d",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 31115,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 9,
+        "internalName": "AZNude",
+        "description": "Welcome to AZNUDE! We have a large, free, every day growing universe of celebrity nudity where stars from all movies and series shine.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/AZNude.cs3",
+        "name": "AZNude"
+    },
+    {
+        "iconUrl": "https://play-lh.googleusercontent.com/G9s84Cm1TDnKDX2P8nipS_s60cuCnYtjBRRLespF8nivjXmbV9tF1fY37clZhXMLaA",
+        "fileHash": "sha256-f82138aaac5939193a30d6672f35d6ab5bf0d6cd0179ec52c9c6584354b41ba1",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 79574,
+        "status": 3,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Anime",
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 10,
+        "internalName": "BilibiliProvider",
+        "description": "Bilibili TV - Anime, film, serial, dan konten Asia dari bilibili.tv",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/BilibiliProvider.cs3",
+        "name": "BilibiliProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=bondagevalley.cc&sz=%size%",
+        "fileHash": "sha256-f95513a37a4e468fee7e03629cf5a9a363f946cc469b9a8aed2e05a8c2afa947",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 26813,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 4,
+        "internalName": "BondageValley",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/BondageValley.cs3",
+        "name": "BondageValley"
+    },
+    {
+        "iconUrl": "https://cam4-static-test.xcdnpro.com/web/v2/app/phoenix/assets/static/media/favicon-512.d64f9b4e.png",
+        "fileHash": "sha256-7d27e7169ebae92b1770d8e8af9e3e891b9bab1feecab5bfc3825922940cb3e5",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 14683,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 2,
+        "internalName": "Cam4",
+        "description": "Provider NSFW untuk konten live cam dewasa dari CAM4.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Cam4.cs3",
+        "name": "Cam4"
+    },
+    {
+        "iconUrl": "https://camwh.com/contents/ugmtofwqltgh/theme/logo.png",
+        "fileHash": "sha256-78e5ee02f0593a0d2d8065d6eaf816cb8b6e587fb8060d15cad26aa5d0e05c00",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 23026,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 10,
+        "internalName": "CamWh",
+        "description": "Provider NSFW untuk konten video dewasa dari CamWH.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/CamWh.cs3",
+        "name": "CamWh"
+    },
+    {
+        "iconUrl": "https://klikxxi.me/wp-content/uploads/2024/02/cropped-site-icon.png",
+        "fileHash": "sha256-bf1da5d6389d05d1a3de16221d9b539fdba68ab39f155546e9edd26ccb3ea43d",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 239612,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 6,
+        "internalName": "Cinemax21Provider",
+        "description": "CineMax21 \u2014 Streaming Movie and TV Series",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Cinemax21Provider.cs3",
+        "name": "Cinemax21Provider"
+    },
+    {
+        "iconUrl": "https://github.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/raw/refs/heads/master/CNC%20Verse/icon.png",
+        "fileHash": "sha256-e61a5038ca5cfe2a1c91ee884ab8d0df87cc7609b226b543080d2fa45e88a442",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 70770,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 59,
+        "internalName": "CNCVerse",
+        "description": "Netflix, PrimeVideo, Disney+ Hotstar Contents in Multiple Languages",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/CNCVerse.cs3",
+        "name": "CNCVerse"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=www.dailymotion.com&sz=%size%",
+        "jarFileSize": 114438,
+        "fileHash": "sha256-c2f788e5a8e9589d3bf359324c6e8ac815052404285b65b1969ff67ea7adff30",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 28573,
+        "status": 1,
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama",
+            "Anime",
+            "AnimeMovie",
+            "Cartoon",
+            "Others"
+        ],
+        "version": 9,
+        "internalName": "DailymotionProvider",
+        "jarUrl": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/DailymotionProvider.jar",
+        "description": "Dailymotion public video catalog with fixed populated category rows for anime, drama, movie, country, WWE, RAW, and SmackDown.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/DailymotionProvider.cs3",
+        "name": "DailymotionProvider",
+        "jarHash": "sha256-14f202f7d55828e2066984216314979be9a78bddde38cdbc64daf51e889b68d3"
+    },
+    {
+        "iconUrl": "https://shorts.desisins.com/wp-content/uploads/2023/04/cropped-favicon-2-32x32.png",
+        "fileHash": "sha256-0c688e744274467d88af7bc73eced2f9798a629241d1dee6b28ab3de89a15ad6",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 22095,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 7,
+        "internalName": "Desisins",
+        "description": "18+ webseries clips from Desisins.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Desisins.cs3",
+        "name": "Desisins"
+    },
+    {
+        "iconUrl": "https://raw.githubusercontent.com/Kohi-den/extensions-source/927f9c68fd64ce52f6212ae633d0f0585eca3545/src/en/donghuastream/res/mipmap-xxxhdpi/ic_launcher.png",
+        "fileHash": "sha256-ff22116d48e86fcfbcadbbf3c001111e8e52ebd64f913a88a21c49a41816384f",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 48937,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Anime",
+            "AnimeMovie"
+        ],
+        "version": 5,
+        "internalName": "Donghuastream",
+        "description": "Donghuastream dan SeaTV untuk donghua / Chinese anime.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Donghuastream.cs3",
+        "name": "Donghuastream"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://donghub.vip&size=%size%",
+        "fileHash": "sha256-504bc8b35da807a48f731e065a9be0f81a55c6506bc95aa19b11ff24b4a7de61",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 29906,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "Cartoon"
+        ],
+        "version": 8,
+        "internalName": "Donghub",
+        "description": "Donghub untuk donghua dan anime subtitle Indonesia.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Donghub.cs3",
+        "name": "Donghub"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=dracinema.com&sz=%size%",
+        "fileHash": "sha256-7995f09568c7869320feca9b26e7ef33a062f4b20b39f8c5aa4e5f9f89ac3636",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 33179,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries"
+        ],
+        "version": 8,
+        "internalName": "Dracinema",
+        "description": "Provider CloudStream untuk Dracinema - drama China, Korea, dan short drama subtitle Indonesia.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Dracinema.cs3",
+        "name": "Dracinema"
+    },
+    {
+        "iconUrl": "https://klikxxi.me/wp-content/uploads/2024/02/cropped-site-icon.png",
+        "fileHash": "sha256-cdadf765a33e18aa6a7252bcd03106e6445d187e77efd5b7a71a1e34b90c9632",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 234704,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie",
+            "Anime"
+        ],
+        "version": 6,
+        "internalName": "Drakor",
+        "description": "Drakor \u2014 Streaming Drama Korean, Movie and TV Series",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Drakor.cs3",
+        "name": "Drakor"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://drakorid.cam&size=%size%",
+        "fileHash": "sha256-474f3dd02ef45711168cf3c5202be701b7eed887328c4e0dbfbe731f09cd4f2f",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 28240,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 8,
+        "internalName": "DrakoridProvider",
+        "description": "Drakor.id - drama Asia subtitle Indonesia.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/DrakoridProvider.cs3",
+        "name": "DrakoridProvider"
+    },
+    {
+        "iconUrl": "https://asianctv.net/favicon.ico",
+        "fileHash": "sha256-4b30934f20e8f74154bd947d6fcaf70712b5f179fe428589cf6f4dea1912b39e",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 48483,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 7,
+        "internalName": "Dramacool",
+        "description": "Asian Drama, Movies and Shows English Sub",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Dramacool.cs3",
+        "name": "Dramacool"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://drama-id.com&size=%size%",
+        "fileHash": "sha256-ed2e2043b05a8f90f6e95277dc81a1750edfcb774a8c26db67dd35b208c5b2f2",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 45731,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 9,
+        "internalName": "DramaIdProvider",
+        "description": "DramaID - drama Asia subtitle Indonesia.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/DramaIdProvider.cs3",
+        "name": "DramaIdProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=www.dubbindo.site&sz=%size%",
+        "fileHash": "sha256-8c0a5f01eb62f9c100505decf5473fbd5890f9f807c05995ed96d374a04fcae2",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 35877,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Movie",
+            "Cartoon",
+            "Anime",
+            "AnimeMovie"
+        ],
+        "version": 6,
+        "internalName": "DubbindoProvider",
+        "description": "Dubbindo \u2014 status terbatas: provider masih dapat memuat sebagian link, tetapi banyak konten di website sumber sedang processing/mati, poster kosong, atau media tidak dapat diputar.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/DubbindoProvider.cs3",
+        "name": "DubbindoProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=malcontentgames.com&sz=%size%",
+        "fileHash": "sha256-6ad00d098bab06b78ccf0600361899eea069eea13ea264e00ac06b204bd7f93f",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 38343,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "Duro92"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie",
+            "Anime",
+            "AnimeMovie"
+        ],
+        "version": 29,
+        "internalName": "Dutamovie",
+        "description": "DutaMovie",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Dutamovie.cs3",
+        "name": "Dutamovie"
+    },
+    {
+        "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.eporner.com/&size=128",
+        "fileHash": "sha256-842d5a28e73e208ef02da3b85d9cf2accfcedc39f9fe31d9b1ac4e43414bbd12",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 15136,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "sad25kag"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 8,
+        "internalName": "EPorner",
+        "description": "Nonton video film dewasa kualitas Full HD secara gratis. Koleksi lebih dari 4,9 juta film hardcore kualitas HD, 1080p, dan 4K yang bisa ditonton langsung atau diunduh.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/EPorner.cs3",
+        "name": "EPorner"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=google.com&sz=256",
+        "fileHash": "sha256-4cedabd23b0448910efc85d2c8ccc2ea606f6302733e914d2d1a7e62604e31c2",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 35517,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Others"
+        ],
+        "version": 17,
+        "internalName": "Extractors",
+        "description": "Extractors for my sources",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Extractors.cs3",
+        "name": "Extractors"
+    },
+    {
+        "iconUrl": "https://ui-avatars.com/api/?name=Filmapik&background=212121&color=03a9f4&size=256&font-size=0.5",
+        "fileHash": "sha256-221267e67572f569af0be52f891cffaacdecbf05a1736902c0ad4448336e5694",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 28420,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime",
+            "AsianDrama"
+        ],
+        "version": 9,
+        "internalName": "FilmApik",
+        "description": "Filmapik",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/FilmApik.cs3",
+        "name": "FilmApik"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=s7.iix.llc&sz=%size%",
+        "fileHash": "sha256-45b73fc9157a181cf38494dc958c0ea2663dde8392c5fa1a33d2009ba3b709c5",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 31375,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama"
+        ],
+        "version": 5,
+        "internalName": "Filmkita",
+        "description": "Filmkita",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Filmkita.cs3",
+        "name": "Filmkita"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=tv1.filmlokal.me&sz=256",
+        "fileHash": "sha256-db356216b0322f50621361e63936725ea8179bd35920c26fea9b84a70e1f0b29",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 54645,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "Betbet"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "NSFW"
+        ],
+        "version": 7,
+        "internalName": "FilmLokal",
+        "description": "FilmLokal provider split-structure dengan search fallback dan DooPlay/AJAX loadLinks untuk tv1.filmlokal.me.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/FilmLokal.cs3",
+        "name": "FilmLokal"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?sz=64&domain=fitnakedgirls.com",
+        "fileHash": "sha256-203a9c6b9df3943c7dce29493dc517cd15a3e155fabe3c4affb2bd7d89e5c0ad",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 16550,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 6,
+        "internalName": "FitNakedGirls",
+        "description": "FitNakedGirls NSFW video provider",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/FitNakedGirls.cs3",
+        "name": "FitNakedGirls"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=freepornvideos.xxx&sz=%size%",
+        "fileHash": "sha256-5c7ce1781b832b8f8f092f44ad4542d3ef89c105e317a10a32befd4909b770f2",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 20173,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 7,
+        "internalName": "FreePornVideos",
+        "description": "Premium porn with 4K support",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/FreePornVideos.cs3",
+        "name": "FreePornVideos"
+    },
+    {
+        "iconUrl": "https://free-reels.com/free-reels.png",
+        "fileHash": "sha256-98a5fc2689c951a6338e8a6e5c89043f71a92915477e9da683efb5cae44d400a",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 36281,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Anime",
+            "AsianDrama"
+        ],
+        "version": 33,
+        "internalName": "FreeReels",
+        "description": "FreeReels / DramaWave short drama provider",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/FreeReels.cs3",
+        "name": "FreeReels"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=freeuseporn.com&sz=%size%",
+        "fileHash": "sha256-35d79be166e218251439a8050d9666e52c8b3316298d40ae24d097a1c455979a",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 13885,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 4,
+        "internalName": "FreeUsePorn",
+        "description": "FreeUsePorn NSFW video provider",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/FreeUsePorn.cs3",
+        "name": "FreeUsePorn"
+    },
+    {
+        "iconUrl": "https://ui-avatars.com/api/?name=Gerakin21&background=1c1c1c&color=ffeb3b&size=256&font-size=0.5",
+        "fileHash": "sha256-75841047c2f4622fc7252f43c800d91ad91f36e95a624e64d4a8e5bd7dff6bfe",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 40390,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 8,
+        "internalName": "Gerakin21",
+        "description": "Provider CloudStream untuk Gerakin21.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Gerakin21.cs3",
+        "name": "Gerakin21"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://gojodesu.com&size=%size%",
+        "fileHash": "sha256-54f06a288952680f8a415d6879e61ec75d27e4997a3312d755c93e0e7d26e41c",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 32779,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Anime",
+            "AnimeMovie",
+            "OVA"
+        ],
+        "version": 8,
+        "internalName": "Gojodesu",
+        "description": "Gojodesu - Anime Streaming Site",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Gojodesu.cs3",
+        "name": "Gojodesu"
+    },
+    {
+        "fileHash": "sha256-025a005f5b618034f1316698dd1767097574e3029727c24a1cf0088f7bf35dc8",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 57098,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "Betbet"
+        ],
+        "tvTypes": [
+            "Anime",
+            "AnimeMovie",
+            "OVA"
+        ],
+        "version": 12,
+        "internalName": "Gomunime",
+        "description": "Gomunime anime sub Indo dengan loadLinks aktif untuk server BTUBE, XTWAP, Blogger, dan direct media.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Gomunime.cs3",
+        "name": "Gomunime"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=www.huazai6.com&sz=%size%",
+        "fileHash": "sha256-bdf0929a74b9e10f398e7093e0971da2af1d928b043f5f02f7bb18450abd607e",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 53234,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "sad25kag",
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama"
+        ],
+        "version": 15,
+        "internalName": "GudangFilm",
+        "description": "GudangFilm provider untuk domain aktif huazai6.com dengan detail movie/series valid dan resolver playback/download dari player sumber.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/GudangFilm.cs3",
+        "name": "GudangFilm"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=haho.moe&sz=%size%",
+        "fileHash": "sha256-bc706fdfb95949c0de5b3510b7817a7891a2341602f04a98d21287281a10fd12",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 24373,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 10,
+        "internalName": "Hahomoe",
+        "description": "Hentai AHO Streaming",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Hahomoe.cs3",
+        "name": "Hahomoe"
+    },
+    {
+        "iconUrl": "https://happy2hub.eu/wp-content/uploads/2023/02/Logo-2x.png",
+        "fileHash": "sha256-7fb171d1f407d8124f92c130ec4ed9ab78fb118b93ab7daefc5b35a7e6721072",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 28783,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 4,
+        "internalName": "Happy2hub",
+        "description": "Provider CloudStream untuk Happy2hub",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Happy2hub.cs3",
+        "name": "Happy2hub"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.heavy-r.com/&size=128",
+        "fileHash": "sha256-14bc3d57bf1c583c88070a36eb925d9b082bb50a7d8da524653dff7aa88d6865",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 21161,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 3,
+        "internalName": "HeavyR",
+        "description": "Heavy-R.com provider for CloudStream",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/HeavyR.cs3",
+        "name": "HeavyR"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=hentaicity.com&sz=%size%",
+        "fileHash": "sha256-7c753249dd05ae0349659eba51f31c205687c0f16643a4e474ee244cd7de966a",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 21475,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 3,
+        "internalName": "HentaiCity",
+        "description": "Provider CloudStream untuk HentaiCity",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/HentaiCity.cs3",
+        "name": "HentaiCity"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=hentaicop.com&sz=256",
+        "fileHash": "sha256-a97e8da5550908617f5f042c8068a86ab177131573fb9bba46d558f8c1c511d2",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 50069,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "Betbet"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 6,
+        "internalName": "HentaiCop",
+        "description": "HentaiCop provider dengan struktur split dan kategori website terbaru.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/HentaiCop.cs3",
+        "name": "HentaiCop"
+    },
+    {
+        "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://hentaiworld.tv/&size=128",
+        "fileHash": "sha256-3d8394577495c2031933d97b834dac552199c62051c72c18878ecaca4bc0780e",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 23918,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 3,
+        "internalName": "HentaiWorld",
+        "description": "Provider CloudStream untuk HentaiWorld",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/HentaiWorld.cs3",
+        "name": "HentaiWorld"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://hidoristream.my.id&size=%size%",
+        "fileHash": "sha256-428d34dea45cbd0ad8a71265d9565a868d795e2a1e08e149cf4b08a6dec1f2e7",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 56996,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Anime",
+            "AnimeMovie",
+            "OVA"
+        ],
+        "version": 8,
+        "internalName": "HidoriStreamProvider",
+        "description": "HidoriStream \u2014 Streaming Anime Subtitle Indonesia",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/HidoriStreamProvider.cs3",
+        "name": "HidoriStreamProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=z2.idlixku.com&sz=%size%",
+        "fileHash": "sha256-a8665ad3df4d1882b44de0343b5858cc7448f3d0d8ea87ea8ac8869b5281bf98",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 94267,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime",
+            "AsianDrama"
+        ],
+        "version": 44,
+        "internalName": "IdlixProvider",
+        "description": "Idlix provider with direct IP main URL, origin fallback routing, safe play-session JSON bodies, compile-safe extractor emission, merged redeem fallback parsing, and hardened iframe playback handling.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/IdlixProvider.cs3",
+        "name": "IdlixProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=www.indo18.com&sz=%size%",
+        "fileHash": "sha256-bf112ece0fdf660e848c5c69641e4c96aa0830e00ea21287b1eca28f592086c0",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 61920,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 13,
+        "internalName": "Indo18",
+        "description": "Indo18 provider with active www.indo18.com origin, root-slug detail parsing, source-matched categories, safer posters, and hardened playback resolving from Jomblo/Playmogo redirects, embed/player payloads, stream API hosts, Doodstream, HLS, MP4, and Cloudstream extractors.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Indo18.cs3",
+        "name": "Indo18"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=89.124.111.64&sz=%size%",
+        "fileHash": "sha256-4c374bd29b7af24c035155720b9ef2f8dd952821d3d93ef782c3474acbcd812f",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 45352,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 4,
+        "internalName": "IndoDrama21",
+        "description": "IndoDrama21 active IP build with compact website-backed categories, stable episode mapping, and hardened playback extraction.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/IndoDrama21.cs3",
+        "name": "IndoDrama21"
+    },
+    {
+        "iconUrl": "https://homecookingrocks.com/wp-content/uploads/2024/10/cropped-indomax21-favicon-color-1.png",
+        "fileHash": "sha256-d43331bee0c3821905c1b46c5d1c03a1bc7207eebee544582a0ed58d1367895d",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 26253,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 4,
+        "internalName": "IndoMax21Provider",
+        "description": "IndoMax21 \u2014 Streaming Anime, Donghua, Hentai, Porn, Movie and TV Series",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/IndoMax21Provider.cs3",
+        "name": "IndoMax21Provider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=archive.org&sz=%size%",
+        "jarFileSize": 194611,
+        "fileHash": "sha256-45ea3a0b2338d1b41daf5e8706b48c3ad7027361250606f816690728f0dce13d",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 41150,
+        "status": 1,
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime",
+            "Others"
+        ],
+        "version": 5,
+        "internalName": "InternetArchiveProvider",
+        "jarUrl": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/InternetArchiveProvider.jar",
+        "description": "Watch movies, classic TV, animation, and public-domain video from the Internet Archive",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/InternetArchiveProvider.cs3",
+        "name": "InternetArchiveProvider",
+        "jarHash": "sha256-09e163da5f15b3fddbb27d35e1365605cbe140188018b8ed3318c1900dd39d67"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=uncutmaza.cc&sz=%size%",
+        "fileHash": "sha256-2c9638388ec5daacbb2c7d65c78fca91b9866fb2bb4987e5241a30cfc4e94030",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 10480,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 5,
+        "internalName": "InternetChicks",
+        "description": "InternetChicks",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/InternetChicks.cs3",
+        "name": "InternetChicks"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=javfc2.xyz&sz=256",
+        "fileHash": "sha256-e0afcdd5c1fa9f22eb6e7bb6aa09985c3969cd3f438e58988c1ca85cfa64d36a",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 29774,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 7,
+        "internalName": "JavFC",
+        "description": "JavFC provider with refreshed categories, tolerant parsing, keyed episode playback, classic player src recovery, URL-decoded media candidates, and hardened extractor handling.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/JavFC.cs3",
+        "name": "JavFC"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=jav.guru&sz=%size%",
+        "fileHash": "sha256-b2ecfaee9e073ea17e63253a43666dc88c550837a2b5c9e78155548a91364b1d",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 38363,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 11,
+        "internalName": "JavGuru",
+        "description": "JavGuru",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/JavGuru.cs3",
+        "name": "JavGuru"
+    },
+    {
+        "iconUrl": "https://javhd.today/logo/javhd1.png",
+        "fileHash": "sha256-fb8dbd785f165fa47031e15d5fa0ccbccbaae5e84f527c2ed876ab29e0dfc3e9",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 32539,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 8,
+        "internalName": "JAVHd",
+        "description": "Provider JAVHD dengan kategori situs yang dirapikan, pencarian, subtitle eksternal, dan extractor playback aktif.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/JAVHd.cs3",
+        "name": "JAVHd"
+    },
+    {
+        "iconUrl": "https://homecookingrocks.com/wp-content/uploads/2024/10/cropped-indomax21-favicon-color-1.png",
+        "fileHash": "sha256-a360fa2e2a4152b5b770049786044014feb4441c65143186b30eb63b782e172d",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 24829,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 3,
+        "internalName": "JavHeyProvider",
+        "description": "IndoMax21 \u2014 Streaming Anime, Donghua, Hentai, Porn, Movie and TV Series",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/JavHeyProvider.cs3",
+        "name": "JavHeyProvider"
+    },
+    {
+        "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://javtiful.com/main&size=128",
+        "fileHash": "sha256-fc6a2e3fe7c2b65dfa9cac5d38721bd0a7719bb690a49c0d8bafd063a4006cb0",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 21231,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 7,
+        "internalName": "Javtiful",
+        "description": "Watch more than 60,000 Full HD JAV Online For Free at Javtiful",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Javtiful.cs3",
+        "name": "Javtiful"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=javx.org&sz=%size%",
+        "fileHash": "sha256-e3ebcef8d49df27df225f9436fca7c33a85b14780646ac64f96a253fc0dd3cd6",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 16357,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 4,
+        "internalName": "Javx",
+        "description": "JAVX provider by sad25kag with source-backed categories and stable playback handling.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Javx.cs3",
+        "name": "Javx"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=tv44.juragan.film&sz=%size%",
+        "fileHash": "sha256-8db33d9235cd31ab4c55596e54ffb37cc88b684f73347e37ecca1c0b2dfdb977",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 58170,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "sad25kag"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime",
+            "AsianDrama"
+        ],
+        "version": 17,
+        "internalName": "JuraganFilm",
+        "description": "JuraganFilm provider for tv44.juragan.film with HTML catalog parsing, search, detail metadata, episode parsing, direct MP4/HLS links, subtitles, and extractor fallback support.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/JuraganFilm.cs3",
+        "name": "JuraganFilm"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=jav.guru&sz=%size%",
+        "fileHash": "sha256-86e6610a58c15eec68534340f79cecd4447dbde6146bf5dcd0f6195b6b50afb9",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 25346,
+        "status": 3,
+        "language": "en",
+        "authors": [
+            "Jav"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 6,
+        "internalName": "Kawanfilm",
+        "description": "",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Kawanfilm.cs3",
+        "name": "Kawanfilm"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://sv4.kazefuri.cloud&size=%size%",
+        "fileHash": "sha256-af6a00a5d2e9d7eaeb349268ddf7cc3a256a4e294f8c27902c3eabb647c740ca",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 37165,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "OVA",
+            "Anime"
+        ],
+        "version": 10,
+        "internalName": "KazefuriProvider",
+        "description": "Kazefuri",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/KazefuriProvider.cs3",
+        "name": "KazefuriProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=kingbokep.tv&sz=256",
+        "fileHash": "sha256-54021b676710d49a77d62a1704d3237584ac26b989f6fdb27258e0e968255b61",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 35115,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "Betbet"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 3,
+        "internalName": "KingBokep",
+        "description": "KingBokep provider dengan struktur split dan kategori terbaru dari website sumber.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/KingBokep.cs3",
+        "name": "KingBokep"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://kissasian.cam&size=%size%",
+        "fileHash": "sha256-9261470430047fb83b2ff6433c3407de8a4107e8fbb7195cb544a3fcdb6d4dbe",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 30818,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 4,
+        "internalName": "Kissasian",
+        "description": "Kissasian",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Kissasian.cs3",
+        "name": "Kissasian"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://kisskh.buzz/&size=256",
+        "fileHash": "sha256-4a25d490f72fdc9dc69d1ed6c77dd49846c42e076ddf3ed741b574232e9ad174",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 31087,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama"
+        ],
+        "version": 4,
+        "internalName": "KissKH",
+        "description": "Watch drama online in high quality. Free download high quality drama. Various formats from 240p to 720p HD (or even 1080p). Feel Free To Watch!",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/KissKH.cs3",
+        "name": "KissKH"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://klikxxi.fit&size=%size%",
+        "fileHash": "sha256-ceec8e7e880a8a0fb6edcdc1bd7dfdc4030915b2a5782aae88f83f92b113ee92",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 21009,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 9,
+        "internalName": "Klikxxi",
+        "description": "Klikxxi",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Klikxxi.cs3",
+        "name": "Klikxxi"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=kuramanime.com&sz=%size%",
+        "fileHash": "sha256-a70448495ffe5c9ddb30ede2e6f6636d65bb506f053b364f6038747c74f3e3d9",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 34005,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 50,
+        "internalName": "KuramanimeProvider",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/KuramanimeProvider.cs3",
+        "name": "KuramanimeProvider"
+    },
+    {
+        "iconUrl": "https://play-lh.googleusercontent.com/EFMkS1T-8txjLFIl9QxjcTRLa7a7Muv08C04b7ongYgodoY_b2T3GpxzGAQEx-eitfQ=w256",
+        "fileHash": "sha256-145b8f0413023c06b48735b09e404dddf36f6f4d3fe61940b73c23f1e6b18eff",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 38952,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 3,
+        "internalName": "KuronimeProvider",
+        "description": "Kuronime \u2014 Streaming Anime Subtitle Indonesia",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/KuronimeProvider.cs3",
+        "name": "KuronimeProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=layarasia.lol&sz=%size%",
+        "fileHash": "sha256-fd878a4889ad905e8c9f62b9f4d81504f812d93d0ce653b9faa43a3d60027e82",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 32404,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "sad25kag"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama"
+        ],
+        "version": 3,
+        "internalName": "LayarAsiaProvider",
+        "description": "LayarAsia provider with clean Asian drama/movie categories and compile-safe extractor registrations.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/LayarAsiaProvider.cs3",
+        "name": "LayarAsiaProvider"
+    },
+    {
+        "iconUrl": "https://assets.lk21.party/favicons/apple-icon-144x144.png",
+        "fileHash": "sha256-b7b03f42557904128dac4c88c595ef1daabb227fd80834aed98255d0a1d83399",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 62378,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "sad25kag"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 5,
+        "internalName": "LayarKacaProvider",
+        "description": "LayarKaca \u2014 provider film dan series subtitle Indonesia dengan kategori LK21/Nontondrama lengkap serta parser API/player yang diperkuat.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/LayarKacaProvider.cs3",
+        "name": "LayarKacaProvider"
+    },
+    {
+        "iconUrl": "http://mangoporn.net/wp-content/uploads/2024/07/mangoporn.net_.png",
+        "fileHash": "sha256-9692102830d9c2d90f30333a4959f9b4417eb4a1b96eb00b6ee4d65e1dd819fa",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 20689,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 3,
+        "internalName": "Mangoporn",
+        "description": "MangoPorn",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Mangoporn.cs3",
+        "name": "Mangoporn"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=tv12.melongmovies.com&sz=%size%",
+        "fileHash": "sha256-50ae2768b104372b3fb2e0259ee0433088d019cc389c7d5169a5f89b101a041f",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 53303,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama"
+        ],
+        "version": 13,
+        "internalName": "Melongmovie",
+        "description": "Melongmovie provider maintained by BetbetMiro",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Melongmovie.cs3",
+        "name": "Melongmovie"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://ssstik.tv&size=%size%",
+        "fileHash": "sha256-665028662ad393fcc0d9efde730e0f4225e7e7c1023f95265570e2616d83d441",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 41396,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama"
+        ],
+        "version": 5,
+        "internalName": "Midasxxi",
+        "description": "MidasXXI provider with source-backed movie, series, genre, country, network, and curated rows.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Midasxxi.cs3",
+        "name": "Midasxxi"
+    },
+    {
+        "iconUrl": "https://missav.ws/missav/logo-square.png",
+        "fileHash": "sha256-c2d58bbb9184ba81a20a6e8513a1e4392a8719b2208f6f91745184e64ccfcff4",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 17323,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 3,
+        "internalName": "MissAV",
+        "description": "Best Japan AV porn site, free forever, high speed, no lag, over 100,000 videos with daily update.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/MissAV.cs3",
+        "name": "MissAV"
+    },
+    {
+        "iconUrl": "https://github.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/raw/refs/heads/master/MovieBoxProvider/icon.png",
+        "fileHash": "sha256-9048e2cf8cde7949fdb704e63896ad83650268a21c43dd04df59ebad83576759",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 38408,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 16,
+        "internalName": "MovieBoxProvider",
+        "description": "Multi Language Movies and Series Provider",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/MovieBoxProvider.cs3",
+        "name": "MovieBoxProvider"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://nekokun.my.id&size=%size%",
+        "fileHash": "sha256-1a5481547cee96b654ee59744055c17693eef1f38674a6fb7f028b1fcc1510b2",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 29750,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "OVA",
+            "Anime"
+        ],
+        "version": 1,
+        "internalName": "NekokunProvider",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/NekokunProvider.cs3",
+        "name": "NekokunProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=nekopoi.care&sz=%size%",
+        "fileHash": "sha256-ff649ba990e848ac59f49b3be64b7ac7f8f2855f212ebdd5f86ad10683b40e98",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 25185,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 2,
+        "internalName": "Nekopoi",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Nekopoi.cs3",
+        "name": "Nekopoi"
+    },
+    {
+        "iconUrl": "https://new31.ngefilm.site/wp-content/uploads/2023/08/cropped-imageedit_8_4481000408-60x60.png",
+        "fileHash": "sha256-b15b4f707bebc875cd697a85c02bc2e2531629cd7dfd9937b381123ca689c849",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 31613,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 1,
+        "internalName": "NgeFilm21Provider",
+        "description": "NgeFilm21 \u2014 Streaming Movie and TV Series",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/NgeFilm21Provider.cs3",
+        "name": "NgeFilm21Provider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=nimegami.id&sz=%size%",
+        "fileHash": "sha256-5839597427159f5f967bf1aa550c9a1788cd4149eb6f8cf410489ac7a57e20e5",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 26337,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 13,
+        "internalName": "Nimegami",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Nimegami.cs3",
+        "name": "Nimegami"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=richemmerson.com&sz=256",
+        "fileHash": "sha256-dfa589cd362c995e1116aec5fc3fb9f6b5079db359b04db922b78005076ff0f1",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 72121,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama"
+        ],
+        "version": 5,
+        "internalName": "NoDrakorID",
+        "description": "NoDrakorID provider for richemmerson.com with source-backed categories, filtered cards, and AbyssPlayer, Boosterx, and guarded unsupported player handling.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/NoDrakorID.cs3",
+        "name": "NoDrakorID"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://nomat.asia&size=%size%",
+        "fileHash": "sha256-3312f369db195b1e559517c713add5c95a9d6e858176b3553e8e328d1fbec507",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 21377,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 7,
+        "internalName": "Nomat",
+        "description": "Nomat",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Nomat.cs3",
+        "name": "Nomat"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=01nonton.top&sz=256",
+        "fileHash": "sha256-75687eddfdc35465a0137c5b40d23ca90ef58de7ae14ef795cc60b9213b5d978",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 102434,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "Betbet"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "NSFW"
+        ],
+        "version": 14,
+        "internalName": "Nonton01",
+        "description": "Nonton01 provider aktif dengan domain IP terbaru, DooPlay AJAX evidence, dan extractor Cinemaz/AbyssPlayer bounded.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Nonton01.cs3",
+        "name": "Nonton01"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://s11.nontonanimeid.boats&size=%size%",
+        "fileHash": "sha256-436e49e55aad91ef831f74b72a3c51faaa9c47f3eb663322cd8365790e42f1b0",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 41654,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 3,
+        "internalName": "NontonAnimeIDProvider",
+        "description": "NontonAnimeID \u2014 Streaming Anime Subtitle Indonesia",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/NontonAnimeIDProvider.cs3",
+        "name": "NontonAnimeIDProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=noodlemagazine.com/&sz=%size%",
+        "fileHash": "sha256-4581a7b441e01846a56471a9aeb4a9b9b0003b43121d1ce83ce9441e8714db43",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 11542,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 14,
+        "internalName": "NoodleMagazineProvider",
+        "description": "type .nofap in discord - Full Length",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/NoodleMagazineProvider.cs3",
+        "name": "NoodleMagazineProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=onetouchtv.xyz/&sz=%size%",
+        "jarFileSize": 168459,
+        "fileHash": "sha256-eceb4b4d12c6264fbd1657df581b2b6c2f6367a85b54ff453224b0f93ae7d943",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 37538,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries"
+        ],
+        "version": 2,
+        "internalName": "OneTouchTV",
+        "jarUrl": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/OneTouchTV.jar",
+        "description": "Asian Dramas",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/OneTouchTV.cs3",
+        "name": "OneTouchTV",
+        "jarHash": "sha256-2167381b97e129eaef05eb9d72cefb16dd9e310b1f592ab192c847d9e37c5f06"
+    },
+    {
+        "iconUrl": "https://onlyjerk.net/wp-content/uploads/2024/01/apple-icon-180x180-1.png",
+        "fileHash": "sha256-6b6fa17eb8743d7bb86bed60c6688ae35427fc214038a25a501a5082af76d093",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 12769,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 7,
+        "internalName": "Onlyjerk",
+        "description": "Onlyjerk",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Onlyjerk.cs3",
+        "name": "Onlyjerk"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://anime.oploverz.ac&size=%size%",
+        "fileHash": "sha256-4d9cddd0ae00cea9fefe343893bbb15a608d9d088b82fd234fd5ced33ab08e89",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 30158,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 33,
+        "internalName": "OploverzProvider",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/OploverzProvider.cs3",
+        "name": "OploverzProvider"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://45.11.57.243&size=%size%",
+        "fileHash": "sha256-547cccdb7b85686c97b5a871062cba94a0c52c35d1961526148602c608e71d19",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 21862,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 17,
+        "internalName": "Oppadrama",
+        "description": "Oppadrama",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Oppadrama.cs3",
+        "name": "Oppadrama"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=otakudesu.blog&sz=%size%",
+        "fileHash": "sha256-30c9399c04e80fa97de81ca956e27812a6275de654cdeae9a17da27cba8ba828",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 27765,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Anime",
+            "AnimeMovie",
+            "OVA"
+        ],
+        "version": 14,
+        "internalName": "OtakudesuProvider",
+        "description": "Otakudesu provider with source-backed homepage categories and genre rows from the current Otakudesu site.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/OtakudesuProvider.cs3",
+        "name": "OtakudesuProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=pasarbokep.com&sz=%size%",
+        "fileHash": "sha256-a98c7c1681987ce890d940a9cf674a21c753cc3c42ded972200ca09b856b606c",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 45208,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 4,
+        "internalName": "PasarBokep",
+        "description": "PasarBokep provider by BetbetMiro",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/PasarBokep.cs3",
+        "name": "PasarBokep"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://ww03.pencurimovie.bond&size=%size%",
+        "fileHash": "sha256-3eec8e4ae08c32cfb01b96d1e6b832137f87e7c66bbd2d7cf62527313a469dba",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 15379,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 1,
+        "internalName": "PencuriMovieProvider",
+        "description": "PencuriMovie \u2014 Streaming Movie and TV Series",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/PencuriMovieProvider.cs3",
+        "name": "PencuriMovieProvider"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://pimpbunny.com/&size=128",
+        "fileHash": "sha256-53236454f169a0a50ff9eb70dcccb93cfa8f78230a5afb14da89b1dea2082d13",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 23541,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 6,
+        "internalName": "Pimpbunny",
+        "description": "Looking for the hottest content on the internet? PimpBunny brings you the hottest porn videos and lets you chat with the content creators.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Pimpbunny.cs3",
+        "name": "Pimpbunny"
+    },
+    {
+        "iconUrl": "https://podjav.tv/wp-content/uploads/2025/02/favicon-podjav.ico",
+        "fileHash": "sha256-1a3145d8b9fdf065d5c34a8f559322982f7132f72df350691242d3c54066a1f7",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 21105,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 9,
+        "internalName": "PODJAV",
+        "description": "Best Japan AV porn site, free forever, high speed, no lag, over 100,000 videos, daily update, no ads while playing video.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/PODJAV.cs3",
+        "name": "PODJAV"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=www.porn00.org&sz=%size%",
+        "fileHash": "sha256-58646e7f19cc0ceed79a5fd5ec20b6acea794e551c2e4b33eb34c9cc7f08621d",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 21212,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 5,
+        "internalName": "Porn00",
+        "description": "Porn00 provides hd porn videos for fee. And we're offering latest 720p porn, xxx and sex videos at porn00.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Porn00.cs3",
+        "name": "Porn00"
+    },
+    {
+        "iconUrl": "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.porn36.com&size=32",
+        "fileHash": "sha256-7aab6bef58c9a62e5427747296cec973c309c775a438dfc08a580c51102f1548",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 13170,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 5,
+        "internalName": "Porn36",
+        "description": "Dive into a wild world of Porn Videos! Feast on free movies in spicy 4K & HD. Ads won\u2019t crash your party!",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Porn36.cs3",
+        "name": "Porn36"
+    },
+    {
+        "iconUrl": "https://www.pornhat.com/android-icon-192x192.png",
+        "fileHash": "sha256-51f550b6f1aef0afa42740c36d0ca808cabb7f34e84f6f177d0d99c8c081d66b",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 12565,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 2,
+        "internalName": "PornHat",
+        "description": "",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/PornHat.cs3",
+        "name": "PornHat"
+    },
+    {
+        "iconUrl": "https://pornone.com/favicon.ico",
+        "fileHash": "sha256-d0a10a3a6898e6074df0a38ec98e1099023e327812bca68ddd4dfcf77130fa3f",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 11324,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 1,
+        "internalName": "PornOne",
+        "description": "Free Porn & HD Porno Videos in full length! Every minute new porn video for download and streaming. Tons of the Best XXX Movies daily from top porno tube PornOne.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/PornOne.cs3",
+        "name": "PornOne"
+    },
+    {
+        "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.pornslash.com/embed/E3mJAZANNge&size=128",
+        "fileHash": "sha256-1b6267f9be1252f6379115c9a954ac2dd5fc5f6d6c812080d1119d93c89d1f3b",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 15138,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 1,
+        "internalName": "Pornslash",
+        "description": "Watch millions of top and fresh porn videos for free, stream the hottest HD porn videos for free on PornSlash, full-length porn videos",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Pornslash.cs3",
+        "name": "Pornslash"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=www.porntrex.com&sz=%size%",
+        "fileHash": "sha256-6a06a190d33f03deb896de8bcc4890b56f3d81fff67ace3042decbdab1a1f628",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 12851,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 4,
+        "internalName": "Porntrex",
+        "description": "Porntrex",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Porntrex.cs3",
+        "name": "Porntrex"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://pornwatch.ws/&size=128",
+        "fileHash": "sha256-fb110005d65f32e389e1ea4b5490620b8c9b61c077fa547f0cf139a93b4dc747",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 30051,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiror"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 10,
+        "internalName": "PornWatch",
+        "description": "PornWatch - Porn Watch Online Free. Biggest Porn Movies Online Database. Watch and Download Full Porn Movie DVD in High Definition Quality. Latest Collection of Porn Movies DVD Free",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/PornWatch.cs3",
+        "name": "PornWatch"
+    },
+    {
+        "fileHash": "sha256-948bd5fcb6ff6f14a07f13881b4c0593834c4a02c2556a93401e64496b043107",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 40977,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie",
+            "Anime"
+        ],
+        "version": 5,
+        "internalName": "Pusatfilm",
+        "description": "PusatFilm - Streaming Movie and TV Series",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Pusatfilm.cs3",
+        "name": "Pusatfilm"
+    },
+    {
+        "iconUrl": "https://putarflix.com/wp-content/uploads/2023/11/cropped-PUTARFLIX-32x32.png",
+        "fileHash": "sha256-8d7f9d309582cf680d6c5a2399c1fd5b792198cce765aeb3cd983798203acf0c",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 114663,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama"
+        ],
+        "version": 16,
+        "internalName": "PutarFlix",
+        "description": "PutarFlix provider with active source-backed categories, stronger Server 1/2/3 playback discovery, robust iframe/AJAX decoding, and hardened direct stream extraction.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/PutarFlix.cs3",
+        "name": "PutarFlix"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=rebahinxxi3.com&sz=%size%",
+        "fileHash": "sha256-887fc9c31961c48328c2bad9b0833eeb982feb574154d96e65aa99a55d4b241f",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 27323,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime"
+        ],
+        "version": 6,
+        "internalName": "Rebahin",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Rebahin.cs3",
+        "name": "Rebahin"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=reynime.my.id&sz=%size%",
+        "fileHash": "sha256-886e6a3959364dae27b43695cc6106e33e0d863598e7a2ff4f27c736d272c4b2",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 81454,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Anime",
+            "AnimeMovie",
+            "OVA"
+        ],
+        "version": 22,
+        "internalName": "ReynimeProvider",
+        "description": "Reynime provider split into plugin, provider, models, seeds, parser, extractor and utils with seed-first catalog, backend episode probing, and resilient playback extraction.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/ReynimeProvider.cs3",
+        "name": "ReynimeProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=samehadaku.care&sz=%size%",
+        "fileHash": "sha256-0e2eb8b790bf50d2f6a881dd3ecec7a78f5d96313940f62a049ffc1d68523e5a",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 59925,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Anime",
+            "AnimeMovie",
+            "OVA"
+        ],
+        "version": 31,
+        "internalName": "Samehadaku",
+        "description": "Samehadaku provider with split structure, official-domain fallback, website-matched categories, resilient detail parser, and playback resolver.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Samehadaku.cs3",
+        "name": "Samehadaku"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=tv.sobatmov.xyz&sz=%size%",
+        "fileHash": "sha256-abd789baa819f6bca835873e415798a6602cb05a969de6805af0b7b925cf0bda",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 35235,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 2,
+        "internalName": "SobatKeren21",
+        "description": "SobatKeren21 provider for tv.sobatmov.xyz with compact provider, homepage categories, search, drama/movie detail parsing, episode mapping, and download-host playback fallback.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/SobatKeren21.cs3",
+        "name": "SobatKeren21"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://sontolfilm.com&size=%size%",
+        "fileHash": "sha256-2a603a90599f261403325ad2b935cf74e9d9b01b1ff8af1951bfb82b04da891d",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 25340,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime",
+            "AsianDrama"
+        ],
+        "version": 2,
+        "internalName": "SontolFilmProvider",
+        "description": "SontolFilm",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/SontolFilmProvider.cs3",
+        "name": "SontolFilmProvider"
+    },
+    {
+        "iconUrl": "https://github.com/duro92/ExtCloud/blob/main/SoraStream/Icon.png",
+        "fileHash": "sha256-f76bab96b46775767caa0b9f888b7abfc822eed115590fac07e5ccd96df1fff4",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 181273,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Anime",
+            "Movie"
+        ],
+        "version": 236,
+        "internalName": "SoraStream",
+        "description": "#1 best extention based on MultiAPI",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/SoraStream.cs3",
+        "name": "SoraStream"
+    },
+    {
+        "iconUrl": "https://sulasok.uno/00ICON_7IFI9DWVV1.png",
+        "jarFileSize": 52068,
+        "fileHash": "sha256-e9795536329c370479ffd66730fc9a0e75a86f4d08bd28eb061c68440c810f43",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 13062,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 6,
+        "internalName": "Sulasok",
+        "jarUrl": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Sulasok.jar",
+        "description": "Sulasok",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Sulasok.cs3",
+        "name": "Sulasok",
+        "jarHash": "sha256-19b55f71ec53ff7bb3b8e03158fc19a5344f92b9d2fb08a95ab8b942889c9730"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=surgafilm21.homes&sz=%size%",
+        "fileHash": "sha256-24320ddbfcbe16e2f2d74380c55de8ba8fae745a7da26228edc73347e9aa281c",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 40388,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama",
+            "AnimeMovie",
+            "Cartoon",
+            "NSFW"
+        ],
+        "version": 3,
+        "internalName": "SurgeFilm21",
+        "description": "SurgeFilm21 / Surgafilm21 \u2014 pengganti DuniaFilm21 dengan sumber baru surgafilm21.homes untuk movie, series, drama, action, horror, sci-fi, mystery, animasi, Thailand, dan update terbaru.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/SurgeFilm21.cs3",
+        "name": "SurgeFilm21"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://tensei.club&size=%size%",
+        "fileHash": "sha256-19ce56240f3046c21e2beb48238e8d4497a307854ee784e23e3937ba6218b3de",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 35508,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "OVA",
+            "Anime"
+        ],
+        "version": 2,
+        "internalName": "TenseiProvider",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/TenseiProvider.cs3",
+        "name": "TenseiProvider"
+    },
+    {
+        "iconUrl": "https://pbs.twimg.com/profile_images/1054618246551298048/Dkj4DQSt_400x400.jpg",
+        "fileHash": "sha256-6fea26c09ed5b51b508a1429e73d2ad3c4f1da4d1435fc917abc1e39aaf2b15e",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 9312,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 4,
+        "internalName": "TrendyPorn",
+        "description": "TrendyPorn",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/TrendyPorn.cs3",
+        "name": "TrendyPorn"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://watchwrestling.ae/&size=32",
+        "fileHash": "sha256-28daaa1162e48d2339f347de939a6938ddbef88d7ac4f9f3b6d16068cdcc9047",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 17844,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Live"
+        ],
+        "version": 25,
+        "internalName": "WatchWrestling",
+        "description": "Watch WWE | WWE Raw | Smackdown Live",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/WatchWrestling.cs3",
+        "name": "WatchWrestling"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://winbu.net&size=%size%",
+        "fileHash": "sha256-b9aa84c2438542ee47828c15019a90b42dd5f6bc59ac23b9b196a25818941aa5",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 41539,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Movie",
+            "Anime",
+            "TvSeries"
+        ],
+        "version": 4,
+        "internalName": "WinbuProvider",
+        "description": "Winbu \u2014 Streaming Anime, Movie and TV Series",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/WinbuProvider.cs3",
+        "name": "WinbuProvider"
+    },
+    {
+        "iconUrl": "https://static.xhpingcdn.com/xh-mobile/images/favicon/favicon-v2-512x512.png?v=1",
+        "fileHash": "sha256-8a9dd8b69019ac7a0080b65783b9ed117bd8ee9ab08f63daf27066ae286e3637",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 16017,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 9,
+        "internalName": "Xhamster",
+        "description": "Awas Jangan Coli Kawan",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Xhamster.cs3",
+        "name": "Xhamster"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=https://www.xnxx.com&sz=256",
+        "fileHash": "sha256-47b6bcceefacca7799d8d04d65c6793d1bdd1e2bcc4fdd1a64bdb348571f1352",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 26327,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 2,
+        "internalName": "XNXX",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/XNXX.cs3",
+        "name": "XNXX"
+    },
+    {
+        "iconUrl": "https://klikxxi.me/wp-content/uploads/2024/02/cropped-site-icon.png",
+        "fileHash": "sha256-48ffffd97f784b7aa2a6c2e7f050fe03018697e34977a1549fc66f19ef24628e",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 241486,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 7,
+        "internalName": "XSMovies",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/XSMovies.cs3",
+        "name": "XSMovies"
+    },
+    {
+        "iconUrl": "https://raw.githubusercontent.com/michat88/Zaneta/aa97004f4d1d74ed69245e56da2c6ad3293b6106/Icons/Adi.png",
+        "fileHash": "sha256-56743ea40645ad3ac504bbb8ce8f801c1e1adf2485d6d2ca74992df9f281d017",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 81437,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 12,
+        "internalName": "XStream",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/XStream.cs3",
+        "name": "XStream"
+    },
+    {
+        "iconUrl": "https://ymaal.co/wp-content/uploads/2025/08/cropped-YMaal.png",
+        "fileHash": "sha256-89d18ee4a07c20aa2fe813160fc1d6c2d7f39113f968d72157ca30926efc1d03",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 9175,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 1,
+        "internalName": "YMaal",
+        "description": "adult content",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/YMaal.cs3",
+        "name": "YMaal"
+    },
+    {
+        "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://youperv.com/&size=128",
+        "fileHash": "sha256-ed97d6733473994de085f053f8bd528272451772740dcccd34130807f5e0ca44",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 13020,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 1,
+        "internalName": "Youperv",
+        "description": "YouPerv is a great new porn website with HD high quality content. Site has the best of movies. Enjoy free full hd porn videos. The best straight latest sex movies with anal, big cock, big tits, hot milfs and sex clips.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Youperv.cs3",
+        "name": "Youperv"
+    },
+    {
+        "iconUrl": "https://www.youtube.com/s/desktop/711fd789/img/logos/favicon_144x144.png",
+        "fileHash": "sha256-49026f484775e37f610e8e3deb50e89f7aeb2621c03d642e7d337057dd67dec6",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 22741,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "Others"
+        ],
+        "version": 5,
+        "internalName": "YouTube",
+        "description": "YouTube provider with NewPipe-backed Indonesian channels, direct NewPipe stream links, and category rows.",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/YouTube.cs3",
+        "name": "YouTube"
+    },
+    {
+        "iconUrl": "https://yunshanid.site/favicon.ico",
+        "fileHash": "sha256-c063c09aa0874614816e48eee1e702d88421adb92b32bf5df0d6577db7375825",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 40960,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "BetbetMiro"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime"
+        ],
+        "version": 2,
+        "internalName": "YunshanID",
+        "description": "Yunshan ID - Donghua Subtitle Indonesia",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/YunshanID.cs3",
+        "name": "YunshanID"
+    },
+    {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://zoronime.online&size=%size%",
+        "fileHash": "sha256-255225496d4ea5bb85321fce7a688256c7f442fc3ebfb906641aa852027ea4c4",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
+        "fileSize": 38269,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "Duro92"
+        ],
+        "tvTypes": [
+            "Anime",
+            "AnimeMovie",
+            "OVA"
+        ],
+        "version": 2,
+        "internalName": "ZoronimeProvider",
+        "description": "Zoronime",
+        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/ZoronimeProvider.cs3",
+        "name": "ZoronimeProvider"
+    }
+]
