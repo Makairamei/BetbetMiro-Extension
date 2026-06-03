@@ -110,30 +110,96 @@ class PornhoarderPlugin : MainAPI() {
         }
     }
 
+    private fun absoluteUrl(url: String?, base: String = mainUrl): String? {
+        val cleaned = url?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return when {
+            cleaned.startsWith("http://") || cleaned.startsWith("https://") -> cleaned
+            cleaned.startsWith("//") -> "https:$cleaned"
+            cleaned.startsWith("/") -> "${mainUrl.removeSuffix("/")}$cleaned"
+            cleaned.startsWith("?") -> "${base.substringBefore("?")}$cleaned"
+            cleaned.startsWith("javascript:", true) || cleaned.startsWith("#") -> null
+            else -> "${base.substringBeforeLast("/", mainUrl).trimEnd('/')}/$cleaned"
+        }
+    }
+
+    private fun String.isPlayableCandidate(): Boolean {
+        val lower = lowercase()
+        return lower.startsWith("http") && !listOf(
+            "javascript:", "about:", "data:", "blob:", "googlesyndication", "doubleclick",
+            "popads", "exoclick", "juicyads", "adsterra", "analytics"
+        ).any { lower.contains(it) }
+    }
+
+    private suspend fun tryLoadExtractor(
+        url: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
+    ): Boolean {
+        var emitted = false
+        return try {
+            val loaded = loadExtractor(url, referer, subtitleCallback) { link ->
+                emitted = true
+                callback(link)
+            }
+            loaded || emitted
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val doc = app.get(data).document
         val serversList = mutableListOf<String>()
-        val currentSrc = doc.select(".video-player iframe").attr("src")
-        serversList.add(currentSrc)
-        val servers = doc.select(".video-detail-servers")
-        if(servers.isNotEmpty())
-        {
-            val urls = servers.select("li a")
-            urls.forEach { item->
-                val hostUrl = "$mainUrl${item.attr("href")}"
-                val docurl = app.get(hostUrl).document
-                val srcUrl = docurl.select(".video-player iframe").attr("src")
-                serversList.add(srcUrl)
+
+        doc.select(".video-player iframe[src], iframe[src]").forEach { iframe ->
+            absoluteUrl(iframe.attr("src"), data)?.let(serversList::add)
+        }
+
+        doc.select(".video-detail-servers li a[href]").take(12).forEach { item ->
+            val hostUrl = absoluteUrl(item.attr("href"), data) ?: return@forEach
+            runCatching {
+                val serverDoc = app.get(hostUrl, referer = data).document
+                serverDoc.select(".video-player iframe[src], iframe[src]").forEach { iframe ->
+                    absoluteUrl(iframe.attr("src"), hostUrl)?.let(serversList::add)
+                }
             }
         }
-        serversList.forEach {item->
-            val requestBody =FormBody.Builder()
+
+        var linksLoaded = 0
+        serversList.distinct().filter { it.isPlayableCandidate() }.take(12).forEach { playerUrl ->
+            if (tryLoadExtractor(playerUrl, data, subtitleCallback) { link ->
+                    linksLoaded++
+                    callback(link)
+                }
+            ) return@forEach
+
+            val requestBody = FormBody.Builder()
                 .addEncoded("play", "")
                 .build()
-            val doc1 = app.post(item,requestBody = requestBody).document
-            val videoHosterUrl = doc1.select("iframe").attr("src")
-            loadExtractor(videoHosterUrl,subtitleCallback,callback)
+
+            val playerDoc = runCatching {
+                app.post(playerUrl, requestBody = requestBody, referer = data).document
+            }.getOrNull() ?: return@forEach
+
+            val nestedLinks = mutableListOf<String>()
+            playerDoc.select("iframe[src], source[src], video[src]").forEach { element ->
+                absoluteUrl(element.attr("src"), playerUrl)?.let(nestedLinks::add)
+            }
+            Regex("""['"](https?://[^'"\s]+(?:mp4|m3u8|embed|e/)[^'"\s]*)['"]""")
+                .findAll(playerDoc.html())
+                .take(8)
+                .map { it.groupValues[1] }
+                .forEach(nestedLinks::add)
+
+            nestedLinks.distinct().filter { it.isPlayableCandidate() }.take(6).forEach { nested ->
+                tryLoadExtractor(nested, playerUrl, subtitleCallback) { link ->
+                    linksLoaded++
+                    callback(link)
+                }
+            }
         }
-        return true
+
+        return linksLoaded > 0
     }
 }
