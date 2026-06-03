@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.network.WebViewResolver
+import java.net.URLDecoder
 
 class Pimpbunny : MainAPI() {
     override var mainUrl = "https://pimpbunny.com"
@@ -51,7 +52,7 @@ class Pimpbunny : MainAPI() {
         val url = if (page <= 1) {
             request.data
         } else {
-            if (request.data.contains("onlyfans-models")) {
+            if (request.data.contains("onlyfans-creators")) {
                 val base = request.data.substringBefore("?")
                 val query = request.data.substringAfter("?")
                 "${base}${page}/?${query}"
@@ -221,58 +222,158 @@ class Pimpbunny : MainAPI() {
         }
     }
 
+    private val videoCandidateRegex = Regex(
+        """(?i)(?:https?:)?//[^\"'\s<>]+(?:/get_file/[^\"'\s<>]+|\.mp4(?:[?#][^\"'\s<>]*)?)"""
+    )
+
+    private fun String.cleanVideoUrl(): String? {
+        val decoded = replace("\\/", "/")
+            .replace("&amp;", "&")
+            .substringBefore("\"")
+            .substringBefore("'")
+            .trim()
+
+        val fixed = when {
+            decoded.startsWith("//") -> "https:$decoded"
+            decoded.startsWith("http") -> decoded
+            else -> fixUrlNull(decoded)
+        } ?: return null
+
+        return runCatching { URLDecoder.decode(fixed, "UTF-8") }.getOrDefault(fixed)
+    }
+
+    private fun isPlayableVideoUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.startsWith("http") && (
+            lower.contains("/get_file/") ||
+                lower.contains(".mp4") ||
+                lower.contains(".m3u8")
+            ) && !lower.contains(".jpg") && !lower.contains(".png") && !lower.contains(".webp")
+    }
+
+    private fun extractVideoCandidates(text: String): List<String> {
+        val normalized = text.replace("\\/", "/").replace("&amp;", "&")
+        return videoCandidateRegex.findAll(normalized)
+            .mapNotNull { it.value.cleanVideoUrl() }
+            .filter(::isPlayableVideoUrl)
+            .distinct()
+            .take(6)
+            .toList()
+    }
+
+    private fun sanitizePlaybackHeaders(headers: Map<String, String>): Map<String, String> {
+        val blocked = setOf(
+            "host", "connection", "content-length", "accept-encoding", "if-modified-since",
+            "if-none-match", "sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest",
+            "sec-fetch-user", "upgrade-insecure-requests"
+        )
+        val cleaned = headers
+            .filterKeys { key -> key.lowercase() !in blocked && !key.startsWith(":") }
+            .filterValues { it.isNotBlank() }
+            .toMutableMap()
+
+        cleaned["User-Agent"] = cleaned["User-Agent"] ?: USER_AGENT
+        cleaned["Accept"] = cleaned["Accept"] ?: "video/mp4,video/*;q=0.9,*/*;q=0.8"
+        return cleaned
+    }
+
+    private suspend fun emitPimpbunnyLink(
+        url: String,
+        referer: String,
+        headers: Map<String, String>,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        if (!isPlayableVideoUrl(url)) return false
+
+        callback.invoke(
+            newExtractorLink(
+                source = this.name,
+                name = this.name,
+                url = url,
+                type = ExtractorLinkType.VIDEO
+            ) {
+                this.referer = referer
+                this.quality = Qualities.Unknown.value
+                this.headers = sanitizePlaybackHeaders(headers)
+            }
+        )
+        return true
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        Log.d("PimpBunny", data)
+
+        runCatching {
+            val page = app.get(
+                data,
+                interceptor = CloudflareKiller(),
+                headers = mapOf("Referer" to "$mainUrl/"),
+                cacheTime = 0
+            ).text
+
+            extractVideoCandidates(page).firstOrNull()?.let { direct ->
+                if (emitPimpbunnyLink(
+                        direct,
+                        data,
+                        mapOf("Referer" to data, "Origin" to mainUrl),
+                        callback
+                    )
+                ) {
+                    return true
+                }
+            }
+        }
+
         val webview = WebViewResolver(
-            interceptUrl = Regex(".*pimpbunny\\.com/get_file/.*?\\.mp4.*"),
-            additionalUrls = emptyList(),
+            interceptUrl = Regex("""(?i).*pimpbunny\.com/get_file/.*"""),
+            additionalUrls = listOf(Regex("""(?i).*\.mp4(?:[?#].*)?$""")),
             userAgent = null,
             useOkhttp = false,
             script = """
                 (function() {
                     var attempt = 0;
                     var timer = setInterval(function() {
-                        var btn = document.querySelector('.vjs-big-play-button') || document.querySelector('.fp-play');
-                        if (btn) {
-                            btn.click();
-                            clearInterval(timer);
-                        }
+                        var btn = document.querySelector('.vjs-big-play-button') ||
+                                  document.querySelector('.fp-play') ||
+                                  document.querySelector('button[aria-label*=Play]');
+                        if (btn) btn.click();
+
                         if (window.player_obj && typeof window.player_obj.play === 'function') {
                             window.player_obj.play();
-                            clearInterval(timer);
                         }
-                        if (attempt++ > 20) clearInterval(timer);
-                    }, 500);
+
+                        var video = document.querySelector('video');
+                        if (video && typeof video.play === 'function') {
+                            video.play().catch(function() {});
+                        }
+
+                        if (attempt++ > 16) clearInterval(timer);
+                    }, 400);
                 })();
-            """.trimIndent()
+            """.trimIndent(),
+            timeout = 30_000L
         )
-        Log.d("PimpBunny", data)
-        val sonuc = webview.resolveUsingWebView(
+
+        val resolved = webview.resolveUsingWebView(
             url = data,
             referer = "$mainUrl/"
         )
-        val istek = sonuc.first
 
-        if (istek != null) {
-            val url = istek.url.toString()
-            val headers = istek.headers.toMap()
+        val requests = (listOfNotNull(resolved.first) + resolved.second)
+            .distinctBy { it.url.toString() }
+            .filter { isPlayableVideoUrl(it.url.toString()) }
+
+        for (request in requests.take(3)) {
+            val url = request.url.toString()
             Log.d("PimpBunny", url)
-            callback.invoke(
-                newExtractorLink(
-                    source = this.name,
-                    name = this.name,
-                    url = url,
-                    type = ExtractorLinkType.VIDEO
-                ) {
-                    this.referer = data
-                    this.headers = headers
-                }
-            )
-            return true
+            if (emitPimpbunnyLink(url, data, request.headers.toMap(), callback)) {
+                return true
+            }
         }
 
         return false
