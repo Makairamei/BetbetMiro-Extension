@@ -131,7 +131,7 @@ class SpankBang : MainAPI() {
         val html = app.get(pageUrl, headers = siteHeaders).text
         val emitted = linkedSetOf<String>()
 
-        fun emitDirect(rawUrl: String?, rawLabel: String?) {
+        suspend fun emitDirect(rawUrl: String?, rawLabel: String?) {
             val videoUrl = rawUrl?.cleanStreamUrl()?.absoluteUrl() ?: return
             if (!videoUrl.startsWith("http", true)) return
             if (!emitted.add(videoUrl)) return
@@ -166,14 +166,17 @@ class SpankBang : MainAPI() {
             }
         }
 
-        parseStreamData(html).forEach { (label, urls) ->
-            urls.forEach { url -> emitDirect(url, label) }
+        for ((label, urls) in parseStreamData(html)) {
+            for (url in urls) {
+                emitDirect(url, label)
+            }
         }
 
         // Fallback for future markup changes: direct media URLs still embedded in the page.
-        Regex("""https?://[^'"<>\\\s]+?\.(?:m3u8|mp4|webm)(?:\?[^'"<>\\\s]+)?""", RegexOption.IGNORE_CASE)
-            .findAll(html)
-            .forEach { match -> emitDirect(match.value, qualityLabelFromUrl(match.value)) }
+        val mediaRegex = Regex("""https?://[^'"<>\\\s]+?\.(?:m3u8|mp4|webm)(?:\?[^'"<>\\\s]+)?""", RegexOption.IGNORE_CASE)
+        for (match in mediaRegex.findAll(html)) {
+            emitDirect(match.value, qualityLabelFromUrl(match.value))
+        }
 
         return emitted.isNotEmpty()
     }
@@ -337,5 +340,9 @@ class SpankBang : MainAPI() {
                 !value.equals("Exclusive", true) &&
                 !value.equals("Videos", true)
         }?.htmlUnescape()?.trim()
+    }
+
+    private fun String.htmlUnescape(): String {
+        return org.jsoup.parser.Parser.unescapeEntities(this, false)
     }
 }
