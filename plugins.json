@@ -472,10 +472,10 @@
     },
     {
         "iconUrl": "https://raw.githubusercontent.com/Kohi-den/extensions-source/927f9c68fd64ce52f6212ae633d0f0585eca3545/src/en/donghuastream/res/mipmap-xxxhdpi/ic_launcher.png",
-        "fileHash": "sha256-ff22116d48e86fcfbcadbbf3c001111e8e52ebd64f913a88a21c49a41816384f",
+        "fileHash": "sha256-0f45473355cc3a3e9d745539a4c9a99d2c7af6878657497bd7132ba1f1695d6c",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
-        "fileSize": 48937,
+        "fileSize": 45167,
         "status": 1,
         "language": "id",
         "authors": [
@@ -485,9 +485,9 @@
             "Anime",
             "AnimeMovie"
         ],
-        "version": 5,
+        "version": 6,
         "internalName": "Donghuastream",
-        "description": "Donghuastream dan SeaTV untuk donghua / Chinese anime.",
+        "description": "Donghuastream untuk donghua / Chinese anime.",
         "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/Donghuastream.cs3",
         "name": "Donghuastream"
     },
