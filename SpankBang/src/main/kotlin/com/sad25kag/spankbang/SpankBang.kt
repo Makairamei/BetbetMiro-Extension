@@ -184,12 +184,30 @@ class SpankBang : MainAPI() {
     private fun Document.parseVideoItems(): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
 
-        select("div.js-video-item[data-testid=video-item], div[data-testid=video-item]").forEach { element ->
-            element.toSearchResponse()?.let { response -> results[response.url] = response }
+        fun collectFromList(list: Element?) {
+            list?.select(":scope > div[data-testid=video-item], :scope > div.js-video-item")
+                ?.forEach { element ->
+                    element.toSearchResponse()?.let { response -> results[response.url] = response }
+                }
+        }
+
+        // Keep each homepage/category section scoped to its primary grid only.
+        // The page also contains global recommendation/creator grids; parsing the full document
+        // makes different categories show the same videos.
+        val primaryList = selectFirst("#search_page [data-testid=search-result] [data-testid=video-list]")
+            ?: selectFirst("#home > [data-testid=video-list]")
+            ?: selectFirst("#playlist_page [data-testid=video-list]")
+
+        collectFromList(primaryList)
+
+        if (results.isEmpty()) {
+            val fallbackList = selectFirst("#inner_content [data-testid=video-list], #inner_content .js-media-list")
+            collectFromList(fallbackList)
         }
 
         if (results.isEmpty()) {
-            select("a[href*=/video/]").forEach { anchor ->
+            val fallbackScope = selectFirst("#search_page, #home, #playlist_page") ?: this
+            fallbackScope.select("a[href*=/video/]").forEach { anchor ->
                 anchor.toFallbackSearchResponse()?.let { response -> results[response.url] = response }
             }
         }
