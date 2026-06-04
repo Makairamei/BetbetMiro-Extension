@@ -2446,10 +2446,10 @@
     },
     {
         "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://watchwrestling.ae/&size=32",
-        "fileHash": "sha256-28daaa1162e48d2339f347de939a6938ddbef88d7ac4f9f3b6d16068cdcc9047",
+        "fileHash": "sha256-44ea92360aeebcec9c6f3a7b4886014b021c378f14e5452e5df0dd7d67d85775",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
-        "fileSize": 17844,
+        "fileSize": 26769,
         "status": 1,
         "language": "id",
         "authors": [
@@ -2458,7 +2458,7 @@
         "tvTypes": [
             "Live"
         ],
-        "version": 25,
+        "version": 26,
         "internalName": "WatchWrestling",
         "description": "Watch WWE | WWE Raw | Smackdown Live",
         "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/WatchWrestling.cs3",
