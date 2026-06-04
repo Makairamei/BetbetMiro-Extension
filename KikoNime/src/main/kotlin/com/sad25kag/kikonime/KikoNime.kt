@@ -366,6 +366,9 @@ class KikoNime : MainAPI() {
             ?.let(::fixUrlSafe)
     }
 
+
+    private fun fixUrlSafe(url: String): String = fixUrlNull(url) ?: url
+
     private fun String.tryDecodeBase64(): String {
         val clean = trim().htmlUnescape()
         return runCatching { base64Decode(clean) }.getOrElse { clean }
