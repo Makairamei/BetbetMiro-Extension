@@ -1,7 +1,7 @@
 package com.sad25kag.nontonanimex
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addEpisodes
+import com.lagradost.cloudstream3.addEpisodes
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
