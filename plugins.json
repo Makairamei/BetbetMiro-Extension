@@ -2426,10 +2426,10 @@
     },
     {
         "iconUrl": "https://pbs.twimg.com/profile_images/1054618246551298048/Dkj4DQSt_400x400.jpg",
-        "fileHash": "sha256-6fea26c09ed5b51b508a1429e73d2ad3c4f1da4d1435fc917abc1e39aaf2b15e",
+        "fileHash": "sha256-7c1524623f978e272d11cd4a5b2ee4ca5048d6eba095de038c6eb2d6420a4eb9",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
-        "fileSize": 9312,
+        "fileSize": 13627,
         "status": 1,
         "language": "id",
         "authors": [
@@ -2438,7 +2438,7 @@
         "tvTypes": [
             "NSFW"
         ],
-        "version": 4,
+        "version": 5,
         "internalName": "TrendyPorn",
         "description": "TrendyPorn",
         "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/TrendyPorn.cs3",
