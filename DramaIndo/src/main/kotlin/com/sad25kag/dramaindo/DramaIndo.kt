@@ -155,7 +155,7 @@ class DramaIndo : MainAPI() {
         }
     }
 
-    private fun Document.toEpisodeLoadResponse(url: String): LoadResponse {
+    private suspend fun Document.toEpisodeLoadResponse(url: String): LoadResponse {
         val title = selectFirst("h1.entry-title, h1, meta[property=og:title], title")
             ?.textOrContent()
             ?.cleanTitle()
