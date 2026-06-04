@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getQualityFromName
+import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +29,12 @@ class AnimeMovies : MainAPI() {
         "User-Agent" to USER_AGENT,
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Referer" to "$mainUrl/"
+    )
+
+    private fun rscHeaders(referer: String): Map<String, String> = siteHeaders + mapOf(
+        "Accept" to "text/x-component,*/*;q=0.8",
+        "RSC" to "1",
+        "Next-Url" to referer.removePrefix(mainUrl).ifBlank { "/" }
     )
 
     override val mainPage = mainPageOf(
@@ -151,19 +158,30 @@ class AnimeMovies : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val pageUrl = data.takeIf { it.startsWith("http", true) } ?: return false
-        val startDocument = app.get(pageUrl, headers = siteHeaders, referer = "$mainUrl/").document
         val queue = ArrayDeque<ServerCandidate>()
         val visited = linkedSetOf<String>()
         val emitted = linkedSetOf<String>()
         var hasLinks = false
 
-        for (candidate in startDocument.extractServerCandidates(pageUrl)) {
-            queue.add(candidate)
+        suspend fun enqueueFromText(text: String?, referer: String) {
+            text?.extractServerCandidatesFromText(referer)?.forEach { queue.add(it) }
+        }
+
+        suspend fun enqueueFromUrl(url: String, referer: String, headers: Map<String, String> = siteHeaders) {
+            val response = runCatching { app.get(url, headers = headers, referer = referer) }.getOrNull() ?: return
+            response.document.extractServerCandidates(url).forEach { queue.add(it) }
+            enqueueFromText(response.text, url)
+        }
+
+        enqueueFromUrl(pageUrl, "$mainUrl/")
+        for (rscUrl in pageUrl.rscUrls()) {
+            enqueueFromUrl(rscUrl, pageUrl, rscHeaders(pageUrl))
         }
 
         suspend fun emitDirect(url: String, label: String?, referer: String) {
             val fixed = normalizeMediaUrl(url) ?: return
-            if (!emitted.add(fixed)) return
+            val key = fixed.normalizedMediaKey()
+            if (!emitted.add(key)) return
             val qualityLabel = label?.cleanServerLabel().orEmpty().ifBlank { fixed.qualityLabelFromUrl() }
             val quality = qualityLabel.takeIf { it.isNotBlank() }?.let { getQualityFromName(it) }
                 ?: fixed.parseQuality()
@@ -190,7 +208,7 @@ class AnimeMovies : MainAPI() {
                     ) {
                         this.referer = referer
                         this.quality = quality
-                        this.headers = siteHeaders
+                        this.headers = siteHeaders + mapOf("Range" to "bytes=0-")
                     }
                 )
                 hasLinks = true
@@ -203,7 +221,8 @@ class AnimeMovies : MainAPI() {
                 emitDirect(fixed, label, referer)
                 return
             }
-            if (!emitted.add(fixed)) return
+            val key = fixed.normalizedMediaKey()
+            if (!emitted.add(key)) return
 
             loadExtractor(fixed, referer, subtitleCallback) { link ->
                 hasLinks = true
@@ -212,25 +231,27 @@ class AnimeMovies : MainAPI() {
         }
 
         var guard = 0
-        while (queue.isNotEmpty() && guard < 80) {
+        while (queue.isNotEmpty() && guard < 120) {
             guard++
             val candidate = queue.removeFirst()
             val fixed = normalizeMediaUrl(candidate.url) ?: continue
-            if (!visited.add(fixed)) continue
+            if (!visited.add(fixed.normalizedMediaKey())) continue
+            val referer = candidate.referer ?: pageUrl
 
-            if (fixed.isDirectMedia() || !fixed.startsWith(mainUrl, true)) {
-                emitExtractor(fixed, candidate.label, candidate.referer ?: pageUrl)
+            if (fixed.isDirectMedia()) {
+                emitDirect(fixed, candidate.label, referer)
                 continue
             }
 
-            val nested = runCatching {
-                app.get(fixed, headers = siteHeaders, referer = candidate.referer ?: pageUrl).document
-            }.getOrNull()
-            if (nested != null) {
-                for (next in nested.extractServerCandidates(fixed)) {
-                    queue.add(next)
+            if (!fixed.startsWith(mainUrl, true)) {
+                emitExtractor(fixed, candidate.label, referer)
+                if (fixed.shouldInlineResolve()) {
+                    enqueueFromUrl(fixed, referer, playerHeaders(fixed))
                 }
+                continue
             }
+
+            enqueueFromUrl(fixed, referer)
         }
 
         return hasLinks
@@ -377,6 +398,68 @@ class AnimeMovies : MainAPI() {
         return results.values.toList()
     }
 
+    private fun String.extractServerCandidatesFromText(referer: String): List<ServerCandidate> {
+        val results = linkedMapOf<String, ServerCandidate>()
+
+        fun add(rawUrl: String?, label: String? = null) {
+            val fixed = rawUrl
+                ?.trim()
+                ?.trim('"', '\'', ' ', ',', ')', ']', '}')
+                ?.basicHtmlDecode()
+                ?.unescapeJs()
+                ?.toAbsoluteUrl()
+                ?: return
+            if (fixed.isBlank() || fixed == mainUrl || fixed == referer) return
+            if (fixed.startsWith("javascript:", true) || fixed.startsWith("data:", true)) return
+            if (!fixed.isPotentialPlayerUrl()) return
+            results[fixed] = ServerCandidate(fixed, label, referer)
+        }
+
+        val variants = linkedSetOf<String>()
+        variants.add(this)
+        variants.add(basicHtmlDecode())
+        variants.add(unescapeJs())
+        variants.add(basicHtmlDecode().unescapeJs())
+        runCatching { getAndUnpack(this) }.getOrNull()?.takeIf { it.isNotBlank() }?.let { unpacked ->
+            variants.add(unpacked)
+            variants.add(unpacked.basicHtmlDecode().unescapeJs())
+        }
+
+        for (source in variants) {
+            val cleaned = source.basicHtmlDecode().unescapeJs()
+
+            Regex(
+                """(?is)["']server_name["']\s*:\s*["']([^"']+)["'].*?["']embed_url["']\s*:\s*["']([^"']+)["']"""
+            ).findAll(cleaned).forEach { match ->
+                add(match.groupValues.getOrNull(2), match.groupValues.getOrNull(1))
+            }
+
+            Regex(
+                """(?is)["']label["']\s*:\s*["']([^"']+)["'].*?["'](?:file|url|src)["']\s*:\s*["']([^"']+)["']"""
+            ).findAll(cleaned).forEach { match ->
+                add(match.groupValues.getOrNull(2), match.groupValues.getOrNull(1))
+            }
+
+            Regex(
+                """(?:src|url|link|file|iframe|embed|player|video|contentUrl|embedUrl)\s*["']?\s*[:=]\s*["']([^"']+)["']""",
+                RegexOption.IGNORE_CASE
+            ).findAll(cleaned).forEach { match ->
+                add(match.groupValues.getOrNull(1), match.value.qualityLabelFromUrl())
+            }
+
+            Regex("""https?://[^"'<>\s\\]+""", RegexOption.IGNORE_CASE).findAll(cleaned).forEach { match ->
+                add(match.value, match.value.qualityLabelFromUrl())
+            }
+
+            Regex("""(?:atob\(|base64_decode\(|["'])([A-Za-z0-9+/=_-]{32,})(?:["']|\))""").findAll(cleaned).forEach { match ->
+                val decoded = decodePossibleBase64(match.groupValues[1]) ?: return@forEach
+                decoded.extractServerCandidatesFromText(referer).forEach { add(it.url, it.label) }
+            }
+        }
+
+        return results.values.toList()
+    }
+
     private fun Document.hasNextPage(page: Int): Boolean {
         return selectFirst("a[rel=next], .pagination a[href*='page=${page + 1}'], a[href*='page=${page + 1}']") != null
     }
@@ -423,7 +506,7 @@ class AnimeMovies : MainAPI() {
     }
 
     private fun normalizeMediaUrl(raw: String?): String? {
-        return raw?.htmlDecode()?.unescapeJs()?.replace("\\/", "/")?.toAbsoluteUrl()
+        return raw?.basicHtmlDecode()?.unescapeJs()?.replace("\\/", "/")?.toAbsoluteUrl()
     }
 
     private fun String.isAnimeOrWatchUrl(): Boolean {
@@ -440,10 +523,14 @@ class AnimeMovies : MainAPI() {
             lower.contains("filedon") ||
             lower.contains("mega") ||
             lower.contains("ondes") ||
+            lower.contains("desustream") ||
             lower.contains("stream") ||
             lower.contains("dood") ||
             lower.contains("filemoon") ||
             lower.contains("mp4upload") ||
+            lower.contains("googlevideo.com/videoplayback") ||
+            lower.contains("cloudflarestorage.com") ||
+            lower.contains("r2.cloudflarestorage.com") ||
             lower.contains("voe") ||
             lower.contains("mixdrop") ||
             (lower.startsWith(mainUrl.lowercase()) && !lower.contains("/anime/"))
@@ -451,7 +538,28 @@ class AnimeMovies : MainAPI() {
 
     private fun String.isDirectMedia(): Boolean {
         val lower = lowercase()
-        return lower.contains(".m3u8") || lower.contains(".mp4") || lower.contains(".webm") || lower.contains(".mkv")
+        return lower.contains(".m3u8") ||
+            lower.contains(".mp4") ||
+            lower.contains(".webm") ||
+            lower.contains(".mkv") ||
+            lower.contains("googlevideo.com/videoplayback") ||
+            lower.contains("mime=video") ||
+            lower.contains("cloudflarestorage.com")
+    }
+
+    private fun String.shouldInlineResolve(): Boolean {
+        val lower = lowercase()
+        return lower.contains("odvidhide") ||
+            lower.contains("vidhide") ||
+            lower.contains("filedon") ||
+            lower.contains("desustream") ||
+            lower.contains("ondes")
+    }
+
+    private fun String.normalizedMediaKey(): String {
+        return substringBefore("&Expires=")
+            .substringBefore("?Expires=")
+            .substringBefore("&X-Amz-Signature=")
     }
 
     private fun String.cleanTitle(): String {
@@ -544,6 +652,43 @@ class AnimeMovies : MainAPI() {
 
     private fun String.cleanServerLabel(): String {
         return htmlDecode().replace(Regex("\\s+"), " ").trim()
+    }
+
+    private fun String.basicHtmlDecode(): String {
+        return replace("&quot;", "\"")
+            .replace("&#34;", "\"")
+            .replace("&#x22;", "\"")
+            .replace("&#039;", "'")
+            .replace("&#39;", "'")
+            .replace("&apos;", "'")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+    }
+
+    private fun playerHeaders(url: String): Map<String, String> {
+        val lower = url.lowercase()
+        return siteHeaders + when {
+            lower.contains("odvidhide") || lower.contains("vidhide") -> mapOf(
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Referer" to "$mainUrl/"
+            )
+            lower.contains("filedon") -> mapOf(
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Referer" to "$mainUrl/"
+            )
+            else -> siteHeaders
+        }
+    }
+
+    private fun String.rscUrls(): List<String> {
+        val base = substringBefore("#")
+        val separator = if (base.contains("?")) "&" else "?"
+        return listOf(
+            "${base}${separator}_rsc=1",
+            "${base}${separator}_rsc=ndb2r",
+            "${base}${separator}_rsc=1kfs1"
+        )
     }
 
     private data class ServerCandidate(
