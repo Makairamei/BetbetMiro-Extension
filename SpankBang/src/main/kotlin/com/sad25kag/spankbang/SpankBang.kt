@@ -185,10 +185,15 @@ class SpankBang : MainAPI() {
         val results = linkedMapOf<String, SearchResponse>()
 
         fun collectFromList(list: Element?) {
-            list?.select(":scope > div[data-testid=video-item], :scope > div.js-video-item")
-                ?.forEach { element ->
+            list?.children()?.forEach { element ->
+                val isVideoItem =
+                    element.attr("data-testid").equals("video-item", true) ||
+                        element.hasClass("js-video-item")
+
+                if (isVideoItem) {
                     element.toSearchResponse()?.let { response -> results[response.url] = response }
                 }
+            }
         }
 
         // Keep each homepage/category section scoped to its primary grid only.
