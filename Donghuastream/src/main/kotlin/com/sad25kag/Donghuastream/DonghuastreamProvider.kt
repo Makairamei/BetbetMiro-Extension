@@ -13,7 +13,6 @@ class DonghuastreamProvider : Plugin() {
         SeaTV.context = context
 
         registerMainAPI(Donghuastream())
-        registerMainAPI(SeaTV())
 
         registerExtractorAPI(Vtbe())
         registerExtractorAPI(waaw())
