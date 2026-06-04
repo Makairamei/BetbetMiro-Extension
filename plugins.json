@@ -2310,28 +2310,6 @@
         "name": "Samehadaku"
     },
     {
-        "iconUrl": "https://www.google.com/s2/favicons?domain=tv.sobatmov.xyz&sz=%size%",
-        "fileHash": "sha256-abd789baa819f6bca835873e415798a6602cb05a969de6805af0b7b925cf0bda",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
-        "fileSize": 35235,
-        "status": 1,
-        "language": "id",
-        "authors": [
-            "BetbetMiro"
-        ],
-        "tvTypes": [
-            "AsianDrama",
-            "TvSeries",
-            "Movie"
-        ],
-        "version": 2,
-        "internalName": "SobatKeren21",
-        "description": "SobatKeren21 provider for tv.sobatmov.xyz with compact provider, homepage categories, search, drama/movie detail parsing, episode mapping, and download-host playback fallback.",
-        "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/SobatKeren21.cs3",
-        "name": "SobatKeren21"
-    },
-    {
         "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://sontolfilm.com&size=%size%",
         "fileHash": "sha256-2a603a90599f261403325ad2b935cf74e9d9b01b1ff8af1951bfb82b04da891d",
         "apiVersion": 1,
@@ -2402,10 +2380,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=surgafilm21.homes&sz=%size%",
-        "fileHash": "sha256-24320ddbfcbe16e2f2d74380c55de8ba8fae745a7da26228edc73347e9aa281c",
+        "fileHash": "sha256-d887bced7ebe8c296315270bcba7f4d28553e7de80b12a7511c2d2c311f03f4a",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/sad25kag/BetbetMiro-Extension",
-        "fileSize": 40388,
+        "fileSize": 40369,
         "status": 1,
         "language": "id",
         "authors": [
@@ -2419,7 +2397,7 @@
             "Cartoon",
             "NSFW"
         ],
-        "version": 3,
+        "version": 4,
         "internalName": "SurgeFilm21",
         "description": "SurgeFilm21 / Surgafilm21 \u2014 pengganti DuniaFilm21 dengan sumber baru surgafilm21.homes untuk movie, series, drama, action, horror, sci-fi, mystery, animasi, Thailand, dan update terbaru.",
         "url": "https://raw.githubusercontent.com/sad25kag/BetbetMiro-Extension/builds/SurgeFilm21.cs3",
