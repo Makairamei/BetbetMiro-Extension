@@ -26,7 +26,6 @@ import com.lagradost.cloudstream3.utils.newExtractorLink
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import org.jsoup.Connection
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -48,13 +47,16 @@ class AnizoneProvider : MainAPI() {
     override val hasDownloadSupport = true
 
     override val mainPage = mainPageOf(
-        // Source AniZone memakai Anime Index + sort Livewire, bukan tag statis sebagai homepage utama.
+        "sort:release-desc" to "Rilis Terbaru",
         "sort:title-asc" to "A-Z",
         "sort:title-desc" to "Z-A",
         "sort:release-asc" to "Rilis Terlama",
-        "sort:release-desc" to "Rilis Terbaru",
         "sort:added-asc" to "Pertama Ditambahkan",
-        "sort:added-desc" to "Terakhir Ditambahkan"
+        "sort:added-desc" to "Terakhir Ditambahkan",
+        "tag:/tag/xottt75h" to "Aksi",
+        "tag:/tag/bio3ygrp" to "Komedi",
+        "tag:/tag/s1ssghb1" to "Fantasi",
+        "tag:/tag/hmi0gccz" to "Manga"
     )
 
     private val snapshotAnimeKey = "anime_snapshot_key"
@@ -216,56 +218,75 @@ class AnizoneProvider : MainAPI() {
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        val sort = request.data.removePrefix("sort:").ifBlank { "release-desc" }
-
         return try {
-            snapshots[snapshotAnimeKey] = ""
-            val initialized = initializeLiveWire()
-            if (!initialized) return emptyHomePage(request.name)
-
-            var responseJson = liveWireBuilder(
-                snapshotAnimeKey,
-                mapOf("sort" to sort),
-                emptyList(),
-                cookies,
-                true
-            )
-
-            var doc = getHtmlFromWire(responseJson)
-
-            for (i in 1 until page) {
-                if (doc.selectFirst("div[x-intersect~=loadMore], .h-12[x-intersect~=loadMore]") == null) break
-
-                responseJson = liveWireBuilder(
-                    snapshotAnimeKey,
-                    emptyMap(),
-                    listOf(
-                        mapOf(
-                            "path" to "",
-                            "method" to "loadMore",
-                            "params" to emptyList<String>()
-                        )
-                    ),
-                    cookies,
-                    true
-                )
-
-                doc = getHtmlFromWire(responseJson)
+            val data = request.data
+            val path = when {
+                data.startsWith("tag:") -> data.removePrefix("tag:")
+                else -> "/anime"
+            }
+            val sort = when {
+                data.startsWith("sort:") -> data.removePrefix("sort:").ifBlank { "release-desc" }
+                else -> "release-desc"
             }
 
-            val home = parseAnimeElements(doc).map { toResult(it) }
-
-            if (home.isEmpty()) {
-                emptyHomePage(request.name)
-            } else {
-                newHomePageResponse(
-                    HomePageList(request.name, home, isHorizontalImages = false),
-                    hasNext = doc.selectFirst("div[x-intersect~=loadMore], .h-12[x-intersect~=loadMore]") != null
-                )
-            }
+            buildLiveWireHomePage(path, sort, page, request.name)
         } catch (e: Exception) {
             Log.e("AniZone", "Gagal memproses getMainPage: ${e.message}")
             emptyHomePage(request.name)
+        }
+    }
+
+    private suspend fun buildLiveWireHomePage(
+        path: String,
+        sort: String,
+        page: Int,
+        title: String
+    ): HomePageResponse {
+        snapshots[snapshotAnimeKey] = ""
+        val initialized = initializeLiveWire(path)
+        if (!initialized) return emptyHomePage(title)
+
+        var responseJson = liveWireBuilder(
+            snapshotAnimeKey,
+            mapOf("sort" to sort),
+            emptyList(),
+            cookies,
+            true,
+            path
+        )
+
+        var doc = getHtmlFromWire(responseJson)
+
+        for (i in 1 until page) {
+            if (!hasLoadMore(doc)) break
+
+            responseJson = liveWireBuilder(
+                snapshotAnimeKey,
+                emptyMap(),
+                listOf(
+                    mapOf(
+                        "path" to "",
+                        "method" to "loadMore",
+                        "params" to emptyList<String>()
+                    )
+                ),
+                cookies,
+                true,
+                path
+            )
+
+            doc = getHtmlFromWire(responseJson)
+        }
+
+        val home = parseAnimeElements(doc).map { toResult(it) }
+
+        return if (home.isEmpty()) {
+            emptyHomePage(title)
+        } else {
+            newHomePageResponse(
+                HomePageList(title, home, isHorizontalImages = false),
+                hasNext = hasLoadMore(doc)
+            )
         }
     }
 
@@ -276,9 +297,13 @@ class AnizoneProvider : MainAPI() {
         )
     }
 
+    private fun hasLoadMore(doc: Document): Boolean {
+        return doc.selectFirst("div[x-intersect~=loadMore], .h-12[x-intersect~=loadMore]") != null
+    }
+
     private fun parseAnimeElements(doc: Document): List<Element> {
         val gridCards = doc.select("div.grid > div")
-            .filter { it.selectFirst("a.inline[href*='/anime/'], a[href*='/anime/']") != null }
+            .filter { animeUrlFromElement(it).isNotBlank() }
 
         if (gridCards.isNotEmpty()) return gridCards.distinctBy { animeUrlFromElement(it) }
 
@@ -297,6 +322,7 @@ class AnizoneProvider : MainAPI() {
     private fun normalizeUrl(url: String): String {
         return when {
             url.isBlank() -> ""
+            url.startsWith("//") -> "https:$url"
             url.startsWith("http", ignoreCase = true) -> url
             url.startsWith("/") -> "$mainUrl$url"
             else -> "$mainUrl/$url"
@@ -333,6 +359,7 @@ class AnizoneProvider : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
+        snapshots[snapshotAnimeKey] = ""
         val initialized = initializeLiveWire()
         if (!initialized) return emptyList()
 
@@ -349,26 +376,15 @@ class AnizoneProvider : MainAPI() {
         return parseAnimeElements(doc).map { toResult(it) }
     }
 
-    private fun getPredefinedSnapshot(slug: String): String = when (slug) {
-        "/anime/uyyyn4kf" -> """{"data":{"anime":[null,{"class":"anime","key":68,"s":"mdl"}],"title":null,"search":"","listSize":1104,"sort":"release-asc","sortOptions":[{"release-asc":"First Aired","release-desc":"Last Aired"},{"s":"arr"}],"view":"list","paginators":[{"page":1},{"s":"arr"}]},"memo":{"id":"GD1OiEMOJq6UQDQt1OBt","name":"pages.anime-detail","path":"anime\/uyyyn4kf","method":"GET","children":[],"scripts":[],"assets":[],"errors":[],"locale":"en"},"checksum":"5800932dd82e4862f34f6fd72d8098243b32643e8accb8da6a6a39cd0ee86acd"}"""
-        else -> ""
-    }
-
     override suspend fun load(url: String): LoadResponse {
-        val r = Jsoup.connect(url)
-            .method(Connection.Method.GET)
-            .execute()
-
-        val doc = Jsoup.parse(r.body())
-        val cookie = r.cookies().toMutableMap()
+        val response = app.get(url)
+        val doc = response.document
+        val cookie = response.cookies.toMutableMap()
         val slug = pathFromUrl(url)
 
         val pageToken = doc.select("script[data-csrf]").attr("data-csrf")
         if (pageToken.isNotBlank()) token = pageToken
-
-        snapshots[snapshotEpisodeKey] = getPredefinedSnapshot(slug).ifBlank {
-            getSnapshot(doc)
-        }
+        snapshots[snapshotEpisodeKey] = getSnapshot(doc)
 
         val title = doc.selectFirst("h1")?.text()
             ?: throw NotImplementedError("Unable to find title")
@@ -404,10 +420,7 @@ class AnizoneProvider : MainAPI() {
         var attempts = 0
         val maxAttempts = 100
 
-        while (
-            currentDoc.selectFirst("div[x-intersect~=loadMore], .h-12[x-intersect~=loadMore]") != null &&
-            attempts < maxAttempts
-        ) {
+        while (hasLoadMore(currentDoc) && attempts < maxAttempts) {
             attempts++
 
             try {
@@ -472,8 +485,13 @@ class AnizoneProvider : MainAPI() {
 
     private fun parseEpisodeElements(doc: Document): List<Element> {
         return doc.select("ul > li:has(a[href]), li[x-data]:has(a[href])")
-            .filter { it.selectFirst("a[href*='/anime/']") != null }
-            .distinctBy { it.selectFirst("a[href]")?.attr("href") }
+            .filter { isEpisodeUrl(it.selectFirst("a[href]")?.attr("href") ?: "") }
+            .distinctBy { normalizeUrl(it.selectFirst("a[href]")?.attr("href") ?: "") }
+    }
+
+    private fun isEpisodeUrl(href: String): Boolean {
+        val parts = pathFromUrl(normalizeUrl(href)).split("/").filter { it.isNotBlank() }
+        return parts.size >= 3 && parts.firstOrNull() == "anime"
     }
 
     private fun parseEpisodeDate(element: Element): Long {
@@ -517,12 +535,19 @@ class AnizoneProvider : MainAPI() {
         var emitted = false
 
         suspend fun emitPlayer(doc: Document, sourceName: String) {
-            val mediaPlayer = doc.selectFirst("media-player") ?: return
-            val masterUrl = mediaPlayer.attr("src").takeIf { it.isNotBlank() } ?: return
+            val mediaPlayer = doc.selectFirst("media-player")
+            val directSource = doc.selectFirst("video source[src], source[type*=mpegurl][src], source[src*=.m3u8], a[href*=.m3u8]")
+            val rawUrl = mediaPlayer?.attr("src")?.takeIf { it.isNotBlank() }
+                ?: directSource?.attr("src")?.takeIf { it.isNotBlank() }
+                ?: directSource?.attr("href")?.takeIf { it.isNotBlank() }
+                ?: return
 
+            if (rawUrl.startsWith("blob:", ignoreCase = true)) return
+
+            val masterUrl = normalizeUrl(rawUrl)
             if (!emittedUrls.add(masterUrl)) return
 
-            mediaPlayer.select("track[kind=subtitles], track").forEach {
+            mediaPlayer?.select("track[kind=subtitles], track")?.forEach {
                 val subtitleUrl = it.attr("src").takeIf { src -> src.isNotBlank() } ?: return@forEach
                 subtitleCallback.invoke(
                     newSubtitleFile(
@@ -555,8 +580,9 @@ class AnizoneProvider : MainAPI() {
             emitted = true
         }
 
-        val serverButtons = web.select("button[wire:click*=setVideo]")
+        val serverButtons = web.getAllElements()
             .filter { it.attr("wire:click").contains("setVideo") }
+            .distinctBy { it.attr("wire:click") }
 
         val firstName = serverButtons.firstOrNull()?.text()?.trim()
             ?: web.selectFirst("span.truncate")?.text()
@@ -565,12 +591,15 @@ class AnizoneProvider : MainAPI() {
         emitPlayer(web, firstName)
 
         for (button in serverButtons.drop(1)) {
-            val videoId = Regex("""setVideo\(['"]?(\d+)['"]?\)""")
+            val videoParam = Regex("""setVideo\(([^)]*)\)""")
                 .find(button.attr("wire:click"))
                 ?.groupValues
                 ?.getOrNull(1)
-                ?.toIntOrNull()
+                ?.trim()
+                ?.trim('\'', '"')
+                ?.takeIf { it.isNotBlank() }
                 ?: continue
+            val param: Any = videoParam.toIntOrNull() ?: videoParam
 
             try {
                 val responseJson = liveWireBuilder(
@@ -580,7 +609,7 @@ class AnizoneProvider : MainAPI() {
                         mapOf(
                             "path" to "",
                             "method" to "setVideo",
-                            "params" to listOf(videoId)
+                            "params" to listOf(param)
                         )
                     ),
                     cookie,
