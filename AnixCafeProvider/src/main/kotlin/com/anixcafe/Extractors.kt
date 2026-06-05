@@ -39,6 +39,8 @@ open class AnixCafeGenericExtractor : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        if (AnixCafeExtractorHelper.isKnownBrokenCandidate(url, name)) return
+
         val visited = linkedSetOf<String>()
         AnixCafeExtractorHelper.resolveLink(
             url = url,
@@ -94,13 +96,13 @@ object AnixCafeExtractorHelper {
         val fixedUrl = normalizeUrl(url, referer) ?: return
         if (!visited.add(fixedUrl)) return
         if (isNoiseFrame(fixedUrl)) return
+        if (isKnownBrokenCandidate(fixedUrl, label)) return
 
         if (isDirectMedia(fixedUrl)) {
             emitDirectLink(fixedUrl, label, referer, callback)
             return
         }
 
-        if (resolveDailymotion(fixedUrl, label, referer, callback)) return
         if (resolvePlaymogo(fixedUrl, label, referer, callback)) return
 
         if (useGenericExtractor) {
@@ -139,6 +141,7 @@ object AnixCafeExtractorHelper {
                 .ifBlank { element.attr("href") }
                 .takeIf { it.isNotBlank() }
                 ?.let { normalizeUrl(it, fixedUrl) }
+                ?.takeIf { shouldKeepCandidate(it) }
                 ?.let(nested::add)
         }
 
@@ -196,9 +199,27 @@ object AnixCafeExtractorHelper {
     }
 
     fun isUnsupportedPlayerFrame(url: String): Boolean {
-        return false
+        return isKnownBrokenCandidate(url)
     }
 
+    fun isPreferredOkRuCandidate(url: String, label: String = ""): Boolean {
+        val value = "$url $label".lowercase()
+        return value.contains("ok.ru") ||
+            value.contains("okru") ||
+            value.contains("okrusl") ||
+            value.contains("odnoklassniki")
+    }
+
+    fun isKnownBrokenCandidate(url: String, label: String = ""): Boolean {
+        if (isPreferredOkRuCandidate(url, label)) return false
+
+        val value = "$url $label".lowercase()
+        return value.contains("dailymotion.com") ||
+            value.contains("dai.ly") ||
+            value.contains("videoplayer.vip") ||
+            value.contains("anixcafe videoplayer") ||
+            value.contains("anixcafe video player")
+    }
 
     private suspend fun resolveDailymotion(
         url: String,
@@ -298,7 +319,7 @@ object AnixCafeExtractorHelper {
             ).text.cleanEscaped()
         }.getOrNull() ?: return false
 
-        val passPath = Regex("""\$\.\get\(['"]([^'"]*?/pass_md5/[^'"]+)['"]""")
+        val passPath = Regex("""\$\.get\(['"]([^'"]*?/pass_md5/[^'"]+)['"]""")
             .find(page)
             ?.groupValues
             ?.getOrNull(1)
@@ -386,7 +407,7 @@ object AnixCafeExtractorHelper {
 
         val patterns = listOf(
             Regex("""https?://[^\s"'<>\\]+?\.(?:m3u8|mp4|webm|txt)(?:\?[^"'<>\\\s]*)?""", RegexOption.IGNORE_CASE),
-            Regex("""https?://[^\s"'<>\\]+?(?:playmogo|videoplayer|dood|streamwish|wishfast|filemoon|vidhide|vidguard|streamtape|mp4upload|mixdrop|voe|dailymotion)[^\s"'<>\\]*""", RegexOption.IGNORE_CASE),
+            Regex("""https?://[^\s"'<>\\]+?(?:ok\.ru|okru|playmogo|dood|streamwish|wishfast|filemoon|vidhide|vidguard|streamtape|mp4upload|mixdrop|voe)[^\s"'<>\\]*""", RegexOption.IGNORE_CASE),
             Regex("""(?:file|src|source|video_url|videoUrl|play_url|playUrl|hls|url)\s*[:=]\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE),
             Regex("""["']((?:/|//)[^"']+\.(?:m3u8|mp4|webm|txt)[^"']*)["']""", RegexOption.IGNORE_CASE),
         )
@@ -425,15 +446,14 @@ object AnixCafeExtractorHelper {
     private fun shouldKeepCandidate(url: String): Boolean {
         val lower = url.lowercase()
         return !isNoiseFrame(url) &&
+            !isKnownBrokenCandidate(url) &&
             !lower.contains("youtube.com") &&
             !lower.contains("youtu.be") &&
             !lower.contains("trailer") &&
             (
                 isDirectMedia(url) ||
+                    isPreferredOkRuCandidate(url) ||
                     lower.contains("playmogo") ||
-                    lower.contains("videoplayer") ||
-                    lower.contains("embed") ||
-                    lower.contains("player") ||
                     lower.contains("dood") ||
                     lower.contains("streamwish") ||
                     lower.contains("wishfast") ||
@@ -443,8 +463,7 @@ object AnixCafeExtractorHelper {
                     lower.contains("streamtape") ||
                     lower.contains("mp4upload") ||
                     lower.contains("mixdrop") ||
-                    lower.contains("voe") ||
-                    lower.contains("dailymotion")
+                    lower.contains("voe")
                 )
     }
 

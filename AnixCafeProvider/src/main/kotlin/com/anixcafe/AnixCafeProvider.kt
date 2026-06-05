@@ -139,30 +139,48 @@ class AnixCafeProvider : MainAPI() {
             }
         }
 
-        candidates
-            .filterNot { (url, _) ->
+        val normalizedCandidates = candidates
+            .mapNotNull { (url, label) ->
+                val fixed = AnixCafeExtractorHelper.normalizeUrl(url, data) ?: return@mapNotNull null
+                fixed to label
+            }
+            .filterNot { (url, label) ->
                 AnixCafeExtractorHelper.isNoiseFrame(url) ||
-                    AnixCafeExtractorHelper.isUnsupportedPlayerFrame(url)
+                    AnixCafeExtractorHelper.isKnownBrokenCandidate(url, label)
             }
-            .amap { (url, label) ->
-                AnixCafeExtractorHelper.resolveLink(
-                    url = AnixCafeExtractorHelper.normalizeUrl(url, data) ?: return@amap,
-                    label = label,
-                    referer = data,
-                    visited = visited,
-                    subtitleCallback = subtitleCallback,
-                    callback = safeCallback
-                )
-            }
+            .distinctBy { it.first }
 
-        document.select(".soraddlx a[href], .dlbox a[href], .download a[href], a[href*='mirrored.to'], a[href*='terabox']")
-            .mapNotNull { it.attr("abs:href").ifBlank { it.attr("href") }.takeIf(String::isNotBlank) }
-            .distinct()
-            .forEach { url ->
-                runCatching {
-                    loadExtractor(url, data, subtitleCallback, safeCallback)
+        val okRuCandidates = normalizedCandidates
+            .filter { (url, label) -> AnixCafeExtractorHelper.isPreferredOkRuCandidate(url, label) }
+
+        val fallbackCandidates = normalizedCandidates
+            .filterNot { (url, label) -> AnixCafeExtractorHelper.isPreferredOkRuCandidate(url, label) }
+
+        val candidatesToResolve = okRuCandidates.ifEmpty { fallbackCandidates }
+
+        for ((url, label) in candidatesToResolve) {
+            AnixCafeExtractorHelper.resolveLink(
+                url = url,
+                label = label,
+                referer = data,
+                visited = visited,
+                subtitleCallback = subtitleCallback,
+                callback = safeCallback
+            )
+            if (emitted && AnixCafeExtractorHelper.isPreferredOkRuCandidate(url, label)) break
+        }
+
+        if (!emitted) {
+            document.select(".soraddlx a[href], .dlbox a[href], .download a[href], a[href*='mirrored.to'], a[href*='terabox']")
+                .mapNotNull { it.attr("abs:href").ifBlank { it.attr("href") }.takeIf(String::isNotBlank) }
+                .distinct()
+                .filterNot { AnixCafeExtractorHelper.isKnownBrokenCandidate(it) }
+                .forEach { url ->
+                    runCatching {
+                        loadExtractor(url, data, subtitleCallback, safeCallback)
+                    }
                 }
-            }
+        }
 
         return emitted
     }
