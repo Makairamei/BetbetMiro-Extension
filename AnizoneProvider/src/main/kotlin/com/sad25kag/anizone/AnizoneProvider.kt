@@ -48,21 +48,15 @@ class AnizoneProvider : MainAPI() {
     override val hasDownloadSupport = true
 
     override val mainPage = mainPageOf(
-        // Struktur kategori mengikuti sumber AniZone: Home, Anime Index, dan Top Tags.
-        "home:latest" to "Latest Anime",
-        "anime:index" to "Anime Index",
-        "anime:movie" to "Movie",
-        "anime:ova" to "OVA",
-        "tag/hmi0gccz" to "Manga",
-        "tag/bio3ygrp" to "Comedy",
-        "tag/s1ssghb1" to "Fantasy",
-        "tag/fxndqllf" to "Shounen",
-        "tag/xottt75h" to "Action",
-        "tag/tzgxn5ic" to "Seinen",
-        "tag/2ch5lzak" to "Novel",
-        "tag/fqe1dvxj" to "Romance",
-        "tag/n6ta6ma6" to "School Life",
-        "tag/7kov4siq" to "Violence"
+        // Anime Index filters from AniZone source.
+        "type:" to "Terbaru",
+        "type:TV Series" to "TV Series",
+        "type:OVA" to "OVA",
+        "type:Movie" to "Movie",
+        "type:Other" to "Other",
+        "type:Web" to "Web",
+        "type:TV Special" to "TV Special",
+        "type:Music Video" to "Music Video"
     )
 
     private fun translateGenre(name: String): String {
@@ -216,22 +210,17 @@ class AnizoneProvider : MainAPI() {
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        if (request.data.startsWith("home:")) {
-            return getHomeMainPage(request)
-        }
-
-        if (request.data.startsWith("anime:")) {
-            return getAnimeIndexMainPage(request)
-        }
-
-        if (request.data.startsWith("tag/")) {
-            return getTagMainPage(page, request)
+        if (request.data.startsWith("type:")) {
+            return getTypeMainPage(page, request)
         }
 
         val initialized = initializeLiveWire()
         if (!initialized) {
             Log.w("AniZone", "Inisialisasi LiveWire gagal.")
-            return emptyHomePage(request.name)
+            return newHomePageResponse(
+                HomePageList(request.name, emptyList(), isHorizontalImages = false),
+                hasNext = false
+            )
         }
 
         return try {
@@ -265,168 +254,105 @@ class AnizoneProvider : MainAPI() {
                 doc = getHtmlFromWire(responseJson)
             }
 
-            val home = parseAnimeElements(doc).map { toResult(it) }
+            val home = doc.select("div[wire:key]")
 
-            if (home.isEmpty()) {
-                emptyHomePage(request.name)
-            } else {
-                newHomePageResponse(
-                    HomePageList(request.name, home, isHorizontalImages = false),
-                    hasNext = doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]") != null
-                )
-            }
+            newHomePageResponse(
+                HomePageList(request.name, home.map { toResult(it) }, isHorizontalImages = false),
+                hasNext = doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]") != null
+            )
         } catch (e: Exception) {
             Log.e("AniZone", "Gagal memproses getMainPage: ${e.message}")
-            emptyHomePage(request.name)
+            newHomePageResponse(
+                HomePageList(request.name, emptyList(), isHorizontalImages = false),
+                hasNext = false
+            )
         }
     }
 
-    private suspend fun getHomeMainPage(
-        request: MainPageRequest
-    ): HomePageResponse {
-        return try {
-            val doc = app.get(mainUrl).document
-            val items = parseAnimeElements(doc)
-                .map { toResult(it) }
-                .filter { it.name.isNotBlank() }
-                .take(24)
-
-            if (items.isEmpty()) {
-                emptyHomePage(request.name)
-            } else {
-                newHomePageResponse(
-                    HomePageList(request.name, items, isHorizontalImages = false),
-                    hasNext = false
-                )
-            }
-        } catch (e: Exception) {
-            Log.e("AniZone", "Gagal memuat homepage source: ${e.message}")
-            emptyHomePage(request.name)
-        }
-    }
-
-    private suspend fun getAnimeIndexMainPage(
-        request: MainPageRequest
-    ): HomePageResponse {
-        return try {
-            val doc = app.get("$mainUrl/anime").document
-            val filterType = when (request.data.substringAfter("anime:", "")) {
-                "movie" -> "Movie"
-                "ova" -> "OVA"
-                else -> ""
-            }
-
-            val items = parseAnimeElements(doc)
-                .filter { element ->
-                    filterType.isBlank() || element.text().contains(filterType, ignoreCase = true)
-                }
-                .map { toResult(it) }
-                .filter { it.name.isNotBlank() }
-                .take(24)
-
-            if (items.isEmpty()) {
-                emptyHomePage(request.name)
-            } else {
-                newHomePageResponse(
-                    HomePageList(request.name, items, isHorizontalImages = false),
-                    hasNext = false
-                )
-            }
-        } catch (e: Exception) {
-            Log.e("AniZone", "Gagal memuat Anime Index ${request.data}: ${e.message}")
-            emptyHomePage(request.name)
-        }
-    }
-
-    private suspend fun getTagMainPage(
+    private suspend fun getTypeMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
+        val initialized = initializeLiveWire()
+        if (!initialized) {
+            Log.w("AniZone", "Inisialisasi LiveWire gagal.")
+            return newHomePageResponse(
+                HomePageList(request.name, emptyList(), isHorizontalImages = false),
+                hasNext = false
+            )
+        }
+
         return try {
-            val url = if (page <= 1) {
-                "$mainUrl/${request.data}"
+            val type = request.data.removePrefix("type:")
+            val updates = if (type.isBlank()) {
+                mapOf("sort" to "release-desc")
             } else {
-                "$mainUrl/${request.data}?page=$page"
+                mapOf("type" to type, "sort" to "release-desc")
             }
 
-            val doc = app.get(url).document
+            var responseJson = liveWireBuilder(
+                updates,
+                mutableListOf(),
+                this.cookies,
+                this.wireData,
+                true
+            )
 
-            val items = parseAnimeElements(doc)
+            var doc = getHtmlFromWire(responseJson)
+
+            for (i in 1 until page) {
+                if (doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]") == null) break
+
+                responseJson = liveWireBuilder(
+                    mutableMapOf(),
+                    mutableListOf(
+                        mapOf(
+                            "path" to "",
+                            "method" to "loadMore",
+                            "params" to listOf<String>()
+                        )
+                    ),
+                    this.cookies,
+                    this.wireData,
+                    true
+                )
+
+                doc = getHtmlFromWire(responseJson)
+            }
+
+            val home = doc.select("div[wire:key]")
                 .map { toResult(it) }
                 .filter { it.name.isNotBlank() }
-                .take(24)
 
-            val hasNext = doc.selectFirst(
-                "a[rel=next], a[href*='page=${page + 1}'], .h-12[x-intersect=\"\$wire.loadMore()\"]"
-            ) != null
-
-            if (items.isEmpty()) {
-                emptyHomePage(request.name)
-            } else {
-                newHomePageResponse(
-                    HomePageList(request.name, items, isHorizontalImages = false),
-                    hasNext = hasNext
-                )
-            }
+            newHomePageResponse(
+                HomePageList(request.name, home, isHorizontalImages = false),
+                hasNext = doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]") != null
+            )
         } catch (e: Exception) {
-            Log.e("AniZone", "Gagal memuat kategori/tag ${request.data}: ${e.message}")
-            emptyHomePage(request.name)
+            Log.e("AniZone", "Gagal memuat filter ${request.data}: ${e.message}")
+            newHomePageResponse(
+                HomePageList(request.name, emptyList(), isHorizontalImages = false),
+                hasNext = false
+            )
         }
-    }
-
-    private fun emptyHomePage(name: String): HomePageResponse {
-        return newHomePageResponse(
-            HomePageList(name, emptyList(), isHorizontalImages = false),
-            hasNext = false
-        )
-    }
-
-    private fun parseAnimeElements(doc: Document): List<Element> {
-        val candidates = mutableListOf<Element>()
-
-        doc.select("div[wire:key]:has(a[href*='/anime/'])").forEach { candidates.add(it) }
-        doc.select("article:has(a[href*='/anime/'])").forEach { candidates.add(it) }
-        doc.select("li:has(a[href*='/anime/'])").forEach { candidates.add(it) }
-        doc.select("a[href*='/anime/']").forEach { link ->
-            if (isAnimeDetailUrl(link.attr("href"))) {
-                link.parent()?.let { candidates.add(it) }
-            }
-        }
-
-        return candidates
-            .filter { firstAnimeLink(it) != null }
-            .distinctBy { firstAnimeLink(it)?.attr("href")?.substringBefore("?")?.trimEnd('/') ?: it.text() }
-    }
-
-    private fun firstAnimeLink(post: Element): Element? {
-        return post.select("a[href*='/anime/']")
-            .firstOrNull { isAnimeDetailUrl(it.attr("href")) }
-    }
-
-    private fun isAnimeDetailUrl(url: String): Boolean {
-        val clean = url.substringBefore("?").substringBefore("#").trimEnd('/')
-        val path = clean.substringAfter(mainUrl, clean)
-        val parts = path.split('/').filter { it.isNotBlank() }
-        return parts.size == 2 && parts.firstOrNull() == "anime"
     }
 
     private fun toResult(post: Element): SearchResponse {
-        val link = firstAnimeLink(post)
-
         val title = post.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
-            ?: link?.text()?.trim()
-            ?: post.selectFirst("h2, h3")?.text()?.trim()
+            ?: post.selectFirst("h2, h3, a[href*='/anime/']")?.text()?.trim()
             ?: ""
 
-        val url = link?.attr("href") ?: ""
+        val url = post.selectFirst("a[href*='/anime/']")?.attr("href")
+            ?: post.selectFirst("a")?.attr("href")
+            ?: ""
 
-        val type = if (post.text().contains("Movie", ignoreCase = true)) {
+        val tvType = if (post.text().contains("Movie", ignoreCase = true)) {
             TvType.AnimeMovie
         } else {
             TvType.Anime
         }
 
-        return newMovieSearchResponse(title, url, type) {
+        return newMovieSearchResponse(title, url, tvType) {
             this.posterUrl = post.selectFirst("img")?.attr("src")
         }
     }
@@ -446,7 +372,7 @@ class AnizoneProvider : MainAPI() {
             )
         )
 
-        return parseAnimeElements(doc).map { toResult(it) }
+        return doc.select("div[wire:key]").map { toResult(it) }
     }
 
     override suspend fun load(url: String): LoadResponse {
