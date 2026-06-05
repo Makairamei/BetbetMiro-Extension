@@ -1,14 +1,18 @@
 package com.sad25kag.Animasu
 
+import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.amap
 import com.lagradost.cloudstream3.utils.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+import java.net.URI
+import java.net.URLDecoder
 
 class Animasu : MainAPI() {
 
@@ -25,6 +29,14 @@ class Animasu : MainAPI() {
     )
 
     companion object {
+
+        private const val MAX_TOP_LEVEL_CANDIDATES = 18
+        private const val MAX_DOWNLOAD_CANDIDATES = 8
+        private const val MAX_NESTED_CANDIDATES = 10
+        private const val MAX_RESOLVE_DEPTH = 1
+        private const val MAX_VISITED_LINKS = 34
+        private const val MAX_NESTED_TEXT_BYTES = 1_000_000L
+        private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36"
 
         fun getType(t: String?): TvType {
             if (t == null) return TvType.Anime
@@ -252,43 +264,461 @@ class Animasu : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-
-        val document = app.get(data).document
+        val episodeUrl = fixUrl(data)
+        val document = app.get(
+            episodeUrl,
+            referer = mainUrl,
+            headers = mapOf("User-Agent" to USER_AGENT, "Referer" to mainUrl)
+        ).document
         val candidates = linkedSetOf<Pair<String, String?>>()
+        val visited = linkedSetOf<String>()
+        val emitted = linkedSetOf<String>()
+
+        fun addCandidate(value: String?, label: String? = "Animasu") {
+            if (value.isNullOrBlank()) return
+            decodeServerUrls(value).forEach { candidate ->
+                candidates.add(candidate to label)
+            }
+        }
 
         document.select("#pembed iframe[src], .player-embed iframe[src]").forEach { iframe ->
-            normalizeIframeUrl(iframe.attr("src"))?.let { candidates.add(it to "Default") }
+            addCandidate(iframe.attr("abs:src").ifBlank { iframe.attr("src") }, "Default")
         }
 
         document.select(".mobius > .mirror > option, .mobius select.mirror option").forEach { option ->
-            val value = option.attr("value")
-            if (value.isBlank()) return@forEach
-
-            val decoded = runCatching { base64Decode(value) }.getOrNull() ?: return@forEach
-            val iframeSrc = Jsoup.parse(decoded).selectFirst("iframe[src]")?.attr("src") ?: return@forEach
-            normalizeIframeUrl(iframeSrc)?.let { candidates.add(it to option.text()) }
+            addCandidate(option.attr("value"), option.text())
         }
 
-        var hasLinks = false
+        document.select("iframe[src], iframe[data-src], embed[src], source[src], video[src]").forEach { element ->
+            addCandidate(
+                element.attr("data-src")
+                    .ifBlank { element.attr("abs:src") }
+                    .ifBlank { element.attr("src") },
+                "Animasu"
+            )
+        }
 
-        candidates.forEach { (iframe, quality) ->
-            val emitted = if (iframe.contains("blogger.com/video.g", ignoreCase = true)) {
-                emitBloggerVideo(iframe, quality, data, callback)
-            } else {
-                loadFixedExtractor(
-                    iframe,
-                    quality,
-                    data,
-                    subtitleCallback,
-                    callback
+        document.select("select option[value], option[value]").forEach { option ->
+            addCandidate(option.attr("value"), option.text().trim().ifBlank { "Animasu" })
+        }
+
+        document.select("[data-src], [data-lazy-src], [data-url], [data-link], [data-video], [data-embed], [data-player], [data-file]").forEach { element ->
+            val label = element.text().trim().ifBlank { "Animasu" }
+            addCandidate(element.attr("data-src"), label)
+            addCandidate(element.attr("data-lazy-src"), label)
+            addCandidate(element.attr("data-url"), label)
+            addCandidate(element.attr("data-link"), label)
+            addCandidate(element.attr("data-video"), label)
+            addCandidate(element.attr("data-embed"), label)
+            addCandidate(element.attr("data-player"), label)
+            addCandidate(element.attr("data-file"), label)
+        }
+
+        extractKnownVideoUrls(document.html()).forEach { candidates.add(it to "Animasu") }
+
+        val countedCallback: (ExtractorLink) -> Unit = { link ->
+            if (emitted.add(link.url)) callback(link)
+        }
+
+        val topLevelCandidates = candidates
+            .mapNotNull { (url, label) -> normalizeAnyUrl(url, episodeUrl)?.let { it to label } }
+            .filterNot { (url, _) -> isNoiseFrame(url) }
+            .distinctBy { it.first }
+            .take(MAX_TOP_LEVEL_CANDIDATES)
+
+        for ((url, label) in topLevelCandidates) {
+            try {
+                resolveVideoCandidate(
+                    url = url,
+                    label = label,
+                    referer = episodeUrl,
+                    visited = visited,
+                    subtitleCallback = subtitleCallback,
+                    callback = countedCallback,
                 )
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                Log.w("Animasu", "Failed resolving server: $url", error)
             }
-
-            if (emitted) hasLinks = true
         }
 
-        return hasLinks
+        if (emitted.isEmpty()) {
+            val downloadCandidates = document.select("a[href*='mirror'], a[href*='drive'], a[href*='pixeldrain'], a[href*='mp4'], a[href*='m3u8'], .download a[href], .download-eps a[href], .dlbox a[href], .soraddlx a[href], .soraurlx a[href], .entry-content a[href]")
+                .mapNotNull { element ->
+                    element.attr("abs:href").ifBlank { element.attr("href") }
+                        .takeIf { it.isNotBlank() }
+                        ?.let { normalizeAnyUrl(it, episodeUrl) }
+                }
+                .filterNot { isNoiseFrame(it) }
+                .distinct()
+                .take(MAX_DOWNLOAD_CANDIDATES)
+
+            for (url in downloadCandidates) {
+                try {
+                    resolveVideoCandidate(
+                        url = url,
+                        label = "Download",
+                        referer = episodeUrl,
+                        visited = visited,
+                        subtitleCallback = subtitleCallback,
+                        callback = countedCallback,
+                    )
+                } catch (error: Throwable) {
+                    if (error is CancellationException) throw error
+                    Log.w("Animasu", "Failed resolving download: $url", error)
+                }
+            }
+        }
+
+        return emitted.isNotEmpty()
     }
+
+    private suspend fun resolveVideoCandidate(
+        url: String,
+        label: String?,
+        referer: String,
+        visited: MutableSet<String>,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
+        depth: Int = 0,
+    ) {
+        val fixed = normalizeAnyUrl(url, referer)
+            ?.replace(".txt", ".m3u8")
+            ?: return
+
+        if (visited.size >= MAX_VISITED_LINKS || !visited.add(fixed) || isNoiseFrame(fixed)) return
+
+        val sourceLabel = label?.takeIf { it.isNotBlank() } ?: "Animasu"
+        val labelQuality = getIndexQuality(sourceLabel)
+        val urlQuality = getIndexQuality(fixed)
+        val directQuality = when {
+            labelQuality != Qualities.Unknown.value -> labelQuality
+            urlQuality != Qualities.Unknown.value -> urlQuality
+            else -> Qualities.Unknown.value
+        }
+
+        when {
+            fixed.contains("blogger.com/video.g", ignoreCase = true) -> {
+                if (emitBloggerVideo(fixed, sourceLabel, referer, callback)) return
+            }
+            fixed.contains(".m3u8", true) -> {
+                M3u8Helper.generateM3u8(
+                    sourceLabel,
+                    fixed,
+                    referer = referer,
+                    headers = mapOf("User-Agent" to USER_AGENT, "Referer" to referer),
+                ).forEach(callback)
+                return
+            }
+            fixed.contains(".mp4", true) || fixed.contains(".webm", true) -> {
+                callback(
+                    newExtractorLink(
+                        sourceLabel,
+                        sourceLabel,
+                        fixed,
+                        ExtractorLinkType.VIDEO,
+                    ) {
+                        this.referer = referer
+                        this.quality = directQuality
+                        this.headers = mapOf("User-Agent" to USER_AGENT, "Referer" to referer)
+                    }
+                )
+                return
+            }
+        }
+
+        if (shouldUseExtractor(fixed)) {
+            try {
+                if (loadFixedExtractor(fixed, sourceLabel, referer, subtitleCallback, callback)) return
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+            }
+        }
+
+        if (depth >= MAX_RESOLVE_DEPTH || !shouldReadNestedPage(fixed)) return
+
+        val response = runCatching {
+            app.get(
+                fixed,
+                referer = referer,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to referer,
+                    "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                )
+            )
+        }.getOrNull() ?: return
+
+        val contentType = response.headers["Content-Type"].orEmpty().lowercase()
+        val contentLength = response.headers["Content-Length"]?.toLongOrNull()
+        if (shouldSkipBodyRead(contentType, contentLength)) return
+
+        val body = runCatching { response.text.cleanEscaped() }.getOrNull() ?: return
+        val nested = linkedSetOf<String>()
+        nested.addAll(extractKnownVideoUrls(body))
+
+        val nestedDocument = Jsoup.parse(body, fixed)
+        nestedDocument.select("iframe[src], iframe[data-src], embed[src], source[src], video[src], a[href], [data-src], [data-url], [data-link], [data-video], [data-embed], [data-player], [data-file]").forEach { element ->
+            element.attr("data-src")
+                .ifBlank { element.attr("data-url") }
+                .ifBlank { element.attr("data-link") }
+                .ifBlank { element.attr("data-video") }
+                .ifBlank { element.attr("data-embed") }
+                .ifBlank { element.attr("data-player") }
+                .ifBlank { element.attr("data-file") }
+                .ifBlank { element.attr("abs:src") }
+                .ifBlank { element.attr("src") }
+                .ifBlank { element.attr("abs:href") }
+                .ifBlank { element.attr("href") }
+                .takeIf { it.isNotBlank() }
+                ?.let { decodeServerUrls(it) }
+                ?.forEach { candidate -> normalizeAnyUrl(candidate, fixed)?.let { nested.add(it) } }
+        }
+
+        val nestedCandidates = nested.asSequence()
+            .filterNot { isNoiseFrame(it) }
+            .distinct()
+            .take(MAX_NESTED_CANDIDATES)
+            .toList()
+
+        for (nestedUrl in nestedCandidates) {
+            resolveVideoCandidate(
+                url = nestedUrl,
+                label = sourceLabel,
+                referer = fixed,
+                visited = visited,
+                subtitleCallback = subtitleCallback,
+                callback = callback,
+                depth = depth + 1,
+            )
+        }
+    }
+
+    private fun decodeServerUrls(value: String): List<String> {
+        val decodedValues = linkedSetOf<String>()
+        val cleanValue = value.trim().htmlUnescape().cleanEscaped()
+        if (cleanValue.isBlank()) return emptyList()
+
+        decodedValues.add(cleanValue)
+        runCatching { URLDecoder.decode(cleanValue, "UTF-8") }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { decodedValues.add(it.htmlUnescape().cleanEscaped()) }
+
+        decodeBase64Value(cleanValue)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { decodedValues.add(it.htmlUnescape().cleanEscaped()) }
+
+        val results = linkedSetOf<String>()
+        decodedValues.forEach { decoded ->
+            val beforeCount = results.size
+            val parsed = Jsoup.parse(decoded)
+            parsed.select("iframe[src], iframe[data-src], embed[src], source[src], video[src], a[href]").forEach { element ->
+                element.attr("data-src")
+                    .ifBlank { element.attr("src") }
+                    .ifBlank { element.attr("href") }
+                    .takeIf { it.isNotBlank() }
+                    ?.let(results::add)
+            }
+            extractKnownVideoUrls(decoded).forEach(results::add)
+            if (results.size == beforeCount && looksLikeVideoCandidate(decoded)) results.add(decoded)
+        }
+
+        return results.toList()
+    }
+
+    private fun decodeBase64Value(value: String): String? {
+        val normalized = value.trim()
+        if (normalized.length < 8) return null
+
+        return runCatching { base64Decode(normalized) }.getOrNull()
+            ?: runCatching {
+                val fixed = normalized
+                    .replace('-', '+')
+                    .replace('_', '/')
+                    .let { raw ->
+                        val padding = (4 - raw.length % 4) % 4
+                        raw + "=".repeat(padding)
+                    }
+
+                String(android.util.Base64.decode(fixed, android.util.Base64.DEFAULT))
+            }.getOrNull()
+    }
+
+    private fun looksLikeVideoCandidate(value: String): Boolean {
+        val cleaned = value.cleanEscaped().trim()
+        val lower = cleaned.lowercase()
+        return cleaned.startsWith("http://", true) ||
+            cleaned.startsWith("https://", true) ||
+            cleaned.startsWith("//") ||
+            cleaned.startsWith("/") ||
+            lower.contains("<iframe") ||
+            lower.contains("<source") ||
+            lower.contains("<video") ||
+            isDirectMediaUrl(lower) ||
+            supportedHosts.any { lower.contains(it, ignoreCase = true) }
+    }
+
+    private fun extractKnownVideoUrls(rawText: String): List<String> {
+        if (rawText.isBlank()) return emptyList()
+
+        val decodedText = rawText.cleanEscaped()
+        val urls = linkedSetOf<String>()
+
+        Jsoup.parse(decodedText).select("iframe[src], iframe[data-src], embed[src], source[src], video[src], a[href]").forEach { element ->
+            element.attr("data-src")
+                .ifBlank { element.attr("src") }
+                .ifBlank { element.attr("href") }
+                .takeIf { it.isNotBlank() }
+                ?.let { normalizeKnownVideoUrl(it) }
+                ?.let { urls.add(it) }
+        }
+
+        Regex("""https?:\\?/\\?/[^\"'<>\\\s]+""", RegexOption.IGNORE_CASE)
+            .findAll(decodedText)
+            .mapNotNull { normalizeKnownVideoUrl(it.value) }
+            .forEach { urls.add(it) }
+
+        Regex("""(?i)(?:file|url|src|embed|video|videoUrl|video_url|hls|hlsUrl|embedUrl|embed_url|source)\s*[:=]\s*[\"']([^\"']+)[\"']""")
+            .findAll(decodedText)
+            .mapNotNull { normalizeKnownVideoUrl(it.groupValues[1]) }
+            .forEach { urls.add(it) }
+
+        return urls.toList()
+    }
+
+    private fun normalizeKnownVideoUrl(url: String): String? {
+        val absolute = normalizeAnyUrl(url, mainUrl) ?: return null
+        return absolute
+            .takeIf { candidate -> supportedHosts.any { candidate.contains(it, ignoreCase = true) } || isDirectMediaUrl(candidate) }
+            ?.let { fixUrl(it) }
+    }
+
+    private fun normalizeAnyUrl(url: String, baseUrl: String): String? {
+        val fixed = url.cleanEscaped().trim('"', '\'', ' ', '\n', '\r', '\t')
+        if (fixed.isBlank() || fixed == "#" || fixed.startsWith("javascript:", true)) return null
+
+        return when {
+            fixed.startsWith("//") -> "https:$fixed"
+            fixed.startsWith("http://", true) || fixed.startsWith("https://", true) -> fixed
+            fixed.startsWith("/") -> {
+                val origin = Regex("""^https?://[^/]+""").find(baseUrl)?.value ?: mainUrl
+                origin.trimEnd('/') + fixed
+            }
+            else -> runCatching { URI(baseUrl).resolve(fixed).toString() }.getOrNull()
+        }
+    }
+
+    private fun shouldUseExtractor(url: String): Boolean {
+        val value = url.lowercase()
+        return supportedHosts.any { host -> value.contains(host) }
+    }
+
+    private fun shouldReadNestedPage(url: String): Boolean {
+        val value = url.lowercase()
+        return Regex("""^https?://[^/]*animasu\.work/""").containsMatchIn(value) ||
+            value.contains("/embed", true) ||
+            value.contains("/player", true) ||
+            value.contains("/video", true) ||
+            value.contains("/v/", true) ||
+            value.contains("archivd.net", true) ||
+            value.contains("new.uservideo.xyz", true) ||
+            value.contains("mirrored.to", true) ||
+            value.contains("apk.miuiku.com", true)
+    }
+
+    private fun shouldSkipBodyRead(contentType: String, contentLength: Long?): Boolean {
+        return contentType.startsWith("video/") ||
+            contentType.startsWith("audio/") ||
+            contentType.contains("octet-stream") ||
+            contentType.contains("application/vnd.apple.mpegurl") ||
+            contentType.contains("application/x-mpegurl") ||
+            contentType.contains("mpegurl") ||
+            (contentLength != null && contentLength > MAX_NESTED_TEXT_BYTES)
+    }
+
+    private fun isNoiseFrame(url: String): Boolean {
+        val value = url.lowercase()
+        return value.isBlank() ||
+            value.startsWith("#") ||
+            value.startsWith("javascript") ||
+            value.contains("facebook.com") ||
+            value.contains("twitter.com") ||
+            value.contains("telegram") ||
+            value.contains("whatsapp") ||
+            value.contains("youtube.com") ||
+            value.contains("youtu.be") ||
+            value.contains("trailer") ||
+            value.contains("banner") ||
+            value.contains("doubleclick") ||
+            value.contains("googlesyndication") ||
+            value.contains("analytics") ||
+            value.contains("tracking") ||
+            value.contains("popads") ||
+            value.contains("/wp-content/themes/", true) ||
+            value.contains("/wp-content/plugins/", true)
+    }
+
+    private fun isDirectMediaUrl(url: String): Boolean {
+        return url.contains(".m3u8", true) ||
+            url.contains(".mp4", true) ||
+            url.contains(".webm", true)
+    }
+
+    private fun String.cleanEscaped(): String {
+        return this
+            .htmlUnescape()
+            .replace("\\/", "/")
+            .replace("\\u002F", "/")
+            .replace("\\u003A", ":")
+            .replace("\\u003D", "=")
+            .replace("\\u0026", "&")
+            .replace("\\\"", "\"")
+            .trim()
+    }
+
+    private fun String.htmlUnescape(): String {
+        return this
+            .replace("&amp;", "&")
+            .replace("&quot;", "\"")
+            .replace("&#039;", "'")
+            .replace("&apos;", "'")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+    }
+
+    private val supportedHosts = listOf(
+        "archivd.net",
+        "new.uservideo.xyz",
+        "uservideo",
+        "vidhidepro.com",
+        "vidhide",
+        "blogger.com/video.g",
+        "googlevideo.com/videoplayback",
+        "dailymotion.com",
+        "geo.dailymotion.com",
+        "dai.ly",
+        "ok.ru",
+        "odnoklassniki.ru",
+        "rumble.com",
+        "streamruby.com",
+        "streamruby.net",
+        "rubyvidhub.com",
+        "vidguard",
+        "filelions",
+        "streamwish",
+        "wishfast",
+        "dood",
+        "d000d",
+        "filemoon",
+        "streamtape",
+        "mixdrop",
+        "voe.sx",
+        "mp4upload",
+        "pixeldrain.com",
+        "mirrored.to",
+        "apk.miuiku.com",
+    )
 
     private fun normalizeIframeUrl(url: String?): String? {
         val raw = url
