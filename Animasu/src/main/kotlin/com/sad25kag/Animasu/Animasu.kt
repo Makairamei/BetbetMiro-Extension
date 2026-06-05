@@ -59,14 +59,23 @@ class Animasu : MainAPI() {
         }
     }
 
-    // === PERBAIKAN: MENGHAPUS GENRE YANG RUSAK/KOSONG, MENGEMBALIKAN KE STRUKTUR ASLI ===
+    // Menu lama dipertahankan; genre tambahan dibatasi ke kategori besar.
     override val mainPage = mainPageOf(
         "urutan=update" to "Baru diupdate",
         "status=&tipe=&urutan=publikasi" to "Baru ditambahkan",
         "status=&tipe=&urutan=populer" to "Terpopuler",
         "status=&tipe=&urutan=rating" to "Rating Tertinggi",
         "status=&tipe=Movie&urutan=update" to "Movie Terbaru",
-        "status=&tipe=Movie&urutan=populer" to "Movie Terpopuler",
+        "genre%5B%5D=aksi&status=&tipe=&urutan=update" to "Aksi",
+        "genre%5B%5D=petualangan&status=&tipe=&urutan=update" to "Petualangan",
+        "genre%5B%5D=komedi&status=&tipe=&urutan=update" to "Komedi",
+        "genre%5B%5D=drama&status=&tipe=&urutan=update" to "Drama",
+        "genre%5B%5D=fantasi&status=&tipe=&urutan=update" to "Fantasi",
+        "genre%5B%5D=isekai&status=&tipe=&urutan=update" to "Isekai",
+        "genre%5B%5D=romansa&status=&tipe=&urutan=update" to "Romansa",
+        "genre%5B%5D=sci-fi&status=&tipe=&urutan=update" to "Sci-Fi",
+        "genre%5B%5D=supranatural&status=&tipe=&urutan=update" to "Supranatural",
+        "genre%5B%5D=donghua&status=&tipe=&urutan=update" to "Donghua",
     )
 
     override suspend fun getMainPage(
