@@ -58,10 +58,14 @@ class AnimeMovies : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
+        val cleanQuery = query.trim()
         val encoded = withContext(Dispatchers.IO) {
-            URLEncoder.encode(query.trim(), "UTF-8")
+            URLEncoder.encode(cleanQuery, "UTF-8")
         }
         if (encoded.isBlank()) return emptyList()
+
+        val tokens = cleanQuery.searchTokens()
+        if (tokens.isEmpty()) return emptyList()
 
         val results = linkedMapOf<String, SearchResponse>()
         val urls = listOf(
@@ -73,7 +77,9 @@ class AnimeMovies : MainAPI() {
 
         for (url in urls) {
             val document = runCatching { app.get(url, headers = siteHeaders).document }.getOrNull() ?: continue
-            for (item in document.parseAnimeItems()) {
+            val matches = document.parseAnimeItems()
+                .filter { it.name.matchesSearchTokens(tokens, it.url) }
+            for (item in matches) {
                 results[item.url] = item
             }
             if (results.isNotEmpty()) break
@@ -88,7 +94,16 @@ class AnimeMovies : MainAPI() {
         val fixedUrl = fixUrl(url)
         val document = app.get(fixedUrl, headers = siteHeaders).document
         val isWatchPage = fixedUrl.contains("/watch/", true)
+        val sourceTexts = mutableListOf(document.html())
 
+        for (rscUrl in fixedUrl.rscUrls()) {
+            runCatching { app.get(rscUrl, headers = rscHeaders(fixedUrl), referer = fixedUrl).text }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { sourceTexts.add(it) }
+        }
+
+        val mergedText = sourceTexts.joinToString("\n")
         val title = document.bestTitle()
             ?.cleanTitle()
             ?.ifBlank { null }
@@ -102,35 +117,34 @@ class AnimeMovies : MainAPI() {
             .filter { it.isNotBlank() && it.length <= 40 }
             .distinct()
             .take(20)
-        val status = document.text().toShowStatus()
+        val status = mergedText.toShowStatus()
         val recommendations = document.parseAnimeItems().filter { it.url != fixedUrl }.take(24)
 
-        val episodeLinks = document.select("a[href*=/watch/], a[href*='/watch/']")
-            .mapNotNull { a -> a.toEpisodeOrNull() }
-            .distinctBy { it.data }
-            .sortedWith(compareBy({ it.episode ?: Int.MAX_VALUE }, { it.name ?: "" }))
+        val episodeLinks = linkedMapOf<String, Episode>()
+        document.parseEpisodeLinks().forEach { episodeLinks[it.data] = it }
+        mergedText.extractWatchUrls().mapNotNull { it.toEpisodeFromUrl() }.forEach { episodeLinks[it.data] = it }
 
-        val episodes = if (episodeLinks.isNotEmpty()) {
-            episodeLinks
-        } else if (isWatchPage) {
-            listOf(newEpisode(fixedUrl) {
-                this.name = title.parseEpisodeName() ?: title
-                this.episode = title.parseEpisodeNumber() ?: fixedUrl.parseEpisodeNumber()
-                this.posterUrl = poster
-            })
+        val episodeRange = title.parseEpisodeRange() ?: mergedText.parseEpisodeRange()
+        val generatedEpisodes = if (episodeLinks.isEmpty() && episodeRange != null && !isWatchPage) {
+            generateEpisodeRange(fixedUrl, title, poster, episodeRange)
         } else {
             emptyList()
         }
 
+        val episodes = (episodeLinks.values.toList() + generatedEpisodes)
+            .distinctBy { it.data }
+            .sortedWith(compareBy({ it.episode ?: Int.MAX_VALUE }, { it.name ?: "" }))
+
+        val isSeriesBundle = episodeRange != null && !title.looksLikeMovie()
         val type = when {
-            title.contains("Movie", true) || fixedUrl.contains("movie", true) -> TvType.AnimeMovie
             title.contains("OVA", true) || title.contains("Special", true) -> TvType.OVA
-            episodes.size <= 1 && !title.contains("Season", true) && title.contains("Movie", true) -> TvType.AnimeMovie
+            title.looksLikeMovie() || fixedUrl.contains("type=Movie", true) -> TvType.AnimeMovie
+            isSeriesBundle || episodes.size > 1 -> TvType.Anime
             else -> TvType.Anime
         }
 
         return if (episodes.isNotEmpty() && type != TvType.AnimeMovie) {
-            newAnimeLoadResponse(title, fixedUrl, type) {
+            newAnimeLoadResponse(title.cleanSeriesTitle(), fixedUrl, type) {
                 posterUrl = poster
                 this.year = year
                 this.plot = plot
@@ -139,9 +153,17 @@ class AnimeMovies : MainAPI() {
                 this.recommendations = recommendations
                 addEpisodes(DubStatus.Subbed, episodes)
             }
+        } else if (isWatchPage) {
+            newMovieLoadResponse(title, fixedUrl, type, fixedUrl) {
+                posterUrl = poster
+                this.year = year
+                this.plot = plot
+                this.tags = tags
+                this.recommendations = recommendations
+            }
         } else {
             val data = episodes.firstOrNull()?.data ?: fixedUrl
-            newMovieLoadResponse(title, fixedUrl, type, data) {
+            newMovieLoadResponse(title.cleanSeriesTitle(), fixedUrl, type, data) {
                 posterUrl = poster
                 this.year = year
                 this.plot = plot
@@ -157,7 +179,13 @@ class AnimeMovies : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val pageUrl = data.takeIf { it.startsWith("http", true) } ?: return false
+        val pageUrl = data.substringBefore("#").takeIf { it.startsWith("http", true) } ?: return false
+        val requestedEpisode = Regex("""[?#&]episode=(\d{1,4})""", RegexOption.IGNORE_CASE)
+            .find(data)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
+
         val queue = ArrayDeque<ServerCandidate>()
         val visited = linkedSetOf<String>()
         val emitted = linkedSetOf<String>()
@@ -173,9 +201,43 @@ class AnimeMovies : MainAPI() {
             enqueueFromText(response.text, url)
         }
 
-        enqueueFromUrl(pageUrl, "$mainUrl/")
-        for (rscUrl in pageUrl.rscUrls()) {
-            enqueueFromUrl(rscUrl, pageUrl, rscHeaders(pageUrl))
+        suspend fun enqueueEpisodePageFromSeries(seriesUrl: String, episode: Int) {
+            val response = runCatching { app.get(seriesUrl, headers = siteHeaders, referer = "$mainUrl/") }.getOrNull()
+            val seriesTitle = response?.document?.bestTitle()?.cleanSeriesTitle()?.ifBlank { null } ?: seriesUrl.slugTitle().cleanSeriesTitle()
+            val texts = mutableListOf<String>()
+            response?.text?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+            for (rscUrl in seriesUrl.rscUrls()) {
+                runCatching { app.get(rscUrl, headers = rscHeaders(seriesUrl), referer = seriesUrl).text }
+                    .getOrNull()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { texts.add(it) }
+            }
+
+            val discovered = texts
+                .asSequence()
+                .flatMap { it.extractWatchUrls().asSequence() }
+                .distinct()
+                .filter { it.parseEpisodeNumber() == episode }
+                .toList()
+
+            for (watchUrl in discovered) {
+                enqueueFromUrl(watchUrl, seriesUrl)
+            }
+
+            if (discovered.isEmpty()) {
+                for (guess in seriesUrl.guessWatchUrls(seriesTitle, episode)) {
+                    enqueueFromUrl(guess, seriesUrl)
+                }
+            }
+        }
+
+        if (requestedEpisode != null && pageUrl.contains("/anime/", true)) {
+            enqueueEpisodePageFromSeries(pageUrl, requestedEpisode)
+        } else {
+            enqueueFromUrl(pageUrl, "$mainUrl/")
+            for (rscUrl in pageUrl.rscUrls()) {
+                enqueueFromUrl(rscUrl, pageUrl, rscHeaders(pageUrl))
+            }
         }
 
         suspend fun emitDirect(url: String, label: String?, referer: String) {
@@ -251,7 +313,9 @@ class AnimeMovies : MainAPI() {
                 continue
             }
 
-            enqueueFromUrl(fixed, referer)
+            if (fixed.isInternalPlayerPage()) {
+                enqueueFromUrl(fixed, referer)
+            }
         }
 
         return hasLinks
@@ -265,11 +329,7 @@ class AnimeMovies : MainAPI() {
 
     private fun Document.parseAnimeItems(preferMovie: Boolean = false): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
-        val scopes = listOfNotNull(
-            selectFirst("main"),
-            selectFirst("#app"),
-            selectFirst("body")
-        ).distinct()
+        val scopes = listOfNotNull(selectFirst("main"), selectFirst("#app"), selectFirst("body")).distinct()
 
         for (scope in scopes) {
             val cards = scope.select(
@@ -309,12 +369,12 @@ class AnimeMovies : MainAPI() {
         val poster = card.bestImage()?.toAbsoluteUrl()
         val episode = card.text().parseEpisodeNumber() ?: href.parseEpisodeNumber()
         val tvType = when {
-            preferMovie || title.contains("Movie", true) || href.contains("movie", true) -> TvType.AnimeMovie
+            preferMovie || title.looksLikeMovie() || href.contains("movie", true) -> TvType.AnimeMovie
             title.contains("OVA", true) || title.contains("Special", true) -> TvType.OVA
             else -> TvType.Anime
         }
 
-        return newAnimeSearchResponse(title, href, tvType) {
+        return newAnimeSearchResponse(title.cleanSeriesTitle(), href, tvType) {
             posterUrl = poster
             episode?.let { addSub(it) }
         }
@@ -327,14 +387,44 @@ class AnimeMovies : MainAPI() {
         } ?: this
     }
 
+    private fun Document.parseEpisodeLinks(): List<Episode> {
+        val selectors = listOf(
+            "section:has(a[href*=/watch/]) a[href*=/watch/]",
+            "main a[href*=/watch/]",
+            "article a[href*=/watch/]",
+            "a[href*=/watch/]"
+        )
+        return selectors.asSequence()
+            .flatMap { select(it).asSequence() }
+            .mapNotNull { it.toEpisodeOrNull() }
+            .distinctBy { it.data }
+            .toList()
+    }
+
     private fun Element.toEpisodeOrNull(): Episode? {
         val href = attr("href").trim().toAbsoluteUrl() ?: return null
+        return href.toEpisodeFromUrl(text().trim().ifBlank { attr("title") })
+    }
+
+    private fun String.toEpisodeFromUrl(label: String? = null): Episode? {
+        val href = toAbsoluteUrl() ?: return null
         if (!href.contains("/watch/", true)) return null
-        val rawText = text().trim().ifBlank { attr("title") }.ifBlank { href.slugTitle() }
+        val rawText = label?.trim()?.ifBlank { null } ?: href.slugTitle()
         val episodeNumber = rawText.parseEpisodeNumber() ?: href.parseEpisodeNumber()
         return newEpisode(href) {
             this.name = rawText.parseEpisodeName() ?: episodeNumber?.let { "Episode $it" } ?: rawText.cleanTitle()
             this.episode = episodeNumber
+        }
+    }
+
+    private fun generateEpisodeRange(seriesUrl: String, title: String, poster: String?, range: IntRange): List<Episode> {
+        val safeRange = range.first.coerceAtLeast(1)..range.last.coerceAtMost(2000)
+        return safeRange.map { number ->
+            newEpisode("$seriesUrl#episode=$number") {
+                this.name = "Episode $number"
+                this.episode = number
+                this.posterUrl = poster
+            }
         }
     }
 
@@ -460,6 +550,21 @@ class AnimeMovies : MainAPI() {
         return results.values.toList()
     }
 
+    private fun String.extractWatchUrls(): List<String> {
+        val cleaned = basicHtmlDecode().unescapeJs().replace("\\/", "/")
+        val results = linkedSetOf<String>()
+        Regex("""https?://animemovies\.org/watch/[^"'<>\s\\]+""", RegexOption.IGNORE_CASE)
+            .findAll(cleaned)
+            .forEach { results.add(it.value.trimEnd(',', ')', ']', '}')) }
+        Regex("""["'](/watch/[^"']+)["']""", RegexOption.IGNORE_CASE)
+            .findAll(cleaned)
+            .forEach { match -> match.groupValues.getOrNull(1)?.toAbsoluteUrl()?.let { results.add(it) } }
+        Regex("""(?:href|url|to)\s*[:=]\s*["'](/watch/[^"']+)["']""", RegexOption.IGNORE_CASE)
+            .findAll(cleaned)
+            .forEach { match -> match.groupValues.getOrNull(1)?.toAbsoluteUrl()?.let { results.add(it) } }
+        return results.toList()
+    }
+
     private fun Document.hasNextPage(page: Int): Boolean {
         return selectFirst("a[rel=next], .pagination a[href*='page=${page + 1}'], a[href*='page=${page + 1}']") != null
     }
@@ -533,7 +638,16 @@ class AnimeMovies : MainAPI() {
             lower.contains("r2.cloudflarestorage.com") ||
             lower.contains("voe") ||
             lower.contains("mixdrop") ||
-            (lower.startsWith(mainUrl.lowercase()) && !lower.contains("/anime/"))
+            lower.isInternalPlayerPage()
+    }
+
+    private fun String.isInternalPlayerPage(): Boolean {
+        val lower = lowercase()
+        return lower.startsWith(mainUrl.lowercase()) &&
+            (lower.contains("/watch/") || lower.contains("/api/") || lower.contains("_rsc=")) &&
+            !lower.contains("/anime/") &&
+            !lower.contains("/genre/") &&
+            !lower.contains("/jadwal")
     }
 
     private fun String.isDirectMedia(): Boolean {
@@ -564,9 +678,16 @@ class AnimeMovies : MainAPI() {
 
     private fun String.cleanTitle(): String {
         return htmlDecode()
-            .replace(Regex("(?i)\\s*episode\\s*\\d+\\s*subtitle\\s*indonesia.*$"), "")
             .replace(Regex("(?i)\\s*subtitle\\s*indonesia.*$"), "")
             .replace(Regex("(?i)\\s*sub\\s*indo.*$"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim(' ', '-', '|', ':')
+    }
+
+    private fun String.cleanSeriesTitle(): String {
+        return cleanTitle()
+            .replace(Regex("(?i)\\s*\\(?\\s*episode\\s*\\d{1,4}\\s*[–—-]\\s*\\d{1,4}\\s*\\)?"), "")
+            .replace(Regex("(?i)\\s*\\(?\\s*eps?\\s*\\d{1,4}\\s*\\)?"), "")
             .replace(Regex("\\s+"), " ")
             .trim(' ', '-', '|', ':')
     }
@@ -588,7 +709,15 @@ class AnimeMovies : MainAPI() {
     }
 
     private fun String.slugTitle(): String {
-        return substringBefore("?").trimEnd('/').substringAfterLast('/').replace('-', ' ').cleanTitle().ifBlank { name }
+        return substringBefore("?").substringBefore("#").trimEnd('/').substringAfterLast('/').replace('-', ' ').cleanTitle().ifBlank { name }
+    }
+
+    private fun String.slugOnly(): String {
+        return substringBefore("?").substringBefore("#").trimEnd('/').substringAfterLast('/')
+            .replace(Regex("(?i)-subtitle-indonesia$"), "")
+            .replace(Regex("(?i)-sub-indo$"), "")
+            .replace(Regex("(?i)-episode-\\d{1,4}-\\d{1,4}.*$"), "")
+            .trim('-')
     }
 
     private fun String.parseYear(): Int? {
@@ -596,7 +725,9 @@ class AnimeMovies : MainAPI() {
     }
 
     private fun String.parseEpisodeNumber(): Int? {
-        val match = Regex("""(?i)(?:episode|ep|e)\s*[-:]?\s*(\d{1,4})""").find(this)
+        val match = Regex("""(?i)[?#&]episode=(\d{1,4})""").find(this)
+            ?: Regex("""(?i)(?:episode|ep|e)\s*[-:]?\s*(\d{1,4})""").find(this)
+            ?: Regex("""(?i)(?:episode|ep|e)[-_]?(\d{1,4})""").find(this)
             ?: Regex("""-(\d{1,4})(?:-|$)""").find(this)
         return match?.groupValues?.getOrNull(1)?.toIntOrNull()
     }
@@ -606,11 +737,42 @@ class AnimeMovies : MainAPI() {
         return "Episode $episode"
     }
 
+    private fun String.parseEpisodeRange(): IntRange? {
+        val regexes = listOf(
+            Regex("""(?i)episode\s*(\d{1,4})\s*[–—-]\s*(\d{1,4})"""),
+            Regex("""(?i)eps?\s*(\d{1,4})\s*[–—-]\s*(\d{1,4})"""),
+            Regex("""(?i)(\d{1,4})\s*eps""")
+        )
+        for (regex in regexes) {
+            val match = regex.find(this) ?: continue
+            if (match.groupValues.size >= 3) {
+                val start = match.groupValues[1].toIntOrNull() ?: continue
+                val end = match.groupValues[2].toIntOrNull() ?: continue
+                if (end >= start) return start..end
+            } else {
+                val end = match.groupValues[1].toIntOrNull() ?: continue
+                if (end > 1) return 1..end
+            }
+        }
+        return null
+    }
+
     private fun String.toShowStatus(): ShowStatus {
         return when {
             contains("ongoing", true) || contains("sedang tayang", true) -> ShowStatus.Ongoing
             else -> ShowStatus.Completed
         }
+    }
+
+    private fun String.looksLikeMovie(): Boolean {
+        val lower = lowercase()
+        return lower.contains(" movie") ||
+            lower.contains("film") ||
+            lower.contains("gekijouban") ||
+            lower.contains("last game") ||
+            lower.contains("kimi no na wa") ||
+            lower.contains("kizumonogatari") ||
+            (lower.contains(" bd") && parseEpisodeRange() == null)
     }
 
     private fun String.htmlDecode(): String {
@@ -689,6 +851,56 @@ class AnimeMovies : MainAPI() {
             "${base}${separator}_rsc=ndb2r",
             "${base}${separator}_rsc=1kfs1"
         )
+    }
+
+    private fun String.guessWatchUrls(title: String, episode: Int): List<String> {
+        val baseSlug = slugOnly()
+        val titleSlug = title.toSlug()
+        val acr = title.acronymSlug()
+        val numbers = listOf(episode.toString(), episode.toString().padStart(2, '0'), episode.toString().padStart(3, '0')).distinct()
+        val roots = listOf(baseSlug, titleSlug, acr).filter { it.isNotBlank() }.distinct()
+        val guesses = linkedSetOf<String>()
+        for (root in roots) {
+            for (number in numbers) {
+                guesses.add("$mainUrl/watch/$root-episode-$number-sub-indo")
+                guesses.add("$mainUrl/watch/$root-episode-$number-subtitle-indonesia")
+                guesses.add("$mainUrl/watch/$root-ep-$number-sub-indo")
+            }
+        }
+        return guesses.toList()
+    }
+
+    private fun String.toSlug(): String {
+        return cleanSeriesTitle()
+            .lowercase()
+            .replace(Regex("[^a-z0-9]+"), "-")
+            .trim('-')
+    }
+
+    private fun String.acronymSlug(): String {
+        return cleanSeriesTitle()
+            .lowercase()
+            .replace(Regex("[^a-z0-9 ]+"), " ")
+            .split(Regex("\\s+"))
+            .filter { it.isNotBlank() && it !in setOf("no", "ni", "to", "the", "a") }
+            .joinToString("") { token ->
+                if (token.all { it.isDigit() }) token else token.firstOrNull()?.toString().orEmpty() + token.filter { it.isDigit() }
+            }
+            .trim('-')
+    }
+
+    private fun String.searchTokens(): List<String> {
+        return lowercase()
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .split(Regex("\\s+"))
+            .map { it.trim() }
+            .filter { it.length >= 2 }
+            .distinct()
+    }
+
+    private fun String.matchesSearchTokens(tokens: List<String>, url: String): Boolean {
+        val target = "$this ${url.substringAfterLast('/').replace('-', ' ')}".lowercase()
+        return tokens.all { target.contains(it) }
     }
 
     private data class ServerCandidate(
