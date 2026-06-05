@@ -53,6 +53,8 @@ class Oppadrama : MainAPI() {
         "series/?country%5B%5D=south-korea&status=&type=Movie&order=update" to "Film Korea",
         "series/?country%5B%5D=south-korea&status=&type=Drama&order=update" to "Series Korea",
         "series/?country%5B%5D=japan&type=Drama&order=update" to "Series Jepang",
+        "series/?country%5B%5D=china&type=Drama&order=update" to "Series China",
+        "series/?country%5B%5D=china&type=Movie&order=update" to "Film China",
         "series/?country%5B%5D=usa&type=Drama&order=update" to "Series Barat"
     )
 
