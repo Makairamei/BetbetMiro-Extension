@@ -24,29 +24,77 @@ class Anoboy : MainAPI() {
 
     override val mainPage = mainPageOf(
         "" to "Update Terbaru",
-        "category/anime/ongoing/" to "Anime Ongoing",
-        "anime-list/" to "Anime List",
-        "category/donghua/" to "Donghua",
-        "category/anime-movie/" to "Movie",
-        "category/tokusatsu/" to "Tokusatsu",
-        "category/live-action-movie/" to "Live Action",
-        "category/studio-ghibli/" to "Studio Ghibli",
-        "category/rekomended/" to "Rekomendasi",
-        "category/action/" to "Action",
-        "category/adventure/" to "Adventure",
-        "category/comedy/" to "Comedy",
-        "category/demons/" to "Demons",
-        "category/drama/" to "Drama",
-        "category/ecchi/" to "Ecchi",
-        "category/fantasy/" to "Fantasy",
-        "category/horror/" to "Horror",
-        "category/martial-arts/" to "Martial Arts",
-        "category/romance/" to "Romance",
-        "category/school/" to "School",
-        "category/shounen/" to "Shounen",
-        "category/slice-of-life/" to "Slice of Life",
-        "category/sports/" to "Sports",
-        "category/supernatural/" to "Supernatural"
+        "az-list/" to "Anime List",
+        "genres/action/" to "Action",
+        "genres/adventure/" to "Adventure",
+        "genres/anthropomorphic/" to "Anthropomorphic",
+        "genres/avant-garde/" to "Avant Garde",
+        "genres/cgdct/" to "CGDCT",
+        "genres/childcare/" to "Childcare",
+        "genres/combat-sports/" to "Combat Sports",
+        "genres/comedy/" to "Comedy",
+        "genres/crossdressing/" to "Crossdressing",
+        "genres/delinquents/" to "Delinquents",
+        "genres/detective/" to "Detective",
+        "genres/drama/" to "Drama",
+        "genres/ecchi/" to "Ecchi",
+        "genres/educational/" to "Educational",
+        "genres/fantasy/" to "Fantasy",
+        "genres/gag-humor/" to "Gag Humor",
+        "genres/gore/" to "Gore",
+        "genres/gourmet/" to "Gourmet",
+        "genres/harem/" to "Harem",
+        "genres/historical/" to "Historical",
+        "genres/horror/" to "Horror",
+        "genres/idols-female/" to "Idols Female",
+        "genres/idols-male/" to "Idols Male",
+        "genres/isekai/" to "Isekai",
+        "genres/iyashikei/" to "Iyashikei",
+        "genres/josei/" to "Josei",
+        "genres/kids/" to "Kids",
+        "genres/love-polygon/" to "Love Polygon",
+        "genres/mahou-shoujo/" to "Mahou Shoujo",
+        "genres/martial-arts/" to "Martial Arts",
+        "genres/mecha/" to "Mecha",
+        "genres/medical/" to "Medical",
+        "genres/military/" to "Military",
+        "genres/music/" to "Music",
+        "genres/mystery/" to "Mystery",
+        "genres/mythology/" to "Mythology",
+        "genres/organized-crime/" to "Organized Crime",
+        "genres/otaku-culture/" to "Otaku Culture",
+        "genres/parody/" to "Parody",
+        "genres/performing-arts/" to "Performing Arts",
+        "genres/pets/" to "Pets",
+        "genres/psychological/" to "Psychological",
+        "genres/racing/" to "Racing",
+        "genres/reincarnation/" to "Reincarnation",
+        "genres/reverse-harem/" to "Reverse Harem",
+        "genres/romance/" to "Romance",
+        "genres/romantic-subtext/" to "Romantic Subtext",
+        "genres/samurai/" to "Samurai",
+        "genres/school/" to "School",
+        "genres/sci-fi/" to "Sci-Fi",
+        "genres/seinen/" to "Seinen",
+        "genres/shoujo/" to "Shoujo",
+        "genres/shounen/" to "Shounen",
+        "genres/showbiz/" to "Showbiz",
+        "genres/slice-of-life/" to "Slice of Life",
+        "genres/space/" to "Space",
+        "genres/sports/" to "Sports",
+        "genres/strategy-game/" to "Strategy Game",
+        "genres/super-power/" to "Super Power",
+        "genres/supernatural/" to "Supernatural",
+        "genres/survival/" to "Survival",
+        "genres/suspense/" to "Suspense",
+        "genres/team-sports/" to "Team Sports",
+        "genres/time-travel/" to "Time Travel",
+        "genres/urban-fantasy/" to "Urban Fantasy",
+        "genres/vampire/" to "Vampire",
+        "genres/video-game/" to "Video Game",
+        "genres/villainess/" to "Villainess",
+        "genres/visual-arts/" to "Visual Arts",
+        "genres/workplace/" to "Workplace"
     )
 
     private data class CardData(
@@ -141,26 +189,26 @@ class Anoboy : MainAPI() {
             if (directAnime != null) return listOf(directAnime.toSearchResponse())
         }
 
-        return parseSearchPage("$mainUrl/anime-list/").map { it.toSearchResponse() }
+        return parseSearchPage("$mainUrl/az-list/").map { it.toSearchResponse() }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val fixedUrl = normalizeAnoboyUrl(url)
         val document = app.get(fixedUrl, headers = defaultHeaders()).document
 
-        val pageTitle = cleanTitle(
-            document.selectFirst("h1.entry-title, h1, h2.entry-title, .pagetitle h1")
-                ?.text()
-                ?.trim()
-                .orEmpty()
-                .ifBlank {
-                    document.title()
-                        .substringBefore("–")
-                        .substringBefore("- anoBoy")
-                        .substringBefore("AnoBoy")
-                        .trim()
-                }
-        ).ifBlank {
+        val rawPageTitle = document.selectFirst("h1.entry-title, h1, h2.entry-title, .pagetitle h1")
+            ?.text()
+            ?.trim()
+            .orEmpty()
+            .ifBlank {
+                document.title()
+                    .substringBefore("–")
+                    .substringBefore("- anoBoy")
+                    .substringBefore("AnoBoy")
+                    .trim()
+            }
+
+        val pageTitle = cleanTitle(rawPageTitle).ifBlank {
             throw ErrorLoadingException("Judul tidak ditemukan")
         }
 
@@ -181,7 +229,8 @@ class Anoboy : MainAPI() {
         val episodes = parseEpisodeList(document, fixedUrl)
 
         val tags = document.select(
-            "a[href*='/category/'], .genres a, .genre-info a, .info-content a[href*='/category/']"
+            "a[href*='/genres/'], a[href*='/category/'], .genres a, .genre-info a, " +
+                ".info-content a[href*='/genres/'], .info-content a[href*='/category/']"
         ).map { it.text().trim() }
             .filter { it.isNotBlank() && it.length < 40 }
             .distinct()
@@ -190,11 +239,7 @@ class Anoboy : MainAPI() {
             .distinctBy { it.url }
             .map { it.toSearchResponse() }
 
-        val type = when {
-            fixedUrl.contains("/anime-movie/", true) || pageTitle.contains("movie", true) -> TvType.AnimeMovie
-            pageTitle.contains("ova", true) || pageTitle.contains("special", true) -> TvType.OVA
-            else -> TvType.Anime
-        }
+        val type = detectType(fixedUrl, rawPageTitle, pageTitle)
 
         return if (episodes.isNotEmpty()) {
             newAnimeLoadResponse(pageTitle, fixedUrl, type) {
@@ -292,18 +337,29 @@ class Anoboy : MainAPI() {
             candidates.add(element.attr("data"))
         }
 
-        document.select(".mobius select.mirror option[value], select.mirror option[value]").forEach { option ->
+        document.select(
+            ".mobius select.mirror option[value], select.mirror option[value], " +
+                "#selectServer option[value], select.server option[value], select[id*=server] option[value], " +
+                "select[class*=server] option[value], select[id*=mirror] option[value], select[class*=mirror] option[value]"
+        ).forEach { option ->
             val value = option.attr("value").trim()
-            if (value.isBlank()) return@forEach
+            if (value.isBlank() || !isLikelyServerValue(value)) return@forEach
 
             val decoded = runCatching { base64Decode(value) }.getOrNull()
                 ?: runCatching { String(android.util.Base64.decode(value, android.util.Base64.DEFAULT)) }.getOrNull()
-                ?: return@forEach
 
-            val decodedDoc = Jsoup.parse(decoded)
-            decodedDoc.select("iframe[src], video[src], source[src], embed[src]").forEach { embedded ->
-                candidates.add(embedded.iframeAttr().orEmpty())
-                candidates.add(embedded.attr("src"))
+            if (decoded != null) {
+                val decodedDoc = Jsoup.parse(decoded)
+                decodedDoc.select(
+                    "iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src], " +
+                        "video[src], source[src], embed[src], a[href]"
+                ).forEach { embedded ->
+                    candidates.add(embedded.iframeAttr().orEmpty())
+                    candidates.add(embedded.attr("src"))
+                    candidates.add(embedded.attr("href"))
+                }
+            } else {
+                candidates.add(value)
             }
         }
 
@@ -326,6 +382,15 @@ class Anoboy : MainAPI() {
             candidates.add(element.attr("href"))
         }
 
+        val html = document.html()
+        Regex("""https?:\\?/\\?/[^"'<>\s]+""")
+            .findAll(html)
+            .forEach { match -> candidates.add(match.value) }
+
+        Regex("""(?i)(?:src|file|url)\s*[:=]\s*["']([^"']+)["']""")
+            .findAll(html)
+            .forEach { match -> candidates.add(match.groupValues[1]) }
+
         return candidates
             .map { it.trim() }
             .filter { it.isNotBlank() }
@@ -340,10 +405,14 @@ class Anoboy : MainAPI() {
             "div.listupd div.bs",
             "a[href]:has(div.amv)",
             "a[href]:has(div#amv)",
+            "a[href*='/anime/']",
+            "a[href*='episode-']",
+            "a[href*='subtitle-indonesia']",
             ".venz ul li",
             ".latest a[href]",
             ".listupd a[href]",
             ".topten .serieslist li",
+            ".az-list a[href]",
             ".result li"
         ).joinToString(", ")
 
@@ -355,7 +424,8 @@ class Anoboy : MainAPI() {
 
     private fun collectRecommendations(document: Document): List<CardData> {
         return document.select(
-            "a[href]:has(div.amv), a[href]:has(div#amv), div.listupd article.bs, article.bs, div.bs, .topten .serieslist li"
+            "a[href]:has(div.amv), a[href]:has(div#amv), a[href*='/anime/'], " +
+                "div.listupd article.bs, article.bs, div.bs, .topten .serieslist li"
         ).mapNotNull { it.toCardData() }
             .filterNot { isNavigationTitle(it.title) }
     }
@@ -369,24 +439,20 @@ class Anoboy : MainAPI() {
         val fixedHref = normalizeAnoboyUrl(href)
         if (!isContentUrl(fixedHref)) return null
 
-        val title = cleanTitle(
-            attr("title").trim().ifBlank {
-                selectFirst("h3.ibox1, h3.ibox, h2, h3, .tt, .entry-title")?.text()?.trim().orEmpty()
-            }.ifBlank {
-                selectFirst("img")?.attr("alt")?.trim().orEmpty()
-            }.ifBlank {
-                text().trim()
-            }
-        )
+        val rawTitle = attr("title").trim().ifBlank {
+            selectFirst("h3.ibox1, h3.ibox, h2, h3, .tt, .title, .judul, .entry-title")?.text()?.trim().orEmpty()
+        }.ifBlank {
+            selectFirst("img")?.attr("alt")?.trim().orEmpty()
+        }.ifBlank {
+            text().trim()
+        }
+
+        val title = cleanTitle(rawTitle)
 
         if (title.length < 2 || isNavigationTitle(title)) return null
 
-        val episode = parseEpisodeNumber(title) ?: parseEpisodeNumber(fixedHref)
-        val type = when {
-            fixedHref.contains("/anime-movie/", true) || title.contains("movie", true) -> TvType.AnimeMovie
-            title.contains("ova", true) || title.contains("special", true) -> TvType.OVA
-            else -> TvType.Anime
-        }
+        val episode = parseEpisodeNumber(rawTitle) ?: parseEpisodeNumber(title) ?: parseEpisodeNumber(fixedHref)
+        val type = detectType(fixedHref, rawTitle, title)
 
         val poster = selectFirst("img")?.imageAttr()?.let { fixUrlNull(it) }
 
@@ -409,7 +475,8 @@ class Anoboy : MainAPI() {
     private fun parseEpisodeList(document: Document, referer: String): List<Episode> {
         val anchors = document.select(
             "div.singlelink ul.lcp_catlist li a, div.eplister ul li a, " +
-                "div.bixbox.bxcl ul li a, .episodelist ul li a, ul li a[href*='episode']"
+                "div.bixbox.bxcl ul li a, .episodelist ul li a, " +
+                "ul li a[href*='episode'], a[href*='episode-'], a[href*='subtitle-indonesia']"
         ).filter {
             val href = normalizeAnoboyUrl(it.attr("href"))
             isContentUrl(href) && !href.equals(referer, true)
@@ -621,6 +688,8 @@ class Anoboy : MainAPI() {
             .replace("http://anoboy.be", mainUrl, ignoreCase = true)
             .replace("https://www.anoboy.be", mainUrl, ignoreCase = true)
             .replace("http://www.anoboy.be", mainUrl, ignoreCase = true)
+            .replace("https://www1.anoboy.be", mainUrl, ignoreCase = true)
+            .replace("http://www1.anoboy.be", mainUrl, ignoreCase = true)
             .replace("https://anoboy.watch", mainUrl, ignoreCase = true)
             .replace("http://anoboy.watch", mainUrl, ignoreCase = true)
     }
@@ -674,18 +743,21 @@ class Anoboy : MainAPI() {
         if (
             path.contains("/category/") ||
             path.contains("/genre/") ||
+            path.contains("/genres/") ||
             path.contains("/tag/") ||
             path.contains("/season/") ||
             path.contains("/studio/") ||
             path.contains("/anime-list") ||
             path.contains("/donghua-list") ||
+            path.contains("/az-list") ||
             path.contains("/page/") ||
             lower.contains("?order=") ||
             lower.contains("?status=") ||
             lower.contains("?type=")
         ) return false
 
-        return slug.contains("episode-") ||
+        return path.startsWith("/anime/") ||
+            slug.contains("episode-") ||
             slug.contains("-subtitle-indonesia") ||
             Regex("/20\\d{2}/\\d{2}/[a-z0-9-]+/?$").containsMatchIn(path)
     }
@@ -711,6 +783,7 @@ class Anoboy : MainAPI() {
             lower.contains("x.com/") ||
             lower.contains("telegram") ||
             lower.contains("whatsapp") ||
+            lower.contains("/az-list") ||
             lower.contains("mailto:") ||
             lower.contains("/genres/") ||
             lower.contains("/genre/") ||
@@ -773,6 +846,58 @@ class Anoboy : MainAPI() {
         }.getOrDefault(link.substringBefore("?").trimEnd('/').lowercase())
     }
 
+    private fun detectType(url: String, vararg titleHints: String): TvType {
+        val lowerUrl = url.lowercase()
+        val lowerTitle = titleHints.joinToString(" ").lowercase()
+
+        return when {
+            lowerUrl.contains("/anime-movie/") ||
+                Regex("""(?i)\bmovie\b""").containsMatchIn(lowerTitle) -> TvType.AnimeMovie
+
+            Regex("""(?i)\b(?:ova|special)\b""").containsMatchIn(lowerTitle) -> TvType.OVA
+
+            else -> TvType.Anime
+        }
+    }
+
+    private fun isLikelyServerValue(value: String): Boolean {
+        val clean = cleanCandidate(value)
+        if (!isValidCandidate(clean)) return false
+        if (isPlayerCandidate(clean) || isDirectMedia(clean)) return true
+
+        val lower = clean.lowercase()
+        if (clean.startsWith("//") || clean.startsWith("http://", true) || clean.startsWith("https://", true)) {
+            return lower.contains("embed") ||
+                lower.contains("player") ||
+                lower.contains("stream") ||
+                lower.contains("video")
+        }
+
+        if (clean.startsWith("/") && (
+                lower.contains("embed") ||
+                    lower.contains("player") ||
+                    lower.contains("stream") ||
+                    lower.contains("video")
+                )
+        ) {
+            return true
+        }
+
+        if (!Regex("""^[A-Za-z0-9+/=]{24,}$""").matches(value)) return false
+
+        val decoded = runCatching { base64Decode(value) }.getOrNull()
+            ?: runCatching { String(android.util.Base64.decode(value, android.util.Base64.DEFAULT)) }.getOrNull()
+            ?: return false
+
+        return decoded.contains("iframe", true) ||
+            decoded.contains("video", true) ||
+            decoded.contains("source", true) ||
+            decoded.contains("embed", true) ||
+            decoded.contains("blogger.com/video.g", true) ||
+            decoded.contains(".m3u8", true) ||
+            decoded.contains(".mp4", true)
+    }
+
     private fun parseEpisodeNumber(text: String?): Int? {
         if (text.isNullOrBlank()) return null
         return Regex("""(?i)\b(?:episode|eps|ep)\s*[-:]?\s*(\d+)\b""")
@@ -788,11 +913,44 @@ class Anoboy : MainAPI() {
     }
 
     private fun cleanTitle(raw: String): String {
-        return raw
+        var title = raw
             .replace(Regex("""(?i)\[(?:streaming|download)\]"""), "")
-            .replace(Regex("""(?i)\b(?:streaming|download|subtitle indonesia|sub indo|nonton)\b"""), "")
+            .replace(Regex("""(?i)\b(?:streaming|download|subtitle indonesia|sub indo|nonton)\b"""), " ")
+            .replace(Regex("""(?i)\s+episode\s*\d+\s*$"""), " ")
+
+        repeat(3) {
+            title = title
+                .replace(Regex("""(?i)^\s*(?:completed|ongoing|upcoming|hiatus)\s+"""), " ")
+                .replace(Regex("""(?i)^\s*(?:tv|ova|ona|movie|special|bd|live action)\s+"""), " ")
+                .replace(Regex("""(?i)^\s*ep(?:isode)?\s*[-:]?\s*\d+\s+"""), " ")
+                .replace(Regex("""(?i)^\s*sub\s+"""), " ")
+        }
+
+        title = title
             .replace(Regex("""\s+"""), " ")
             .trim(' ', '-', '–', '|')
+
+        return collapseDuplicatedTitle(title)
+    }
+
+    private fun collapseDuplicatedTitle(raw: String): String {
+        val words = raw.split(Regex("""\s+"""))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+
+        if (words.size < 4) return raw.trim()
+
+        for (size in words.size / 2 downTo 2) {
+            val first = words.take(size).joinToString(" ")
+            val second = words.drop(size).take(size).joinToString(" ")
+
+            if (first.equals(second, ignoreCase = true)) {
+                val tail = words.drop(size * 2)
+                return (listOf(first) + tail).joinToString(" ").trim()
+            }
+        }
+
+        return raw.trim()
     }
 
     private fun isNavigationTitle(title: String): Boolean {
@@ -809,6 +967,8 @@ class Anoboy : MainAPI() {
             "order by all",
             "search",
             "download",
+            "expand",
+            "turn off light",
             "prev",
             "next",
             "all episodes"
