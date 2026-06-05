@@ -37,7 +37,7 @@ class AnimeIsMe : MainAPI() {
         "$mainUrl/anime/?status=&type=&sub=&order=" to "Daftar Anime",
         "$mainUrl/anime/?status=ongoing&type=&order=" to "Ongoing",
         "$mainUrl/anime/?status=completed&sub=" to "Completed",
-        "$mainUrl/movie/" to "Movie",
+        "$mainUrl/anime/?status=&type=movie&order=" to "Movie",
         "$mainUrl/genres/action/" to "Action",
         "$mainUrl/genres/adventure/" to "Adventure",
         "$mainUrl/genres/fantasy/" to "Fantasy",
@@ -408,6 +408,7 @@ class AnimeIsMe : MainAPI() {
             lower.contains("mp4upload") || lower.contains("voe") || lower.contains("mixdrop") ||
             lower.contains("streamtape") || lower.contains("pixeldrain") || lower.contains("gdrive") ||
             lower.contains("krakenfiles") || lower.contains("gofile") || lower.contains("acefile") || lower.contains("mediafire") ||
+            lower.contains("blogger.com/video.g") || lower.contains("youtube.googleapis.com/embed") ||
             lower.contains("googlevideo.com/videoplayback") || lower.isInternalPlayerUrl()
     }
 
@@ -420,6 +421,7 @@ class AnimeIsMe : MainAPI() {
     private fun String.shouldInlineResolve(): Boolean {
         val lower = lowercase()
         return lower.contains("vidhide") || lower.contains("filedon") || lower.contains("dood") || lower.contains("filemoon") ||
+            lower.contains("blogger.com/video.g") || lower.contains("youtube.googleapis.com/embed") ||
             lower.contains("stream") || lower.contains("player") || lower.isInternalPlayerUrl()
     }
 
