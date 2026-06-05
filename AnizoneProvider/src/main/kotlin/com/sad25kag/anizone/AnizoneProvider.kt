@@ -60,17 +60,9 @@ class AnizoneProvider : MainAPI() {
         "type:TV Special" to "TV Special",
         "type:Music Video" to "Music Video",
         "type:Other" to "Other",
-        "type:Unknown" to "Unknown",
         "tag-name:Action" to "Aksi",
         "tag-name:Adventure" to "Petualangan",
-        "tag-name:Comedy" to "Komedi",
-        "tag-name:Fantasy" to "Fantasi",
-        "tag-name:Manga" to "Manga",
-        "tag-name:Novel" to "Novel",
-        "tag-name:Romance" to "Romantis",
-        "tag-name:Shounen" to "Shounen",
-        "tag-name:Seinen" to "Seinen",
-        "tag-name:School Life" to "Kehidupan Sekolah"
+        "tag-name:Comedy" to "Komedi"
     )
 
     private val snapshotAnimeKey = "anime_snapshot_key"
