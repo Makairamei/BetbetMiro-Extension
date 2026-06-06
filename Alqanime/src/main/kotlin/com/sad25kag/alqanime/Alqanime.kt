@@ -291,7 +291,7 @@ class Alqanime : MainAPI() {
         }
 
         for (linkData in links) {
-            val resolvedUrl = resolveUrl(linkData.url)
+            val resolvedUrl = resolvePlaybackUrl(linkData.url)
             if (resolvedUrl.isBlank()) continue
 
             val qualityInt = linkData.quality.fixQuality()
@@ -631,6 +631,166 @@ class Alqanime : MainAPI() {
         }
     }
 
+
+    private suspend fun resolvePlaybackUrl(url: String): String {
+        val resolved = resolveUrl(url)
+        if (!resolved.isOuoUrl()) return resolved
+        return resolveOuoShortUrl(resolved) ?: resolved
+    }
+
+    private suspend fun resolveOuoShortUrl(url: String): String? {
+        val cleanUrl = url.cleanEscaped()
+        if (!cleanUrl.isOuoUrl()) return cleanUrl
+
+        val sParam = Regex("""[?&]s=([^&]+)""")
+            .find(cleanUrl)
+            ?.groupValues
+            ?.getOrNull(1)
+        if (sParam != null) {
+            return runCatching { URLDecoder.decode(sParam, "UTF-8") }
+                .getOrDefault(sParam)
+                .cleanEscaped()
+        }
+
+        val visited = linkedSetOf<String>()
+        var currentUrl = cleanUrl
+        var referer = "$mainUrl/"
+        var attempt = 0
+
+        while (attempt < 3 && visited.add(currentUrl)) {
+            attempt++
+            val response = runCatching {
+                app.get(
+                    currentUrl,
+                    headers = commonHeaders + mapOf("Referer" to referer),
+                    referer = referer,
+                    timeout = 20000L
+                )
+            }.getOrNull() ?: return null
+
+            normalizeUrl(response.url, currentUrl)
+                ?.cleanEscaped()
+                ?.takeIf { it.isResolvedShortlinkTarget() }
+                ?.let { return it }
+
+            val document = response.document
+            val html = response.text.cleanEscaped()
+            val candidates = collectShortlinkCandidates(document, html, currentUrl)
+
+            candidates.firstOrNull { it.isResolvedShortlinkTarget() }?.let { return it }
+
+            val form = document.selectFirst("form[action]")
+            if (form != null) {
+                val action = normalizeUrl(form.attr("action"), currentUrl)?.cleanEscaped()
+                if (action != null) {
+                    val formData = form.select("input[name]").associate { input ->
+                        input.attr("name") to input.attr("value")
+                    }.filterKeys { it.isNotBlank() }
+
+                    val postResponse = runCatching {
+                        app.post(
+                            action,
+                            headers = commonHeaders + mapOf(
+                                "Referer" to currentUrl,
+                                "Origin" to runCatching {
+                                    val uri = URI(action)
+                                    "${uri.scheme}://${uri.host}"
+                                }.getOrDefault("https://ouo.io")
+                            ),
+                            referer = currentUrl,
+                            data = formData,
+                            timeout = 20000L
+                        )
+                    }.getOrNull()
+
+                    if (postResponse != null) {
+                        normalizeUrl(postResponse.url, action)
+                            ?.cleanEscaped()
+                            ?.takeIf { it.isResolvedShortlinkTarget() }
+                            ?.let { return it }
+
+                        collectShortlinkCandidates(postResponse.document, postResponse.text.cleanEscaped(), action)
+                            .firstOrNull { it.isResolvedShortlinkTarget() }
+                            ?.let { return it }
+
+                        val nextUrl = normalizeUrl(postResponse.url, action)
+                            ?.cleanEscaped()
+                            ?.takeIf { it.isOuoUrl() && it != currentUrl }
+                            ?: collectShortlinkCandidates(postResponse.document, postResponse.text.cleanEscaped(), action)
+                                .firstOrNull { it.isOuoUrl() && it != currentUrl }
+
+                        if (nextUrl != null) {
+                            referer = action
+                            currentUrl = nextUrl
+                            continue
+                        }
+                    }
+                }
+            }
+
+            val nextOuo = candidates.firstOrNull { it.isOuoUrl() && it != currentUrl }
+                ?: normalizeUrl(response.url, currentUrl)
+                    ?.cleanEscaped()
+                    ?.takeIf { it.isOuoUrl() && it != currentUrl }
+
+            if (nextOuo != null) {
+                referer = currentUrl
+                currentUrl = nextOuo
+                continue
+            }
+
+            return null
+        }
+
+        return null
+    }
+
+    private fun collectShortlinkCandidates(
+        document: org.jsoup.nodes.Document,
+        html: String,
+        baseUrl: String
+    ): List<String> {
+        val candidates = linkedSetOf<String>()
+
+        document.select(
+            "a[href], form[action], iframe[src], script[src], " +
+                "[data-url], [data-href], [data-link], [data-download]"
+        ).forEach { element ->
+            listOf("href", "action", "src", "data-url", "data-href", "data-link", "data-download")
+                .map { element.attr(it) }
+                .mapNotNull { normalizeUrl(it, baseUrl) }
+                .map { it.cleanEscaped() }
+                .forEach { candidates.add(it) }
+        }
+
+        Regex("""(?i)(?:href|src|url|location)\s*[:=]\s*["']([^"']+)["']""")
+            .findAll(html)
+            .mapNotNull { it.groupValues.getOrNull(1) }
+            .mapNotNull { normalizeUrl(it, baseUrl) }
+            .map { it.cleanEscaped() }
+            .forEach { candidates.add(it) }
+
+        Regex("""(?i)url=([^"'<>\s]+)""")
+            .findAll(html)
+            .mapNotNull { it.groupValues.getOrNull(1) }
+            .mapNotNull { normalizeUrl(it, baseUrl) }
+            .map { it.cleanEscaped() }
+            .forEach { candidates.add(it) }
+
+        Regex("""https?://[^"'\\\s<>]+""", RegexOption.IGNORE_CASE)
+            .findAll(html)
+            .map { it.value.cleanEscaped() }
+            .forEach { candidates.add(it) }
+
+        Regex("""https?%3A%2F%2F[^"'\\\s<>]+""", RegexOption.IGNORE_CASE)
+            .findAll(html)
+            .map { runCatching { URLDecoder.decode(it.value, "UTF-8") }.getOrDefault(it.value) }
+            .map { it.cleanEscaped() }
+            .forEach { candidates.add(it) }
+
+        return candidates.toList()
+    }
+
     private fun resolveUrl(url: String): String {
         val cleanUrl = url.cleanEscaped()
         if (cleanUrl.isBlank() || cleanUrl == "#") return ""
@@ -706,6 +866,26 @@ class Alqanime : MainAPI() {
             .replace("\\\"", "\"")
             .trim('"', '\'', ',', ';')
             .trim()
+    }
+
+
+    private fun String.isOuoUrl(): Boolean {
+        val host = runCatching { URI(this).host.orEmpty().lowercase() }.getOrDefault("")
+        return host == "ouo.io" || host.endsWith(".ouo.io") || host == "ouo.press" || host.endsWith(".ouo.press")
+    }
+
+    private fun String.isResolvedShortlinkTarget(): Boolean {
+        val lower = lowercase()
+        if (isBlank() || isOuoUrl()) return false
+        return isPlayableMediaUrl() ||
+            lower.contains("acefile.co") ||
+            lower.contains("mediafire.com") ||
+            lower.contains("pixeldrain.com") ||
+            lower.contains("gofile.io") ||
+            lower.contains("resharer.org") ||
+            lower.contains("terabox") ||
+            lower.contains("drive.google.com") ||
+            lower.contains("yurinime.com")
     }
 
     private fun String.isLikelyResolvableUrl(): Boolean {
