@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import java.net.URI
@@ -791,27 +792,30 @@ class Animasu : MainAPI() {
             subtitleCallback
         ) { link ->
             emitted = true
-            callback.invoke(
-                newExtractorLink(
-                    link.name,
-                    link.name,
-                    link.url,
-                    link.type
-                ) {
-                    this.referer = link.referer
-                    this.quality =
-                        if (
-                            link.type == ExtractorLinkType.M3U8 ||
-                            link.name == "Uservideo"
-                        ) {
-                            link.quality
-                        } else {
-                            getIndexQuality(quality)
-                        }
-                    this.headers = link.headers
-                    this.extractorData = link.extractorData
-                }
-            )
+
+            runBlocking {
+                callback.invoke(
+                    newExtractorLink(
+                        link.name,
+                        link.name,
+                        link.url,
+                        link.type
+                    ) {
+                        this.referer = link.referer
+                        this.quality =
+                            if (
+                                link.type == ExtractorLinkType.M3U8 ||
+                                link.name == "Uservideo"
+                            ) {
+                                link.quality
+                            } else {
+                                getIndexQuality(quality)
+                            }
+                        this.headers = link.headers
+                        this.extractorData = link.extractorData
+                    }
+                )
+            }
         }
 
         return emitted
