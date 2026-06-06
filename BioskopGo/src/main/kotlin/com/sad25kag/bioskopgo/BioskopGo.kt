@@ -59,7 +59,7 @@ class BioskopGo : MainAPI() {
 
     override val mainPage = mainPageOf(
         "/" to "Film Terbaru",
-        "/film-populer/" to "Film Populer",
+        "/best-rating/populer/" to "Film Populer",
         "/best-rating/" to "Best Rating",
         "/semi/" to "Semi 18++",
         "/action/" to "Action",
@@ -293,20 +293,23 @@ class BioskopGo : MainAPI() {
 
     private fun parseListing(document: Document): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
-        document.select(cardSelector).forEach { element -> element.toSearchResult()?.let { results[contentKey(it.url)] = it } }
+        document.select(cardSelector).forEach { element ->
+            element.toSearchResult()?.let { results[contentKey(it.url)] = it }
+        }
         if (results.size < 6) {
-            document.select("article a[href], .post a[href], .item a[href], .movie a[href], .film a[href], .ml-item a[href], .result-item a[href]")
+            document.select("article a[href], .post a[href], .item a[href], .movie a[href], .film a[href], .ml-item a[href], .result-item a[href], a[href]")
                 .forEach { anchor -> anchor.toSearchResult()?.let { results[contentKey(it.url)] = it } }
         }
         return results.values.take(80)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val anchor = if (`is`("a[href]")) this else selectFirst("h1 a[href], h2 a[href], h3 a[href], .entry-title a[href], .title a[href], a[href][title], a[href]") ?: return null
+        val anchor = contentAnchor() ?: return null
         val href = fixUrl(anchor.attr("href"), mainUrl) ?: return null
         if (!isContentUrl(href)) return null
         val container = anchor.bestContainer()
-        val image = container.selectFirst("img[data-src], img[data-original], img[data-lazy-src], img[data-wpfc-original-src], img[src], img[srcset]") ?: anchor.selectFirst("img")
+        val image = container.selectFirst("img[data-src], img[data-original], img[data-lazy-src], img[data-lazy], img[data-wpfc-original-src], img[src], img[srcset]")
+            ?: anchor.selectFirst("img")
         val title = listOf(
             container.selectFirst("h1, h2, h3, .entry-title, .title, .name")?.text(),
             anchor.attr("aria-label"),
@@ -315,7 +318,7 @@ class BioskopGo : MainAPI() {
             anchor.text(),
             titleFromUrl(href)
         ).firstOrNull { isUsefulTitle(it) }?.let { cleanTitle(it) } ?: return null
-        val poster = image?.imageUrl(mainUrl) ?: container.styleImage(mainUrl) ?: anchor.findNearbyImage(mainUrl) ?: return null
+        val poster = image?.imageUrl(mainUrl) ?: container.styleImage(mainUrl) ?: anchor.findNearbyImage(mainUrl)
         val text = cleanText(container.text())
         val type = inferType(href, title, text, 0, null)
         val year = Regex("""\b(19|20)\d{2}\b""").find(title)?.value?.toIntOrNull() ?: Regex("""\b(19|20)\d{2}\b""").find(text)?.value?.toIntOrNull()
@@ -335,24 +338,43 @@ class BioskopGo : MainAPI() {
         }
     }
 
+    private fun Element.contentAnchor(): Element? {
+        if (`is`("a[href]")) {
+            return takeIf { fixUrl(attr("href"), mainUrl)?.let { href -> isContentUrl(href) } == true }
+        }
+        return select("h1 a[href], h2 a[href], h3 a[href], .entry-title a[href], .title a[href], .name a[href], a[href][title], a[href]")
+            .firstOrNull { anchor ->
+                val href = fixUrl(anchor.attr("href"), mainUrl) ?: return@firstOrNull false
+                isContentUrl(href)
+            }
+    }
+
     private fun parseEpisodes(document: Document, baseUrl: String): List<Episode> {
         val episodes = linkedMapOf<String, Episode>()
+
+        fun addEpisode(element: Element, index: Int) {
+            val href = fixUrl(element.attr("href"), baseUrl) ?: return
+            if (!isContentUrl(href)) return
+            val combined = cleanText("${element.text()} $href").lowercase(Locale.ROOT)
+            if (!combined.contains("episode") && !combined.contains("eps") && !combined.contains("season") && !combined.contains("s1") && !combined.contains("s2")) return
+            val title = cleanText(element.text())
+            val ep = Regex("""(?i)(?:episode|eps|ep|e)\s*[-:.]?\s*(\d{1,4})""").find("$title $href")?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?: Regex("""(?i)s\d+\s*e(?:ps)?\s*(\d{1,4})""").find("$title $href")?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?: Regex("""(?i)(?:/|-)(\d{1,4})(?:/|$)""").find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?: (index + 1)
+            episodes[href] = newEpisode(href) {
+                name = title.ifBlank { "Episode $ep" }
+                episode = ep
+            }
+        }
+
         document.select(".episode-list, .episodes, .episodios, .season, .seasons, .tvseason, .tvshows, [class*=episode], [id*=episode], [class*=season], [id*=season]")
             .select("a[href]")
-            .forEachIndexed { index, element ->
-                val href = fixUrl(element.attr("href"), baseUrl) ?: return@forEachIndexed
-                if (!isContentUrl(href)) return@forEachIndexed
-                val combined = "${element.text()} $href".lowercase(Locale.ROOT)
-                if (!combined.contains("episode") && !combined.contains("eps") && !combined.contains("season")) return@forEachIndexed
-                val title = cleanText(element.text())
-                val ep = Regex("""(?i)(?:episode|eps|ep)\s*[-:.]?\s*(\d{1,4})""").find("$title $href")?.groupValues?.getOrNull(1)?.toIntOrNull()
-                    ?: Regex("""(?i)(?:/|-)(\d{1,4})(?:/|$)""").find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                    ?: (index + 1)
-                episodes[href] = newEpisode(href) {
-                    name = title.ifBlank { "Episode $ep" }
-                    episode = ep
-                }
-            }
+            .forEachIndexed { index, element -> addEpisode(element, index) }
+
+        document.select("a[href*='/eps/'], a[href*='/episode/'], a[href*='/season/']")
+            .forEachIndexed { index, element -> addEpisode(element, index) }
+
         return episodes.values.sortedBy { it.episode ?: 9999 }
     }
 
@@ -471,7 +493,6 @@ class BioskopGo : MainAPI() {
         return null
     }
 
-
     private data class ResolvedPlayerLink(val url: String, val referer: String, val source: String)
 
     private suspend fun resolvePlayerLinks(url: String, referer: String): List<ResolvedPlayerLink> {
@@ -531,7 +552,7 @@ class BioskopGo : MainAPI() {
         val clean = cleanText("$title $text").lowercase(Locale.ROOT)
         val path = try { URI(url).path.orEmpty().lowercase(Locale.ROOT) } catch (_: Throwable) { "" }
         return when {
-            episodeCount > 0 || sourceType == "tv" || sourceType == "episode" || path.contains("/episode/") -> TvType.TvSeries
+            episodeCount > 0 || sourceType == "tv" || sourceType == "episode" || path.contains("/tv/") || path.contains("/episode/") || path.contains("/eps/") || clean.contains("jumlah episode") || clean.contains("eps:") -> TvType.TvSeries
             clean.contains("korea") || clean.contains("japan") || clean.contains("china") || clean.contains("thailand") -> TvType.AsianDrama
             else -> TvType.Movie
         }
@@ -581,7 +602,7 @@ class BioskopGo : MainAPI() {
         val first = path.substringBefore("/").lowercase(Locale.ROOT)
         val blocked = setOf(
             "genre", "year", "country", "tag", "category", "page", "dmca", "request-film", "faq", "privacy-policy", "contact",
-            "beranda", "home", "wp-admin", "wp-content", "feed", "tv", "film-populer", "best-rating", "semi",
+            "beranda", "home", "wp-admin", "wp-content", "feed", "film-populer", "best-rating", "semi",
             "action", "drama", "adventure", "science-fiction", "fantasy", "thriller", "crime", "comedy", "mystery",
             "war", "anime", "romance", "history", "horror"
         )
@@ -609,9 +630,9 @@ class BioskopGo : MainAPI() {
         var current: Element? = this
         repeat(7) {
             val node = current ?: return this
-            val hasImage = node.selectFirst("img[data-src], img[data-original], img[data-lazy-src], img[data-wpfc-original-src], img[src], img[srcset]") != null
+            val hasImage = node.selectFirst("img[data-src], img[data-original], img[data-lazy-src], img[data-lazy], img[data-wpfc-original-src], img[src], img[srcset]") != null
             val links = node.select("a[href]").count { fixUrl(it.attr("href"), mainUrl)?.let { href -> isContentUrl(href) } == true }
-            if (hasImage && links in 1..4) return node
+            if ((hasImage || links > 0) && links in 1..5) return node
             current = node.parent()
         }
         return closest("article, .post, .item, .movie, .film, .card, .ml-item, .result-item, .owl-item, .swiper-slide, li, .col, .box") ?: this
