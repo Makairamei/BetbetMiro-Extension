@@ -84,7 +84,7 @@ class VidsrcXyzAz : ExtractorApi() {
 
     private fun extractStreamUrl(body: String): String? {
         val rawUrl =
-            Regex("""file:\s*"([^"]+list\.m3u8)"""")
+            Regex("""file:\s*"([^"]+list\.m3u8)""")
                 .find(body)
                 ?.groupValues
                 ?.getOrNull(1)
@@ -138,19 +138,24 @@ open class ByseBase : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
-        val refererUrl = getBaseUrl(url)
-        val playbackRoot = getPlayback(url) ?: return
-        val streamUrl = decryptPlayback(playbackRoot.playback) ?: return
+        val playbackData = getPlayback(url) ?: return
+        val streamUrl = decryptPlayback(playbackData.root.playback) ?: return
+        val streamReferer = "${playbackData.embedBaseUrl}/"
 
         M3u8Helper.generateM3u8(
             name,
             streamUrl,
-            mainUrl,
-            headers = mapOf("Referer" to refererUrl),
+            streamReferer,
+            headers =
+                mapOf(
+                    "Accept" to "*/*",
+                    "Referer" to streamReferer,
+                    "Origin" to playbackData.embedBaseUrl,
+                ),
         ).forEach(callback)
     }
 
-    private suspend fun getPlayback(pageUrl: String): PlaybackRoot? {
+    private suspend fun getPlayback(pageUrl: String): BysePlaybackData? {
         val details = getDetails(pageUrl) ?: return null
         val embedFrameUrl = details.embedFrameUrl
         val embedBase = getBaseUrl(embedFrameUrl)
@@ -163,7 +168,8 @@ open class ByseBase : ExtractorApi() {
                 "referer" to embedFrameUrl,
                 "x-embed-parent" to pageUrl,
             )
-        return app.get(playbackUrl, headers = headers).parsedSafe<PlaybackRoot>()
+        val root = app.get(playbackUrl, headers = headers).parsedSafe<PlaybackRoot>() ?: return null
+        return BysePlaybackData(root, embedBase)
     }
 
     private suspend fun getDetails(pageUrl: String): DetailsRoot? {
@@ -190,7 +196,27 @@ open class ByseBase : ExtractorApi() {
     }
 
     private fun buildAesKey(playback: Playback): ByteArray {
-        return b64UrlDecode(playback.keyParts[0]) + b64UrlDecode(playback.keyParts[1])
+        return selectKeyParts(playback).fold(ByteArray(0)) { key, part ->
+            key + b64UrlDecode(part)
+        }
+    }
+
+    private fun selectKeyParts(playback: Playback): List<String> {
+        val keyParts = playback.keyParts
+        val version = playback.version?.trim()?.toIntOrNull()
+
+        if (version != null && version in 1..20) {
+            val first = version
+            val second = 31 - version
+            if (first in 1..keyParts.size && second in 1..keyParts.size) {
+                val selected =
+                    listOf(keyParts[first - 1], keyParts[second - 1])
+                        .filter { it.isNotBlank() }
+                if (selected.isNotEmpty()) return selected
+            }
+        }
+
+        return keyParts
     }
 
     private fun b64UrlDecode(value: String): ByteArray {
@@ -208,6 +234,11 @@ open class ByseBase : ExtractorApi() {
     }
 }
 
+private data class BysePlaybackData(
+    val root: PlaybackRoot,
+    val embedBaseUrl: String,
+)
+
 data class DetailsRoot(
     val id: Long,
     val code: String,
@@ -224,6 +255,7 @@ data class Playback(
     val payload: String,
     @JsonProperty("key_parts")
     val keyParts: List<String>,
+    val version: String? = null,
 )
 
 data class PlaybackDecrypt(
