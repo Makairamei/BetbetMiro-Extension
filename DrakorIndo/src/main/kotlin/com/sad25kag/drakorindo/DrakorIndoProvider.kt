@@ -522,7 +522,7 @@ class DrakorIndoProvider : MainAPI() {
         return unpacked.replace("\\'", "'").replace("\\\"", "\"")
     }
 
-    private fun emitDirect(mediaUrl: String, referer: String, callback: (ExtractorLink) -> Unit) {
+    private suspend fun emitDirect(mediaUrl: String, referer: String, callback: (ExtractorLink) -> Unit) {
         val fixedUrl = mediaUrl.replace("\\/", "/")
         val type = if (fixedUrl.contains(".m3u8", true)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
         val quality = getQualityFromName(fixedUrl).let { quality ->
