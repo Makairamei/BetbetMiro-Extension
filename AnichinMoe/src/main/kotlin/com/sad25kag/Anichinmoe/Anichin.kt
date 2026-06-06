@@ -40,7 +40,6 @@ class Anichin : MainAPI() {
         "genres/comedy/?order=update" to "Comedy",
         "genres/demons/?order=update" to "Demons",
         "genres/drama/?order=update" to "Drama",
-        "genres/ecchi/?order=update" to "Ecchi",
         "genres/fantasy/?order=update" to "Fantasy",
         "genres/game/?order=update" to "Game",
         "genres/harem/?order=update" to "Harem",
@@ -49,19 +48,14 @@ class Anichin : MainAPI() {
         "genres/isekai/?order=update" to "Isekai",
         "genres/magic/?order=update" to "Magic",
         "genres/martial-arts/?order=update" to "Martial Arts",
-        "genres/mecha/?order=update" to "Mecha",
         "genres/military/?order=update" to "Military",
-        "genres/music/?order=update" to "Music",
         "genres/mystery/?order=update" to "Mystery",
         "genres/psychological/?order=update" to "Psychological",
         "genres/romance/?order=update" to "Romance",
         "genres/school/?order=update" to "School",
         "genres/sci-fi/?order=update" to "Sci-Fi",
-        "genres/shoujo/?order=update" to "Shoujo",
         "genres/shounen/?order=update" to "Shounen",
         "genres/slice-of-life/?order=update" to "Slice of Life",
-        "genres/space/?order=update" to "Space",
-        "genres/sports/?order=update" to "Sports",
         "genres/supernatural/?order=update" to "Supernatural",
         "genres/thriller/?order=update" to "Thriller",
     )
@@ -443,7 +437,7 @@ class Anichin : MainAPI() {
             .mapNotNull { normalizeKnownVideoUrl(it.value) }
             .forEach { urls.add(it) }
 
-        Regex("""(?i)(?:file|url|src|embed|video|videoUrl|video_url|hls|hlsUrl|embedUrl|embed_url)\s*[:=]\s*[\"']([^\"']+)[\"']""")
+        Regex("""(?i)(?:file|url|src|embed|video|videoUrl|video_url|hls|hlsUrl|embedUrl|embed_url)\s*[:=]\s*["']([^"']+)["']""")
             .findAll(decodedText)
             .mapNotNull { normalizeKnownVideoUrl(it.groupValues[1]) }
             .forEach { urls.add(it) }
@@ -484,7 +478,11 @@ class Anichin : MainAPI() {
         ).firstNotNullOfOrNull { regex -> regex.find(decoded)?.groupValues?.getOrNull(1) }
             ?: return url
 
-        return "https://www.dailymotion.com/embed/video/$videoId"
+        return if (decoded.contains("geo.dailymotion.com", true)) {
+            "https://geo.dailymotion.com/player/xid0t.html?video=$videoId"
+        } else {
+            "https://www.dailymotion.com/embed/video/$videoId"
+        }
     }
 
     private fun shouldUseExtractor(url: String): Boolean {

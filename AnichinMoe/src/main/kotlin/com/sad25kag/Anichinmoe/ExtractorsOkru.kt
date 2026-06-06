@@ -7,6 +7,8 @@ import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.newExtractorLink
@@ -33,6 +35,7 @@ open class Odnoklassniki : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        val embedUrl = normalizeEmbedUrl(url)
         val headers = mapOf(
             "Accept" to "*/*",
             "Connection" to "keep-alive",
@@ -41,17 +44,44 @@ open class Odnoklassniki : ExtractorApi() {
             "Sec-Fetch-Site" to "cross-site",
             "Origin" to mainUrl,
             "User-Agent" to USER_AGENT,
+            "Referer" to embedUrl,
         )
 
-        val embedUrl = url.replace("/video/", "/videoembed/")
-        val videoReq = app.get(embedUrl, headers = headers).text
-            .replace("\\&quot;", "\"")
-            .replace("\\\\", "\\")
-            .replace(Regex("\\\\u([0-9A-Fa-f]{4})")) { matchResult ->
-                Integer.parseInt(matchResult.groupValues[1], 16).toChar().toString()
-            }
+        val videoReq = app.get(
+            embedUrl,
+            referer = referer ?: "https://anichin.moe/",
+            headers = headers,
+        ).text.cleanOkRuPayload()
 
-        val videosStr = Regex(""""videos":(\[[^]]*])""")
+        val hlsManifest = extractOkRuField(videoReq, "hlsManifestUrl")
+        if (!hlsManifest.isNullOrBlank()) {
+            M3u8Helper.generateM3u8(
+                source = this.name,
+                streamUrl = hlsManifest,
+                referer = embedUrl,
+                headers = headers,
+            ).forEach(callback)
+            return
+        }
+
+        val metadataWebm = extractOkRuField(videoReq, "metadataWebmUrl")
+        if (!metadataWebm.isNullOrBlank()) {
+            callback.invoke(
+                newExtractorLink(
+                    source = this.name,
+                    name = this.name,
+                    url = metadataWebm,
+                    type = INFER_TYPE,
+                ) {
+                    this.referer = embedUrl
+                    this.quality = Qualities.Unknown.value
+                    this.headers = headers
+                }
+            )
+            return
+        }
+
+        val videosStr = Regex(""""videos"\s*:\s*(\[[^\]]*])""")
             .find(videoReq)
             ?.groupValues
             ?.getOrNull(1)
@@ -79,12 +109,29 @@ open class Odnoklassniki : ExtractorApi() {
                     url = videoUrl,
                     type = INFER_TYPE,
                 ) {
-                    this.referer = "$mainUrl/"
+                    this.referer = embedUrl
                     this.quality = getQualityFromName(quality)
                     this.headers = headers
                 }
             )
         }
+    }
+
+    private fun normalizeEmbedUrl(url: String): String {
+        return url
+            .replace("https://odnoklassniki.ru", "https://ok.ru")
+            .replace("http://odnoklassniki.ru", "https://ok.ru")
+            .replace("http://ok.ru", "https://ok.ru")
+            .replace("/video/", "/videoembed/")
+    }
+
+    private fun extractOkRuField(raw: String, field: String): String? {
+        return Regex(""""$field"\s*:\s*"([^"]+)"""")
+            .find(raw)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.cleanOkRuPayload()
+            ?.takeIf { it.startsWith("http", true) }
     }
 
     private fun parseOkRuVideos(value: String): List<OkRuVideo> {
@@ -107,6 +154,21 @@ open class Odnoklassniki : ExtractorApi() {
             Log.w("AnichinOkRu", "Failed to parse OK.ru videos", error)
             emptyList()
         }
+    }
+
+    private fun String.cleanOkRuPayload(): String {
+        return this
+            .replace("\\&quot;", "\"")
+            .replace("&quot;", "\"")
+            .replace("\\u0026", "&")
+            .replace("\\u003d", "=")
+            .replace("\\u003D", "=")
+            .replace("\\u002F", "/")
+            .replace("\\/", "/")
+            .replace("\\\\", "\\")
+            .replace(Regex("\\\\u([0-9A-Fa-f]{4})")) { matchResult ->
+                Integer.parseInt(matchResult.groupValues[1], 16).toChar().toString()
+            }
     }
 
     private data class OkRuVideo(
