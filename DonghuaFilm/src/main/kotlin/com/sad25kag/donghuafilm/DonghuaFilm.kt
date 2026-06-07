@@ -25,8 +25,6 @@ class DonghuaFilm : MainAPI() {
         "Referer" to "$mainUrl/",
     )
 
-    private val minimumHomePageCards = 5
-
     override val mainPage = mainPageOf(
         "" to "Latest Release",
         "anime/?order=update&status=&type=" to "New Donghua",
@@ -36,25 +34,15 @@ class DonghuaFilm : MainAPI() {
         "anime/?order=update&status=&type=movie" to "Movie",
         "genres/action/" to "Action",
         "genres/adventure/" to "Adventure",
-        "genres/comedian/" to "Comedian",
         "genres/comedy/" to "Comedy",
-        "genres/demon/" to "Demon",
-        "genres/donghua/" to "Donghua",
         "genres/drama/" to "Drama",
         "genres/fanstasy/" to "Fanstasy",
         "genres/fantasy/" to "Fantasy",
         "genres/historical/" to "Historical",
-        "genres/isekai/" to "Isekai",
         "genres/martial-arts/" to "Martial Arts",
         "genres/movie/" to "Movie Genre",
-        "genres/mystery/" to "Mystery",
-        "genres/reincarnation/" to "Reincarnation",
         "genres/romance/" to "Romance",
-        "genres/school/" to "School",
         "genres/sci-fi/" to "Sci-Fi",
-        "genres/super-power/" to "Super Power",
-        "genres/supranatural/" to "Supranatural",
-        "genres/xuanhuan/" to "Xuanhuan",
         "az-list/" to "AZ List",
     )
 
@@ -69,11 +57,7 @@ class DonghuaFilm : MainAPI() {
         } else {
             parsed
         }
-        val results = if (page <= 1 && filteredResults.size < minimumHomePageCards) {
-            emptyList()
-        } else {
-            filteredResults
-        }
+        val results = filteredResults
         val hasNext = results.isNotEmpty() && document.selectFirst("a.next, .pagination a.next, a.next.page-numbers, link[rel=next], a[href*='/page/${page + 1}/'], a[href*='page=${page + 1}']") != null
         return newHomePageResponse(HomePageList(request.name, results, isHorizontalImages = false), hasNext = hasNext)
     }
