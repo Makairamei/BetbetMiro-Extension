@@ -31,32 +31,12 @@ open class Donghuastream : MainAPI() {
         "$mainUrl/anime/?status=&type=&order=update&page={page}" to "Update Terbaru",
         "$mainUrl/anime/?status=completed&type=&order=update&page={page}" to "Completed",
         "$mainUrl/anime/?status=ongoing&type=&order=update&page={page}" to "Ongoing",
-        "$mainUrl/anime/?status=&type=movie&order=update&page={page}" to "Movie",
         "$mainUrl/anime/?status=&type=special&order=update&page={page}" to "Special",
-        "$mainUrl/anime/list-mode/" to "Anime List",
-
-        "$mainUrl/genres/action/page/{page}/" to "Action",
         "$mainUrl/genres/adventure/page/{page}/" to "Adventure",
         "$mainUrl/genres/another-world/page/{page}/" to "Another World",
-        "$mainUrl/genres/assassin/page/{page}/" to "Assassin",
-        "$mainUrl/genres/beast/page/{page}/" to "Beast",
-        "$mainUrl/genres/drama/page/{page}/" to "Drama",
-        "$mainUrl/genres/fantasy/page/{page}/" to "Fantasy",
-        "$mainUrl/genres/funny/page/{page}/" to "Funny",
-        "$mainUrl/genres/game/page/{page}/" to "Game",
-        "$mainUrl/genres/martial-arts/page/{page}/" to "Martial Arts",
-        "$mainUrl/genres/monsters/page/{page}/" to "Monsters",
-        "$mainUrl/genres/movie/page/{page}/" to "Movie Genre",
-        "$mainUrl/genres/mystery/page/{page}/" to "Mystery",
-        "$mainUrl/genres/popular/page/{page}/" to "Popular",
         "$mainUrl/genres/reincarnated/page/{page}/" to "Reincarnated",
         "$mainUrl/genres/romance/page/{page}/" to "Romance",
-        "$mainUrl/genres/sci-fi/page/{page}/" to "Sci-Fi",
-        "$mainUrl/genres/slice-of-life/page/{page}/" to "Slice of Life",
-        "$mainUrl/genres/supernatural/page/{page}/" to "Supernatural",
-        "$mainUrl/genres/swords-fight/page/{page}/" to "Swords Fight",
-        "$mainUrl/genres/thriller/page/{page}/" to "Thriller",
-        "$mainUrl/genres/vengeance/page/{page}/" to "Vengeance"
+        "$mainUrl/genres/swords-fight/page/{page}/" to "Sword Fight"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {

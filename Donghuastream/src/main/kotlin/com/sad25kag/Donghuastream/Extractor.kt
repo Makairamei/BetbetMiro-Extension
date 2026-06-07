@@ -73,7 +73,7 @@ open class Ultrahd : ExtractorApi() {
     ) {
             val response = app.get(url,referer=mainUrl).document
             val extractedpack =response.toString()
-            Regex("\\\$\\.\\s*ajax\\(\\s*\\{\\s*url:\\s*\"(.*?)\"").find(extractedpack)?.groupValues?.get(1)?.let { link ->
+            Regex("\\$\\.\\s*ajax\\(\\s*\\{\\s*url:\\s*\"(.*?)\"").find(extractedpack)?.groupValues?.get(1)?.let { link ->
                 app.get(link).parsedSafe<Root>()?.sources?.map {
                     val m3u8= httpsify( it.file)
                     if (m3u8.contains(".mp4"))
