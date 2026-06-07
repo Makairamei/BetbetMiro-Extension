@@ -23,25 +23,20 @@ class MynimekuProvider : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "latest-series/" to "Series Update",
-        "full-list/mix/s%3Aon-going~t%3ABD%2CLA%2CMOVIE%2CMUSIC%2CONA%2COVA%2CSPECIAL%2CTV/" to "On-Going",
-        "full-list/mix/s%3Acompleted~t%3ABD%2CLA%2CMOVIE%2CMUSIC%2CONA%2COVA%2CSPECIAL%2CTV/" to "Completed",
-        "full-list/mix/t%3ATV/" to "TV",
-        "full-list/mix/t%3AMOVIE/" to "Movie",
-        "full-list/mix/t%3AONA/" to "ONA",
-        "full-list/mix/t%3AOVA/" to "OVA",
-        "full-list/mix/t%3ASPECIAL/" to "Special",
-        "genre/action/" to "Action",
-        "genre/adventure/" to "Adventure",
-        "genre/comedy/" to "Comedy",
-        "genre/drama/" to "Drama",
-        "genre/fantasy/" to "Fantasy",
-        "genre/romance/" to "Romance",
-        "genre/school/" to "School",
-        "genre/sci-fi/" to "Sci-Fi",
-        "genre/shounen/" to "Shounen",
-        "genre/slice-of-life/" to "Slice of Life",
-        "genre/supernatural/" to "Supernatural"
+        "" to "Home",
+        "full-list/mix/o:popular/" to "Popular",
+        "full-list/" to "List",
+        "full-list/mix/s:completed~t:BD,LA,MOVIE,MUSIC,ONA,OVA,SPECIAL,TV/" to "Completed",
+        "full-list/mix/s:on-going~t:BD,LA,MOVIE,MUSIC,ONA,OVA,SPECIAL,TV/" to "On-Going",
+        "latest-series/" to "Latest",
+        "full-list/mix/t:TV/" to "TV",
+        "full-list/mix/t:BD/" to "BD",
+        "full-list/mix/t:MOVIE/" to "Movie",
+        "full-list/mix/t:ONA/" to "ONA",
+        "full-list/mix/t:OVA/" to "OVA",
+        "full-list/mix/t:SPECIAL/" to "Special",
+        "full-list/mix/t:LA/" to "LA",
+        "full-list/mix/t:MUSIC/" to "Music"
     )
 
     private data class CardData(
@@ -427,20 +422,18 @@ class MynimekuProvider : MainAPI() {
     }
 
     private fun collectCards(document: Document): List<CardData> {
-        val selectors = listOf(
-            "article",
-            "div[class*=anime]",
-            "div[class*=series]",
-            "div[class*=item]",
-            "div[class*=card]",
-            "div[class*=post]",
-            "a[href*='/anime/']",
-            "a[href*='/series/']",
-            "a[href*='/episode/']"
-        ).joinToString(", ")
+        val sourceItems = document.select(
+            "article.mynimeku-update-feed__item, li.mynimeku-update-widget__item, " +
+                "article.mynimeku-mix-feed__item, article[class*='mynimeku'][class*='item']"
+        ).mapNotNull { it.toCardData() }
 
-        return document.select(selectors)
-            .mapNotNull { it.toCardData() }
+        val genericItems = document.select(
+            "article:has(a[href*='/series/']), li:has(a[href*='/series/']), " +
+                "div:has(> a[href*='/series/']), a[href*='/series/'], " +
+                "article:has(a[href*='/episode/']), li:has(a[href*='/episode/'])"
+        ).mapNotNull { it.toCardData() }
+
+        return (sourceItems + genericItems)
             .filterNot { isNavigationTitle(it.title) }
             .distinctBy { it.url }
     }
@@ -456,26 +449,28 @@ class MynimekuProvider : MainAPI() {
     private fun Element.toCardData(): CardData? {
         val href = when {
             tagName().equals("a", true) -> attr("abs:href").ifBlank { attr("href") }
-            else -> selectFirst("a[href*='/anime/'], a[href*='/series/'], a[href*='/episode/']")
-                ?.let { it.attr("abs:href").ifBlank { it.attr("href") } }
-                .orEmpty()
+            else -> selectFirst(
+                "a[class*='series-title'][href*='/series/'], " +
+                    "a[class*='cover'][href*='/series/'], a[href*='/series/'], " +
+                    "a[href*='/anime/'], a[class*='latest-link'][href*='/episode/'], a[href*='/episode/']"
+            )?.let { it.attr("abs:href").ifBlank { it.attr("href") } }.orEmpty()
         }.trim()
 
         val fixedHref = normalizeUrl(href)
         if (!isContentUrl(fixedHref)) return null
 
         val rawTitle = attr("title").trim().ifBlank {
-            selectFirst("h1, h2, h3, h4, .title, .judul, .entry-title, .post-title, .series-title")
+            selectFirst(
+                "a[class*='series-title'], [class*='series-title'], " +
+                    "h1, h2, h3, h4, .title, .judul, .entry-title, .post-title"
+            )?.text()?.trim().orEmpty()
+        }.ifBlank {
+            selectFirst("img[alt]")?.attr("alt")?.trim().orEmpty()
+        }.ifBlank {
+            selectFirst("a[href*='/series/']:not([class*='cover']), a[href*='/anime/']:not([class*='cover'])")
                 ?.text()
                 ?.trim()
                 .orEmpty()
-        }.ifBlank {
-            selectFirst("a[href*='/anime/'], a[href*='/series/'], a[href*='/episode/']")
-                ?.text()
-                ?.trim()
-                .orEmpty()
-        }.ifBlank {
-            selectFirst("img")?.attr("alt")?.trim().orEmpty()
         }.ifBlank {
             text().trim()
         }
@@ -968,7 +963,19 @@ class MynimekuProvider : MainAPI() {
             "search",
             "prev",
             "next",
-            "all"
+            "all",
+            "series",
+            "completed",
+            "on-going",
+            "latest",
+            "tv",
+            "bd",
+            "movie",
+            "ona",
+            "ova",
+            "special",
+            "la",
+            "music"
         )
     }
 
