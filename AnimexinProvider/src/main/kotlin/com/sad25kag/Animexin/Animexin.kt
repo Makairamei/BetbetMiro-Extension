@@ -97,6 +97,55 @@ class Animexin : MainAPI() {
         return path.contains("-episode-", true) || !path.contains("/")
     }
 
+    private fun sameContentUrl(first: String, second: String): Boolean {
+        return first.substringBefore("?").trimEnd('/') == second.substringBefore("?").trimEnd('/')
+    }
+
+    private fun extractEpisodeList(document: org.jsoup.nodes.Document, poster: String): List<Episode> {
+        val episodeRegex = Regex("(\\d+)")
+        return document.select(
+            "div.eplister > ul > li, .eplister li, .episodelist li, ul li"
+        ).mapNotNull { info ->
+            val anchor = info.selectFirst("a[href]") ?: return@mapNotNull null
+            val href = fixUrlNull(anchor.attr("href")) ?: return@mapNotNull null
+            if (!href.contains("-episode-", true)) return@mapNotNull null
+
+            val posterEpisode = info.selectFirst("a img, img")?.attr("src").orEmpty()
+            val epText = info.selectFirst("div.epl-num, .epl-num, a span")?.text()?.ifBlank { anchor.text() } ?: anchor.text()
+            val epnum = episodeRegex.find(epText)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?: Regex("episode-(\\d+)", RegexOption.IGNORE_CASE).find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+            newEpisode(href) {
+                this.episode = epnum
+                this.name = epnum?.let { "Episode $it" } ?: epText
+                this.posterUrl = posterEpisode.ifBlank { poster }
+            }
+        }.distinctBy { it.data }.sortedBy { it.episode ?: Int.MAX_VALUE }
+    }
+
+    private fun extractMoviePlayData(document: org.jsoup.nodes.Document, detailUrl: String): String {
+        val detailSlug = detailUrl.substringBefore("?").trimEnd('/').substringAfterLast('/')
+        val movieAnchors = document.select(
+            "div.eplister > ul > li a[href], .eplister li a[href], .episodelist li a[href], .epcheck a[href], .bixbox.bxcl a[href]"
+        )
+
+        for (anchor in movieAnchors) {
+            val href = fixUrlNull(anchor.attr("href")) ?: continue
+            if (sameContentUrl(href, detailUrl) || !isContentUrl(href)) continue
+
+            val haystack = "${anchor.text()} $href".lowercase()
+            val looksLikeMovieWatchPage = haystack.contains("movie") ||
+                haystack.contains("episode") ||
+                haystack.contains("subtitle") ||
+                haystack.contains("-sub") ||
+                haystack.contains(detailSlug)
+
+            if (looksLikeMovieWatchPage) return href
+        }
+
+        return detailUrl
+    }
+
     override suspend fun search(query: String, page: Int): SearchResponseList {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
         val results = linkedSetOf<SearchResponse>()
@@ -152,25 +201,7 @@ class Animexin : MainAPI() {
         val tvtag = if (type.contains("Movie", true)) TvType.Movie else TvType.TvSeries
 
         return if (tvtag == TvType.TvSeries) {
-            val episodeRegex = Regex("(\\d+)")
-            val episodes = document.select(
-                "div.eplister > ul > li, .eplister li, .episodelist li, ul li"
-            ).mapNotNull { info ->
-                val anchor = info.selectFirst("a[href]") ?: return@mapNotNull null
-                val href = fixUrlNull(anchor.attr("href")) ?: return@mapNotNull null
-                if (!href.contains("-episode-", true)) return@mapNotNull null
-
-                val posterEpisode = info.selectFirst("a img, img")?.attr("src").orEmpty()
-                val epText = info.selectFirst("div.epl-num, .epl-num, a span")?.text()?.ifBlank { anchor.text() } ?: anchor.text()
-                val epnum = episodeRegex.find(epText)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                    ?: Regex("episode-(\\d+)", RegexOption.IGNORE_CASE).find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
-
-                newEpisode(href) {
-                    this.episode = epnum
-                    this.name = epnum?.let { "Episode $it" } ?: epText
-                    this.posterUrl = posterEpisode.ifBlank { poster }
-                }
-            }.distinctBy { it.data }.sortedBy { it.episode ?: Int.MAX_VALUE }
+            val episodes = extractEpisodeList(document, poster)
 
             if (episodes.isEmpty()) {
                 throw ErrorLoadingException("No episodes found")
@@ -181,7 +212,8 @@ class Animexin : MainAPI() {
                 this.plot = description
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
+            val movieData = extractMoviePlayData(document, url)
+            newMovieLoadResponse(title, url, TvType.Movie, movieData) {
                 this.posterUrl = poster
                 this.plot = description
             }
