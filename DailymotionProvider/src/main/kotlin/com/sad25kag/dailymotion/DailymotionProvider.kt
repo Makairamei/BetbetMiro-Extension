@@ -21,7 +21,6 @@ import com.lagradost.cloudstream3.newAnimeSearchResponse
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
-import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.M3u8Helper
@@ -283,7 +282,7 @@ class DailymotionProvider : MainAPI() {
         fun emit(label: String?, url: String?) {
             val cleanUrl = url?.trim()?.takeIf { it.startsWith("http", ignoreCase = true) } ?: return
             if (!seen.add(cleanUrl)) return
-            subtitleCallback.invoke(newSubtitleFile(label?.takeIf { it.isNotBlank() } ?: "Subtitle", cleanUrl))
+            subtitleCallback.invoke(SubtitleFile(label?.takeIf { it.isNotBlank() } ?: "Subtitle", cleanUrl))
         }
 
         when {
