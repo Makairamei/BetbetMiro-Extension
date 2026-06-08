@@ -295,7 +295,7 @@ class Dracinema : MainAPI() {
                 element.attr("data-file")
             ).firstOrNull { it.isNotBlank() }.orEmpty()
 
-            if (raw.contains("/movie/", true)) return@forEach
+            if (raw.contains("/movie/", true)) return@forEachIndexed
 
             val epNum = extractEpisodeNumber(text, element.outerHtml(), raw) ?: (index + 1)
             val fixed = when {
