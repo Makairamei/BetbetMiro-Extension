@@ -90,6 +90,11 @@ class Dracinema : MainAPI() {
         "Range" to "bytes=0-"
     )
 
+    private val hlsHeaders = mapOf(
+        "User-Agent" to USER_AGENT,
+        "Accept" to "*/*"
+    )
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         if (request.data.startsWith("api:", true)) {
             val category = request.data.removePrefix("api:")
@@ -437,7 +442,7 @@ class Dracinema : MainAPI() {
                 } else {
                     callback(
                         newExtractorLink(name, "Dracinema ${source.quality ?: Qualities.Unknown.value}p", source.url, ExtractorLinkType.VIDEO) {
-                            referer = mainUrl
+                            referer = ""
                             quality = source.quality ?: getQualityFromName(source.url).takeIf { it != Qualities.Unknown.value }
                                 ?: Qualities.P720.value
                             headers = mediaHeaders
@@ -487,7 +492,7 @@ class Dracinema : MainAPI() {
             } else {
                 callback(
                     newExtractorLink(name, name, link, ExtractorLinkType.VIDEO) {
-                        referer = mainUrl
+                        referer = ""
                         quality = source.quality ?: Qualities.Unknown.value
                         headers = mediaHeaders
                     }
@@ -513,16 +518,16 @@ class Dracinema : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val playlist = runCatching {
-            app.get(source.url, headers = mediaHeaders).text
+            app.get(source.url, headers = hlsHeaders).text
         }.getOrNull()
 
         if (playlist != null && !playlist.trimStart().startsWith("#EXTM3U")) return false
 
         callback(
             newExtractorLink(name, "Dracinema HLS ${source.quality ?: Qualities.Unknown.value}p", source.url, ExtractorLinkType.M3U8) {
-                referer = playUrl
+                referer = ""
                 quality = source.quality ?: Qualities.P720.value
-                headers = mediaHeaders
+                headers = hlsHeaders
             }
         )
         return true
@@ -552,7 +557,7 @@ class Dracinema : MainAPI() {
         val clean = text.cleanEscaped()
         val sources = linkedMapOf<String, DracinemaVideoSource>()
 
-        Regex("""["\\]?quality["\\]?\s*:\s*(\d+)[\s\S]{0,220}?["\\]?url["\\]?\s*:\s*["\\](https?://[^"\\]+)""", RegexOption.IGNORE_CASE)
+        Regex(""""quality"\s*:\s*(\d+)[\s\S]{0,320}?"url"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
             .findAll(clean)
             .forEach { match ->
                 val quality = match.groupValues.getOrNull(1)?.toIntOrNull()
@@ -562,7 +567,7 @@ class Dracinema : MainAPI() {
                 sources[url] = DracinemaVideoSource(url, quality)
             }
 
-        Regex("""["\\]?url["\\]?\s*:\s*["\\](https?://[^"\\]+)""", RegexOption.IGNORE_CASE)
+        Regex(""""url"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
             .findAll(clean)
             .forEach { match ->
                 val url = match.groupValues.getOrNull(1)?.cleanEscaped()?.trimMediaUrl()
@@ -659,7 +664,8 @@ class Dracinema : MainAPI() {
     }
 
     private fun String.cleanEscaped(): String {
-        return replace("\\/", "/")
+        return replace("\\\"", "\"")
+            .replace("\\/", "/")
             .replace("\\u002F", "/")
             .replace("\\u002f", "/")
             .replace("\\u0026", "&")
