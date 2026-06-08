@@ -39,7 +39,7 @@ class DrakorAsia : MainAPI() {
     override var lang = "id"
     override val hasMainPage = true
     override val hasQuickSearch = true
-    override val hasDownloadSupport = false
+    override val hasDownloadSupport = true
 
     override val supportedTypes = setOf(
         TvType.AsianDrama,
@@ -78,29 +78,13 @@ class DrakorAsia : MainAPI() {
         "" to "Episode Terbaru",
         "Series" to "Drama List",
         "Movie" to "Movie",
-        "Action" to "Action",
-        "Adventure" to "Adventure",
-        "Comedy" to "Comedy",
-        "Crime" to "Crime",
-        "Drama" to "Drama",
-        "Family" to "Family",
-        "Fantasy" to "Fantasy",
-        "Historical" to "Historical",
-        "Horror" to "Horror",
-        "Law" to "Law",
-        "Life" to "Life",
-        "Melodrama" to "Melodrama",
-        "Mystery" to "Mystery",
-        "Political" to "Political",
-        "Psychological" to "Psychological",
         "Romance" to "Romance",
-        "School" to "School",
-        "Sci-Fi" to "Sci-Fi",
-        "Sports" to "Sports",
-        "Supernatural" to "Supernatural",
+        "Comedy" to "Comedy",
+        "Action" to "Action",
         "Thriller" to "Thriller",
-        "War" to "War",
-        "Youth" to "Youth"
+        "Mystery" to "Mystery",
+        "Fantasy" to "Fantasy",
+        "Drama" to "Drama"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest) = getMainPageData(request.data, page).let { data ->
@@ -166,29 +150,35 @@ class DrakorAsia : MainAPI() {
         val fixedUrl = normalizeUrl(url)
         val document = app.get(withMobileParam(fixedUrl), headers = headers, referer = mainUrl).document
         val title = readTitle(document, fixedUrl)
-        val poster = readPoster(document)
-        val plot = readPlot(document)
-        val tags = readTags(document)
         val seriesLabel = readSeriesLabel(document, title, fixedUrl)
+        val seriesTitle = seriesLabel?.cleanTitle().orEmpty().ifBlank { cleanEpisodeTitle(title) }
+        val metadataDocument = readSeriesDetailUrl(document, seriesTitle, fixedUrl)?.let { seriesUrl ->
+            runCatching { app.get(withMobileParam(seriesUrl), headers = headers, referer = fixedUrl).document }.getOrNull()
+        } ?: document
+
+        val rawTags = readTags(metadataDocument).ifEmpty { readTags(document) }
+        val tags = cleanTags(rawTags, seriesTitle)
+        val poster = readPoster(metadataDocument, seriesTitle) ?: readPoster(document, seriesTitle)
+        val plot = readPlot(metadataDocument, seriesTitle) ?: readPlot(document, seriesTitle)
 
         val episodes = seriesLabel?.let { label ->
             fetchFeed(label, 1, EPISODE_LIMIT)
                 .filter { it.isEpisodePost() || it.title.contains("Episode", true) }
-                .mapNotNull { it.toEpisode(label) }
+                .mapIndexedNotNull { index, post -> post.toEpisode(label, index + 1) }
                 .distinctBy { it.data }
                 .sortedBy { it.episode ?: Int.MAX_VALUE }
         }.orEmpty()
 
         return if (episodes.isNotEmpty()) {
-            val seriesTitle = seriesLabel?.cleanTitle().orEmpty().ifBlank { cleanEpisodeTitle(title) }
             newTvSeriesLoadResponse(seriesTitle, fixedUrl, TvType.AsianDrama, episodes) {
                 posterUrl = poster ?: episodes.firstOrNull()?.posterUrl
                 this.plot = plot
                 this.tags = tags
             }
         } else {
-            val tvType = if (tags.any { it.equals("Movie", true) } || title.contains("Movie", true)) TvType.Movie else TvType.AsianDrama
-            newMovieLoadResponse(title, fixedUrl, tvType, fixedUrl) {
+            val movieTitle = title.cleanTitle()
+            val tvType = if (tags.any { it.equals("Movie", true) } || movieTitle.contains("Movie", true)) TvType.Movie else TvType.AsianDrama
+            newMovieLoadResponse(movieTitle, fixedUrl, tvType, fixedUrl) {
                 posterUrl = poster
                 this.plot = plot
                 this.tags = tags
@@ -284,6 +274,11 @@ class DrakorAsia : MainAPI() {
         if (!url.startsWith("http", true)) return false
         if (!visited.add(url.substringBefore("#"))) return false
 
+        if (url.isDownloadCandidate()) {
+            emitDirect(url, referer, callback, "Download")
+            return true
+        }
+
         url.toAbyssPlayerUrl()?.let { abyssUrl ->
             var found = loadExtractor(abyssUrl, "$mainUrl/", subtitleCallback, callback)
             if (!found && abyssUrl != url) {
@@ -330,13 +325,13 @@ class DrakorAsia : MainAPI() {
         }
     }
 
-    private fun BloggerPost.toEpisode(seriesTitle: String): Episode? {
+    private fun BloggerPost.toEpisode(seriesTitle: String, fallbackEpisode: Int): Episode? {
         if (!isValidContentUrl(url)) return null
-        val ep = extractEpisodeNumber(title, url)
+        val ep = extractEpisodeNumber(title, url) ?: fallbackEpisode
         return newEpisode(url) {
-            name = title.cleanTitle().ifBlank { "$seriesTitle Episode ${ep ?: ""}".trim() }
+            name = "Episode ${ep.toString().padStart(2, '0')}"
             episode = ep
-            posterUrl = fixUrlNull(poster?.fixBloggerImage())
+            posterUrl = fixUrlNull(poster?.takeUnless { it.isBadImageUrl(seriesTitle) }?.fixBloggerImage())
         }
     }
 
@@ -444,6 +439,69 @@ class DrakorAsia : MainAPI() {
             }
     }
 
+    private fun readSeriesDetailUrl(document: Document, seriesTitle: String, fallbackUrl: String): String? {
+        val normalizedTitle = seriesTitle.cleanTitle()
+        return document.select("a[href*='.html']")
+            .asSequence()
+            .mapNotNull { anchor ->
+                val href = normalizeUrl(anchor.attr("abs:href").ifBlank { anchor.attr("href") })
+                val text = anchor.text().cleanTitle()
+                href.takeIf {
+                    isValidContentUrl(it) &&
+                        !it.contains("episode", true) &&
+                        !it.equals(fallbackUrl.substringBefore('?'), true) &&
+                        (text.equals(normalizedTitle, true) || it.slugTitle().equals(normalizedTitle, true))
+                }
+            }
+            .firstOrNull()
+    }
+
+    private fun cleanTags(rawTags: List<String>, seriesTitle: String): List<String> {
+        val blocked = nonSeriesLabels + setOf(
+            "Series", "Eps. TV", "TV", "0-9", "0–9", "0 - 9", name, seriesTitle
+        )
+        return rawTags
+            .map { it.cleanTitle() }
+            .filter { tag ->
+                tag.length > 1 &&
+                    !tag.matches(Regex("^[A-Z0-9]$")) &&
+                    !blocked.any { it.equals(tag, true) } &&
+                    !tag.equals(seriesTitle, true)
+            }
+            .distinct()
+            .take(12)
+    }
+
+    private fun String.isBadImageUrl(seriesTitle: String? = null): Boolean {
+        val value = lowercase()
+        if (isBlank()) return true
+        if (startsWith("data:image", true)) return true
+        if (value.contains("favicon") || value.contains("logo") || value.contains("ads")) return true
+        if (value.contains("drakorasia") && !seriesTitle.isNullOrBlank()) return true
+        if (value.contains("1.bp.blogspot.com") && value.contains("241790225")) return true
+        return false
+    }
+
+    private fun String.isValidPlot(title: String): Boolean {
+        val clean = cleanTitle()
+        if (clean.length < 35) return false
+        if (clean.equals(title.cleanTitle(), true)) return false
+        if (clean.contains("Video Server", true)) return false
+        if (clean.contains("Download Turn Off Light", true)) return false
+        if (clean.matches(Regex("""(?i).*(episode|season)\s*\d+.*"""))) return false
+        return true
+    }
+
+    private fun String.slugTitle(): String {
+        return substringBefore('?')
+            .substringAfterLast('/')
+            .substringBeforeLast('.')
+            .replace(Regex("""(?i)-episode[-\s]*\d+.*$"""), "")
+            .replace('-', ' ')
+            .urlDecodeSafe()
+            .cleanTitle()
+    }
+
     private fun buildPageUrl(path: String, page: Int): String {
         val base = when {
             path.isBlank() -> mainUrl
@@ -463,31 +521,30 @@ class DrakorAsia : MainAPI() {
             ?: fallbackUrl.substringAfterLast('/').substringBefore('.').replace('-', ' ').cleanTitle()
     }
 
-    private fun readPoster(document: Document): String? {
-        return fixUrlNull(document.selectFirst("meta[property=og:image], meta[name=twitter:image], article img, .post img, img")
-            ?.let { if (it.hasAttr("content")) it.attr("content") else it.imageAttr() }
-            ?.fixBloggerImage())
+    private fun readPoster(document: Document, seriesTitle: String? = null): String? {
+        return document.select(".post-body img[src], .entry-content img[src], article img[src], meta[property=og:image], meta[name=twitter:image]")
+            .asSequence()
+            .mapNotNull { element ->
+                if (element.hasAttr("content")) element.attr("content") else element.imageAttr()
+            }
+            .map { it.fixBloggerImage() }
+            .firstOrNull { !it.isBadImageUrl(seriesTitle) }
+            ?.let { fixUrlNull(it) }
     }
 
-    private fun readPlot(document: Document): String? {
-        return document.selectFirst("meta[property=og:description], meta[name=description], .sinoposis, .sinopsis, .post-body p, .entry-content p, article p")
-            ?.let { if (it.hasAttr("content")) it.attr("content") else it.text() }
-            ?.cleanTitle()
-            ?.takeIf { it.length > 20 }
+    private fun readPlot(document: Document, title: String): String? {
+        return document.select(".sinoposis, .sinopsis, .post-body p, .entry-content p, article p, meta[property=og:description], meta[name=description]")
+            .asSequence()
+            .map { if (it.hasAttr("content")) it.attr("content") else it.text() }
+            .map { it.cleanTitle() }
+            .firstOrNull { it.isValidPlot(title) }
     }
 
     private fun readTags(document: Document): List<String> {
         return document.select("a[rel=tag][href*='/search/label/'], a[href*='/search/label/']")
             .map { it.text().trim(',', ' ', '\n', '\t').cleanTitle() }
-            .filter {
-                it.isNotBlank() &&
-                    it.length > 1 &&
-                    !it.matches(Regex("^[A-Z0-9]$")) &&
-                    !it.equals(name, true) &&
-                    !it.equals("Series", true)
-            }
+            .filter { it.isNotBlank() }
             .distinct()
-            .take(20)
     }
 
     private fun collectCandidates(text: String, referer: String, output: MutableSet<String>) {
@@ -518,8 +575,8 @@ class DrakorAsia : MainAPI() {
         return urlDecoded
     }
 
-    private suspend fun emitDirect(mediaUrl: String, referer: String, callback: (ExtractorLink) -> Unit) {
-        val fixed = mediaUrl.replace("\\/", "/")
+    private suspend fun emitDirect(mediaUrl: String, referer: String, callback: (ExtractorLink) -> Unit, label: String? = null) {
+        val fixed = mediaUrl.replace("\\/", "/").htmlUnescape()
         val type = if (fixed.contains(".m3u8", true)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
         val quality = getQualityFromName(fixed).let { if (it == Qualities.Unknown.value) inferQuality(fixed) else it }
         val linkHeaders = linkedMapOf(
@@ -532,7 +589,7 @@ class DrakorAsia : MainAPI() {
         callback.invoke(
             newExtractorLink(
                 source = name,
-                name = "$name ${if (quality == Qualities.Unknown.value) "Auto" else "${quality}p"}",
+                name = label ?: "$name ${if (quality == Qualities.Unknown.value) "Auto" else "${quality}p"}",
                 url = fixed,
                 type = type
             ) {
@@ -552,12 +609,17 @@ class DrakorAsia : MainAPI() {
 
     private fun String.isPlayableCandidate(): Boolean {
         val value = lowercase()
-        return isDirectMedia() || listOf(
+        return isDirectMedia() || isDownloadCandidate() || listOf(
             "short.ink", "abyssplayer.com", "abyss.to", "blogger.com/video.g", "googlevideo.com", "blogspot.com",
             "dailymotion", "ok.ru", "odnoklassniki", "streamtape", "filemoon", "dood", "vidhide", "vidguard",
             "voe.sx", "mixdrop", "mp4upload", "abyssplayer", "streamwish", "streamruby", "sendvid", "uqload",
             "desustream", "ondesu"
         ).any { value.contains(it) }
+    }
+
+    private fun String.isDownloadCandidate(): Boolean {
+        val value = lowercase().htmlUnescape()
+        return value.contains("/video/down.php") || value.contains("katong.usbx.me/video/down")
     }
 
     private fun String.isDirectMedia(): Boolean {
