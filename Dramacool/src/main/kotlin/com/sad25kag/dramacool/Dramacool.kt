@@ -230,11 +230,38 @@ class Dramacool : MainAPI() {
         val year = Regex("""\((\d{4})\)""").find(title)?.groupValues?.getOrNull(1)?.toIntOrNull()
         val plot = buildPlotWithInfo(document, description)
 
-        val episodes = document.select(".content-left ul.list-episode-item-2.all-episode > li, .content-left ul.all-episode > li")
-            .mapNotNull { it.toEpisode(title) }
+        val episodes = parseEpisodesFromDocument(document, title)
             .ifEmpty {
-                document.select(".content-left .plugins2 select option[value*=episode-], .content-left .plugins2 select option[value*=/video-watch/]")
-                    .mapNotNull { it.toEpisodeFromOption(title) }
+                if (isEpisodeUrl(url) && url != detailUrl) {
+                    runCatching {
+                        val episodeDocument = app.get(
+                            url,
+                            headers = defaultHeaders,
+                            referer = mainUrl
+                        ).document
+                        parseEpisodesFromDocument(episodeDocument, title)
+                    }.getOrNull().orEmpty()
+                } else {
+                    emptyList()
+                }
+            }
+            .ifEmpty {
+                if (isEpisodeUrl(url)) {
+                    val currentName = document.selectFirst(".content-left h1, h1")?.text()?.trim()
+                        ?: title
+                    listOf(
+                        newEpisode(url) {
+                            this.name = currentName.cleanTitle()
+                            this.episode = Regex("""Episode\s*(\d+)""", RegexOption.IGNORE_CASE)
+                                .find(currentName)
+                                ?.groupValues
+                                ?.getOrNull(1)
+                                ?.toIntOrNull()
+                        }
+                    )
+                } else {
+                    emptyList()
+                }
             }
             .distinctBy { it.data }
             .sortedWith(compareBy<Episode> { it.episode ?: Int.MAX_VALUE }.thenBy { it.name })
@@ -272,14 +299,39 @@ class Dramacool : MainAPI() {
         }
     }
 
+    private fun parseEpisodesFromDocument(document: Element, title: String): List<Episode> {
+        return document.select(
+            ".content-left ul.list-episode-item-2.all-episode > li, " +
+                ".content-left ul.all-episode > li, " +
+                ".content-left .block-tab ul.list-episode-item-2 > li"
+        )
+            .mapNotNull { it.toEpisode(title) }
+            .ifEmpty {
+                document.select(
+                    ".content-left .plugins2 select option[value*=episode-], " +
+                        ".content-left .plugins2 select option[value*=/video-watch/]"
+                ).mapNotNull { it.toEpisodeFromOption(title) }
+            }
+    }
+
     private fun Element.toEpisode(showTitle: String? = null): Episode? {
-        val href = fixUrlNull(attr("href")) ?: return null
+        val anchor = if (tagName().equals("a", true) && hasAttr("href")) {
+            this
+        } else {
+            selectFirst("a[href*=episode-], a[href*=\"/video-watch/\"], a[href]") ?: return null
+        }
+
+        val href = fixUrlNull(anchor.attr("href")) ?: return null
         if (!isSupportedContentUrl(href) || !isEpisodeUrl(href)) return null
 
-        val name = selectFirst("h3.title, h2.title, .title, h3, h2")?.text()?.trim()
+        val name = anchor.selectFirst("h3.title, h2.title, .title, h3, h2")?.text()?.trim()
+            ?: selectFirst("h3.title, h2.title, .title, h3, h2")?.text()?.trim()
+            ?: anchor.attr("title").takeIf { it.isNotBlank() }
             ?: attr("title").takeIf { it.isNotBlank() }
+            ?: anchor.text().trim().takeIf { it.isNotBlank() }
             ?: text().trim()
 
+        if (name.isBlank() || name.equals("Show all episodes", true)) return null
         if (!showTitle.isNullOrBlank() && !name.belongsToSeries(showTitle)) return null
 
         val epNum = Regex("""Episode\s*(\d+)""", RegexOption.IGNORE_CASE)
@@ -298,7 +350,8 @@ class Dramacool : MainAPI() {
                 ?.getOrNull(1)
                 ?.toIntOrNull()
 
-        val dateText = selectFirst("span.time, .time, .date")?.text()
+        val dateText = anchor.selectFirst("span.time, .time, .date")?.text()
+            ?: selectFirst("span.time, .time, .date")?.text()
             ?: parent()?.selectFirst("span.time, .time, .date")?.text()
 
         return newEpisode(href) {
