@@ -543,11 +543,35 @@ class DrakoridProvider : MainAPI() {
     }
 
     private fun Element.extractImageUrl(): String? {
-        val attrs = listOf("content", "abs:src", "src", "abs:data-src", "data-src", "abs:data-lazy-src", "data-lazy-src", "abs:data-original", "data-original")
-        attrs.forEach { attr ->
-            val value = attr(attr).trim()
+        extractOwnImageUrl()?.let { return it }
+
+        select("img, meta[property=og:image], meta[name=twitter:image]")
+            .asSequence()
+            .mapNotNull { it.extractOwnImageUrl() }
+            .firstOrNull()
+            ?.let { return it }
+
+        return null
+    }
+
+    private fun Element.extractOwnImageUrl(): String? {
+        val attrs = listOf(
+            "content",
+            "abs:src",
+            "src",
+            "abs:data-src",
+            "data-src",
+            "abs:data-lazy-src",
+            "data-lazy-src",
+            "abs:data-original",
+            "data-original"
+        )
+
+        attrs.forEach { attrName ->
+            val value = attr(attrName).trim()
             if (value.isNotBlank()) normalizeImageUrl(value)?.let { return it }
         }
+
         listOf(attr("srcset"), attr("data-srcset")).forEach { srcset ->
             srcset.split(",")
                 .map { it.trim().substringBefore(" ").trim() }
@@ -555,6 +579,7 @@ class DrakoridProvider : MainAPI() {
                 ?.let { normalizeImageUrl(it) }
                 ?.let { return it }
         }
+
         return null
     }
 
