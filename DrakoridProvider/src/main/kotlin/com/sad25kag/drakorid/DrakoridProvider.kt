@@ -42,6 +42,8 @@ class DrakoridProvider : MainAPI() {
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.AsianDrama, TvType.TvSeries, TvType.Movie)
 
+    private val watchBaseUrl = "https://drakorid.co"
+
     private val baseHeaders = mapOf(
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -68,7 +70,8 @@ class DrakoridProvider : MainAPI() {
             referer = mainUrl
         ).document
 
-        val items = document.extractSearchResults()
+        val allowEpisodeCards = request.data.isBlank() || request.data.contains("order=update", true)
+        val items = document.extractSearchResults(allowEpisodeCards = allowEpisodeCards)
             .distinctBy { it.url }
             .take(40)
 
@@ -88,7 +91,7 @@ class DrakoridProvider : MainAPI() {
             referer = mainUrl
         ).document
 
-        return document.extractSearchResults()
+        return document.extractSearchResults(allowEpisodeCards = true)
             .filter { it.name.contains(clean, ignoreCase = true) || clean.split(" ").any { part -> it.name.contains(part, ignoreCase = true) } }
             .distinctBy { it.url }
     }
@@ -119,9 +122,7 @@ class DrakoridProvider : MainAPI() {
             ?.takeIf { it.isNotBlank() }
             ?: title.substringBefore(" Episode ").trim()
 
-        val poster = document.selectFirst("meta[property=og:image], .thumb img, .poster img, article img, img[src*='wp-content']")
-            ?.let { it.attr("content").ifBlank { it.attr("abs:src") } }
-            ?.takeIf { it.isNotBlank() }
+        val poster = document.extractPosterUrl()
 
         val tags = document.select("a[href*='/genres/'], .genxed a, .mgen a, .genre a")
             .map { it.text().trim() }
@@ -156,7 +157,8 @@ class DrakoridProvider : MainAPI() {
             (episodes.isEmpty() && !title.contains("Episode", true))
 
         if (isMovie || episodes.isEmpty()) {
-            return newMovieLoadResponse(seriesTitle.ifBlank { title }, url, if (isMovie) TvType.Movie else TvType.AsianDrama, url) {
+            val movieData = document.findWatchLiteUrl(url) ?: buildWatchLiteUrl(url) ?: url
+            return newMovieLoadResponse(seriesTitle.ifBlank { title }, url, if (isMovie) TvType.Movie else TvType.AsianDrama, movieData) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = plot
@@ -179,77 +181,127 @@ class DrakoridProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val pageUrl = resolveEpisodeData(data) ?: return false
-        val document = app.get(
-            pageUrl,
-            headers = baseHeaders,
-            referer = mainUrl
-        ).document
-
-        val candidates = linkedSetOf<String>()
-
-        candidates += document.select("iframe[src], video source[src], video[src]")
-            .mapNotNull { it.attr("abs:src").ifBlank { it.attr("abs:href") }.takeIf { url -> url.startsWith("http") } }
-
-        document.select("option[value], [data-video], [data-src], [data-url], [data-embed], a[href]").forEach { element ->
-            listOf("value", "data-video", "data-src", "data-url", "data-embed", "href").forEach attrs@{ attr ->
-                val raw = element.attr(attr).trim()
-                if (raw.isBlank() || raw == "#" || raw.equals("javascript:;", true)) return@attrs
-                val decoded = decodeServerPayload(raw)
-                candidates += extractUrls(decoded, pageUrl)
-                if (decoded.startsWith("http")) candidates += decoded
-            }
+        var loaded = false
+        val guardedCallback: (ExtractorLink) -> Unit = { link ->
+            loaded = true
+            callback.invoke(link)
         }
 
-        candidates += extractUrls(document.html(), pageUrl)
+        val pages = linkedSetOf(pageUrl)
+        if (!pageUrl.contains("episode", true) && !pageUrl.contains("/watch-lite/", true) && !pageUrl.contains("/player/bunny.php", true)) {
+            buildWatchLiteUrl(pageUrl)?.let { pages.add(it) }
+        }
 
-        var loaded = false
-        candidates
-            .map { it.trim().replace("\\/", "/") }
-            .filter { it.startsWith("http") && it.isPlayableCandidate() }
-            .distinct()
-            .forEach { url ->
-                when {
-                    url.contains("seekplayer.vip", true) -> {
-                        if (extractSeekPlayer(url, pageUrl, callback)) loaded = true
-                        loadExtractor(url, pageUrl, subtitleCallback, callback)
-                        loaded = true
-                    }
-                    url.contains(".m3u8", true) || url.contains(".mp4", true) -> {
-                        emitDirect(url, pageUrl, callback)
-                        loaded = true
-                    }
-                    else -> {
-                        loadExtractor(url, pageUrl, subtitleCallback, callback)
-                        loaded = true
-                    }
+        pages.forEach { currentUrl ->
+            if (currentUrl.contains("/player/bunny.php", true)) {
+                if (extractBunnyPlayer(currentUrl, watchBaseUrl, guardedCallback)) return@forEach
+            }
+
+            val referer = when {
+                currentUrl.startsWith(watchBaseUrl, true) -> watchBaseUrl
+                else -> mainUrl
+            }
+            val document = runCatching {
+                app.get(currentUrl, headers = baseHeaders, referer = referer).document
+            }.getOrNull() ?: return@forEach
+
+            val candidates = linkedSetOf<String>()
+            if (!currentUrl.contains("/watch-lite/", true)) {
+                document.findWatchLiteUrl(currentUrl)?.let { candidates.add(it) }
+            }
+
+            candidates += document.select("iframe[src], video source[src], video[src]")
+                .mapNotNull { it.attr("abs:src").ifBlank { it.attr("abs:href") }.takeIf { url -> url.startsWith("http") } }
+
+            document.select("option[value], [data-video], [data-src], [data-url], [data-embed], a[href]").forEach { element ->
+                listOf("value", "data-video", "data-src", "data-url", "data-embed", "href").forEach attrs@{ attr ->
+                    val raw = element.attr(attr).trim()
+                    if (raw.isBlank() || raw == "#" || raw.equals("javascript:;", true)) return@attrs
+                    val decoded = decodeServerPayload(raw)
+                    candidates += extractUrls(decoded, currentUrl)
+                    if (decoded.startsWith("http")) candidates += decoded
                 }
             }
+
+            candidates += extractUrls(document.html(), currentUrl)
+
+            candidates
+                .map { it.trim().replace("\\/", "/") }
+                .filter { it.startsWith("http") && it.isPlayableCandidate() }
+                .distinct()
+                .forEach candidateLoop@{ url ->
+                    when {
+                        url.contains("/watch-lite/", true) -> {
+                            val watchDocument = runCatching {
+                                app.get(url, headers = baseHeaders, referer = watchBaseUrl).document
+                            }.getOrNull() ?: return@candidateLoop
+                            watchDocument.select("iframe[src*='bunny.php'], a[href*='bunny.php'], iframe[src], a[href]")
+                                .mapNotNull { it.attr("abs:src").ifBlank { it.attr("abs:href") }.takeIf { link -> link.startsWith("http") } }
+                                .filter { it.contains("/player/bunny.php", true) || it.isPlayableCandidate() }
+                                .distinct()
+                                .forEach { playerUrl ->
+                                    if (playerUrl.contains("/player/bunny.php", true)) {
+                                        extractBunnyPlayer(playerUrl, watchBaseUrl, guardedCallback)
+                                    } else if (playerUrl.contains(".m3u8", true) || playerUrl.contains(".mp4", true)) {
+                                        emitDirect(playerUrl, url, guardedCallback)
+                                    } else {
+                                        loadExtractor(playerUrl, url, subtitleCallback, guardedCallback)
+                                    }
+                                }
+                        }
+                        url.contains("/player/bunny.php", true) -> {
+                            extractBunnyPlayer(url, watchBaseUrl, guardedCallback)
+                        }
+                        url.contains("seekplayer.vip", true) -> {
+                            if (!extractSeekPlayer(url, currentUrl, guardedCallback)) {
+                                loadExtractor(url, currentUrl, subtitleCallback, guardedCallback)
+                            }
+                        }
+                        url.contains(".m3u8", true) || url.contains(".mp4", true) -> {
+                            emitDirect(url, currentUrl, guardedCallback)
+                        }
+                        else -> {
+                            loadExtractor(url, currentUrl, subtitleCallback, guardedCallback)
+                        }
+                    }
+                }
+        }
 
         return loaded
     }
 
-    private fun Document.extractSearchResults(): List<SearchResponse> {
+    private fun Document.extractSearchResults(allowEpisodeCards: Boolean = true): List<SearchResponse> {
+        return collectSearchResults(allowEpisodeCards = allowEpisodeCards)
+    }
+
+    private fun Document.collectSearchResults(allowEpisodeCards: Boolean): List<SearchResponse> {
         val results = mutableListOf<SearchResponse>()
         val seen = linkedSetOf<String>()
+        val selector = if (allowEpisodeCards) {
+            "article, div.bs, div.listupd .bs, div.item, div.card, .swiper-slide, .listupd a[href], .excstf a[href], a[href*='/series/'], a[href*='/movie/'], a[href*='episode']"
+        } else {
+            "article, div.bs, div.listupd .bs, div.item, div.card, .swiper-slide, .listupd a[href], .excstf a[href], a[href*='/series/'], a[href*='/movie/']"
+        }
 
-        select("article, div.bs, div.listupd .bs, div.item, div.card, .swiper-slide, .listupd a[href], .excstf a[href], a[href*='/series/'], a[href*='episode']")
-            .forEach { element ->
-                val response = element.toSearchResult() ?: return@forEach
-                if (seen.add(response.url)) results.add(response)
-            }
+        select(selector).forEach { element ->
+            val response = element.toSearchResult(allowEpisodeCards) ?: return@forEach
+            if (seen.add(response.url)) results.add(response)
+        }
 
         return results
     }
 
-    private fun Element.toSearchResult(): SearchResponse? {
+    private fun Element.toSearchResult(allowEpisodeCards: Boolean): SearchResponse? {
         val linkEl = when {
             tagName().equals("a", true) -> this
-            else -> selectFirst("a[href*='/series/'], a[href*='episode'], a[href]")
+            allowEpisodeCards -> selectFirst("a[href*='/series/'], a[href*='/movie/'], a[href*='episode'], a[href]")
+            else -> selectFirst("a[href*='/series/'], a[href*='/movie/'], a[href]")
         } ?: return null
 
         val href = fixUrl(linkEl.attr("abs:href").ifBlank { linkEl.attr("href") })
         if (!href.startsWith(mainUrl)) return null
         if (href == mainUrl || href.contains("/genres/", true) || href.contains("/tag/", true) || href.contains("/category/", true)) return null
+        if (!allowEpisodeCards && href.contains("episode", true)) return null
 
         val rawTitle = selectFirst("h2, h3, h4, h5, .tt, .name, .entry-title, .post-title")?.text()
             ?: linkEl.attr("title")
@@ -257,7 +309,7 @@ class DrakoridProvider : MainAPI() {
         val title = rawTitle.cleanTitle().takeIf { it.isNotBlank() } ?: return null
         if (title.length < 3 || title.equals("Search", true) || title.equals("Home", true)) return null
 
-        val poster = selectFirst("img")?.attr("abs:src")?.takeIf { it.isNotBlank() }
+        val poster = extractImageUrl()
         val isMovie = href.contains("/movie/", true) || text().contains("Movie", true)
 
         return if (isMovie) {
@@ -344,6 +396,20 @@ class DrakoridProvider : MainAPI() {
         return false
     }
 
+    private suspend fun extractBunnyPlayer(
+        playerUrl: String,
+        referer: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val rawVideo = playerUrl.substringAfter("v=", "").substringBefore("&").takeIf { it.isNotBlank() } ?: return false
+        val decoded = decodeServerPayload(rawVideo).replace("\\/", "/")
+        val mediaUrl = decoded.takeIf { it.startsWith("http") && (it.contains(".m3u8", true) || it.contains(".mp4", true)) }
+            ?: extractUrls(decoded, playerUrl).firstOrNull { it.contains(".m3u8", true) || it.contains(".mp4", true) }
+            ?: return false
+        emitDirect(mediaUrl, "$referer/", callback)
+        return true
+    }
+
     private fun decryptSeekPlayerHex(hex: String): String {
         val secretKey = "kiemtienmua911ca".toByteArray(Charsets.UTF_8)
         val ivBytes = "1234567890oiuytr".toByteArray(Charsets.UTF_8)
@@ -363,6 +429,12 @@ class DrakoridProvider : MainAPI() {
         val quality = getQualityFromName(fixedUrl).let {
             if (it == Qualities.Unknown.value) inferQuality(fixedUrl) else it
         }
+        val cleanReferer = referer.trimEnd('/') + "/"
+        val origin = if (fixedUrl.contains("hls.drakor.cc", true)) {
+            watchBaseUrl
+        } else {
+            mainUrl
+        }
         callback.invoke(
             newExtractorLink(
                 source = name,
@@ -371,10 +443,10 @@ class DrakoridProvider : MainAPI() {
                 type = type
             ) {
                 this.quality = quality
-                this.referer = referer
+                this.referer = cleanReferer
                 this.headers = mapOf(
-                    "Referer" to referer,
-                    "Origin" to mainUrl,
+                    "Referer" to cleanReferer,
+                    "Origin" to origin,
                     "User-Agent" to (baseHeaders["User-Agent"] ?: "Mozilla/5.0")
                 )
             }
@@ -398,13 +470,16 @@ class DrakoridProvider : MainAPI() {
     }
 
     private fun String.isPlayableCandidate(): Boolean {
-        return contains("seekplayer.vip", true) ||
+        return contains("/watch-lite/", true) ||
+            contains("/player/bunny.php", true) ||
+            contains("seekplayer.vip", true) ||
             contains("abyssplayer.com", true) ||
             contains("vidmoly", true) ||
             contains("dailymotion.com", true) ||
             contains("streamtape", true) ||
             contains("filemoon", true) ||
             contains("mp4upload", true) ||
+            contains("hls.drakor.cc", true) ||
             contains(".m3u8", true) ||
             contains(".mp4", true)
     }
@@ -426,15 +501,91 @@ class DrakoridProvider : MainAPI() {
         return urls
     }
 
+    private fun Document.findWatchLiteUrl(pageUrl: String): String? {
+        return select("a[href*='/watch-lite/'], iframe[src*='/watch-lite/'], a[href*='/nonton/']")
+            .mapNotNull { element ->
+                element.attr("abs:href")
+                    .ifBlank { element.attr("abs:src") }
+                    .ifBlank { element.attr("href") }
+                    .ifBlank { element.attr("src") }
+                    .takeIf { it.isNotBlank() }
+                    ?.let { fixUrl(it, pageUrl).replace(mainUrl, watchBaseUrl) }
+            }
+            .firstOrNull { it.contains("/watch-lite/", true) }
+            ?: buildWatchLiteUrl(pageUrl)
+    }
+
+    private fun buildWatchLiteUrl(url: String): String? {
+        val slug = url.trimEnd('/')
+            .substringAfterLast('/')
+            .substringBefore('?')
+            .takeIf { it.isNotBlank() && !it.contains("episode", true) && it != "series" && it != "movie" }
+            ?: return null
+        return "$watchBaseUrl/watch-lite/$slug/1"
+    }
+
+    private fun Document.extractPosterUrl(): String? {
+        val selectors = listOf(
+            "meta[property=og:image]",
+            "meta[name=twitter:image]",
+            ".thumb img",
+            ".poster img",
+            ".entry-content img",
+            "article img",
+            "img[src*='wp-content']",
+            "img[data-src*='wp-content']",
+            "img[data-lazy-src*='wp-content']"
+        )
+        selectors.forEach { selector ->
+            selectFirst(selector)?.extractImageUrl()?.let { return it }
+        }
+        return null
+    }
+
+    private fun Element.extractImageUrl(): String? {
+        val attrs = listOf("content", "abs:src", "src", "abs:data-src", "data-src", "abs:data-lazy-src", "data-lazy-src", "abs:data-original", "data-original")
+        attrs.forEach { attr ->
+            val value = attr(attr).trim()
+            if (value.isNotBlank()) normalizeImageUrl(value)?.let { return it }
+        }
+        listOf(attr("srcset"), attr("data-srcset")).forEach { srcset ->
+            srcset.split(",")
+                .map { it.trim().substringBefore(" ").trim() }
+                .firstOrNull { it.isNotBlank() }
+                ?.let { normalizeImageUrl(it) }
+                ?.let { return it }
+        }
+        return null
+    }
+
+    private fun normalizeImageUrl(url: String): String? {
+        val clean = url.trim().trim('"', '\'', ' ')
+        if (clean.isBlank() || clean.startsWith("data:", true) || clean.contains("placeholder", true)) return null
+        val fixed = fixUrl(clean).replace("\\/", "/")
+        val wpProxy = Regex("""https?://i\d+\.wp\.com/(drakorid\.(?:cam|co)/.+)""", RegexOption.IGNORE_CASE)
+            .find(fixed)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.substringBefore("?")
+        return if (!wpProxy.isNullOrBlank()) "https://$wpProxy" else fixed
+    }
+
     private fun fixUrl(url: String, referer: String = mainUrl): String {
         val clean = url.trim()
         return when {
             clean.startsWith("//") -> "https:$clean"
             clean.startsWith("http://", true) || clean.startsWith("https://", true) -> clean
-            clean.startsWith("/") -> "$mainUrl$clean"
+            clean.startsWith("/") -> "${originFromUrl(referer) ?: mainUrl}$clean"
             clean.isBlank() -> clean
             else -> referer.substringBeforeLast("/") + "/" + clean
         }
+    }
+
+    private fun originFromUrl(url: String): String? {
+        return runCatching {
+            val uri = URI(url)
+            "${uri.scheme}://${uri.host}"
+        }.getOrNull()
     }
 
     private fun extractEpisodeNumber(href: String, text: String): Int? {
