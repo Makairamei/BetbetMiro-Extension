@@ -208,9 +208,11 @@ class Film21 : MainAPI() {
             if (!fixed.isPlayableMedia()) return false
             val key = fixed.substringBefore("#")
             if (!emitted.add(key)) return false
+            val mediaReferer = mediaReferer(fixed, referer)
+            val mediaHeaders = mediaHeaders(fixed, referer)
             if (fixed.isM3u8Like()) {
                 val links = try {
-                    generateM3u8(source, fixed, referer, headers = headers + mapOf("Referer" to referer, "Accept" to "*/*"))
+                    generateM3u8(source, fixed, mediaReferer, headers = mediaHeaders)
                 } catch (_: Throwable) { emptyList() }
                 links.forEach { link ->
                     val linkKey = link.url.substringBefore("#")
@@ -219,9 +221,9 @@ class Film21 : MainAPI() {
                 if (links.isNotEmpty()) return true
             }
             callback(newExtractorLink(source, source, fixed, if (fixed.isM3u8Like()) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
-                this.referer = referer
+                this.referer = mediaReferer
                 this.quality = qualityFromUrl(fixed)
-                this.headers = headers + mapOf("Referer" to referer, "Accept" to "*/*")
+                this.headers = mediaHeaders
             })
             return true
         }
@@ -407,6 +409,7 @@ class Film21 : MainAPI() {
         iframeLinks(normalized, baseUrl).forEach { links.add(it) }
         embeddedLinks(normalized, baseUrl).forEach { links.add(it) }
         base64Links(normalized, baseUrl).forEach { links.add(it) }
+        juicyCodesLinks(normalized, baseUrl).forEach { links.add(it) }
         Regex("(?i)\"(?:embed_url|iframe_url|player_url|url|src|file|source|link|m3u8|hls|hlsVideoTiktok)\"\\s*:\\s*\"([^\"]+)\"").findAll(normalized).mapNotNull { decodePossibleUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
         Regex("""(?i)(?:embed_url|iframe_url|player_url|url|src|file|source|link|m3u8|hls|hlsVideoTiktok)\s*[:=]\s*['"]([^'"]+)['"]""").findAll(normalized).mapNotNull { decodePossibleUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
         Regex("""(?i)['"]([^'"]*/play/token_hash\?[^'"]+)['"]""").findAll(normalized).mapNotNull { decodePossibleUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
@@ -422,7 +425,7 @@ class Film21 : MainAPI() {
                 "a[href*='embed'], a[href*='player'], a[href*='stream'], a[href*='drive'], a[href*='gofile'], a[href*='dood'], a[href*='streamtape'], " +
                 "a[href*='filemoon'], a[href*='vidhide'], a[href*='vidguard'], a[href*='voe'], a[href*='mp4upload'], a[href*='uqload'], a[href*='krakenfiles'], " +
                 "a[href*='filelions'], a[href*='hubcloud'], a[href*='gdplayer'], a[href*='gdriveplayer'], a[href*='sht'], a[href*='short'], " +
-                "a[href*='p2pplay'], a[href*='playerp2p'], a[href*='vidplayer'], a[href*='.mp4'], a[href*='.m3u8']"
+                "a[href*='p2pplay'], a[href*='playerp2p'], a[href*='vidplayer'], a[href*='editdulu'], a[href*='playdulu'], a[href*='havanabrown'], a[href*='.mp4'], a[href*='.m3u8']"
         ).forEach { element ->
             val value = element.attr("src").ifBlank { element.attr("data-src").ifBlank { element.attr("data-litespeed-src").ifBlank { element.attr("href") } } }
             fixUrl(value, baseUrl)?.let { if (!it.isNoiseUrl()) links.add(it) }
@@ -443,7 +446,7 @@ class Film21 : MainAPI() {
 
     private fun embeddedLinks(html: String, baseUrl: String): List<String> {
         val links = linkedSetOf<String>()
-        Regex("""(?i)['"]((?:https?:)?//[^'"]+(?:embed|player|stream|drive|gofile|dood|streamtape|filemoon|vidhide|vidguard|voe|mp4upload|uqload|krakenfiles|filelions|gdplayer|gdriveplayer|hubcloud|short|sht|p2pplay|playerp2p|vidplayer|/e/|/v/|/d/)[^'"]*)['"]""")
+        Regex("""(?i)['"]((?:https?:)?//[^'"]+(?:embed|player|stream|drive|gofile|dood|streamtape|filemoon|vidhide|vidguard|voe|mp4upload|uqload|krakenfiles|filelions|gdplayer|gdriveplayer|hubcloud|short|sht|p2pplay|playerp2p|vidplayer|editdulu|playdulu|havanabrown|/e/|/v/|/d/)[^'"]*)['"]""")
             .findAll(html).mapNotNull { fixUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
         return links.toList()
     }
@@ -454,6 +457,44 @@ class Film21 : MainAPI() {
         Regex("""(?i)Base64\.decode\(['"]([^'"]+)['"]\)""").findAll(html).mapNotNull { decodeBase64(it.groupValues[1]) }.forEach { decoded -> collectLinksFromHtml(decoded, baseUrl).forEach { links.add(it) } }
         return links.toList()
     }
+
+    private fun juicyCodesLinks(html: String, baseUrl: String): List<String> {
+        val links = linkedSetOf<String>()
+        Regex("""(?is)_juicycodes\((.*?)\)\s*;?""").findAll(html).forEach { match ->
+            val encoded = Regex("""["']([^"']*)["']""").findAll(match.groupValues[1]).joinToString("") { it.groupValues[1] }
+            decodeJuicyCodes(encoded)?.let { decoded ->
+                collectLinksFromHtml(decoded, baseUrl).forEach { links.add(it) }
+            }
+        }
+        return links.toList()
+    }
+
+    private fun decodeJuicyCodes(encoded: String): String? {
+        if (encoded.length <= 7) return null
+        return runCatching {
+            val salt = encoded.takeLast(3).map { (it.code - 100).toString() }.joinToString("").toIntOrNull() ?: return null
+            val raw = encoded.dropLast(3)
+                .replace('-', '/')
+                .replace('_', '+')
+                .let { it + "=".repeat((4 - it.length % 4) % 4) }
+            val mapped = String(Base64.getDecoder().decode(raw))
+            val symbols = juicySymbolMap()
+            val digits = buildString {
+                mapped.forEach { char ->
+                    val index = symbols.indexOf(char)
+                    if (index >= 0) append(index)
+                }
+            }
+            buildString {
+                Regex("""\d{4}""").findAll(digits).forEach { chunk ->
+                    val code = (chunk.value.toIntOrNull() ?: return@forEach) % 1000 - salt
+                    if (code in 0..Char.MAX_VALUE.code) append(code.toChar())
+                }
+            }
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun juicySymbolMap(): List<Char> = listOf('`', '%', '-', '+', '*', '$', '!', '_', '^', '=')
 
     private fun directMedia(html: String, baseUrl: String): List<String> {
         val links = linkedSetOf<String>()
@@ -603,8 +644,34 @@ class Film21 : MainAPI() {
                 lower.contains("vidhide") || lower.contains("vidguard") || lower.contains("voe") || lower.contains("mp4upload") || lower.contains("uqload") ||
                 lower.contains("hubcloud") || lower.contains("gdplayer") || lower.contains("gdriveplayer") || lower.contains("krakenfiles") || lower.contains("filelions") ||
                 lower.contains("sf21.vidplayer.live") || lower.contains("p2pplay.pro") || lower.contains("playerp2p.live") ||
+                lower.contains("editdulu.xyz") || lower.contains("playdulu.xyz") || lower.contains("havanabrown.im") ||
+                lower.contains("cdn2.playdulu.xyz") || lower.contains("ambar.editdulu.xyz") ||
                 lower.contains("minochinos.com") || lower.contains("earnvidjav.online") || lower.contains("upload18.org")
             )
+    }
+
+    private fun mediaReferer(url: String, referer: String): String {
+        val mediaHost = runCatching { URI(url).host.orEmpty().lowercase(Locale.ROOT) }.getOrDefault("")
+        val refOrigin = origin(referer)
+        return when {
+            mediaHost.contains("playdulu.xyz") || mediaHost.contains("editdulu.xyz") || mediaHost.contains("havanabrown.im") -> "$refOrigin/"
+            else -> referer
+        }
+    }
+
+    private fun mediaHeaders(url: String, referer: String): Map<String, String> {
+        val mediaHost = runCatching { URI(url).host.orEmpty().lowercase(Locale.ROOT) }.getOrDefault("")
+        val mediaReferer = mediaReferer(url, referer)
+        val mediaOrigin = origin(mediaReferer)
+        val base = headers + mapOf(
+            "Accept" to "*/*",
+            "Referer" to mediaReferer
+        )
+        return if (mediaHost.contains("playdulu.xyz") || mediaHost.contains("editdulu.xyz") || mediaHost.contains("havanabrown.im")) {
+            base + mapOf("Origin" to mediaOrigin)
+        } else {
+            base
+        }
     }
 
     private fun ajaxHeaders(referer: String): Map<String, String> = headers + mapOf(
