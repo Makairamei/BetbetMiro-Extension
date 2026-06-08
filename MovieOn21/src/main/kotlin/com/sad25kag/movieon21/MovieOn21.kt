@@ -327,7 +327,7 @@ class MovieOn21 : MainAPI() {
             image?.attr("alt"),
             anchor.text(),
             titleFromUrl(href)
-        ).firstOrNull { it.isUsefulTitle() }?.let { cleanTitle(it) } ?: return null
+        ).filterNotNull().firstOrNull { it.isUsefulTitle() }?.let { cleanTitle(it) } ?: return null
         val poster = image?.imageUrl(mainUrl) ?: container.styleImage(mainUrl) ?: anchor.findNearbyImage(mainUrl)
         val text = cleanText(container.text())
         val tvType = inferTvType(href, title, emptyList(), text, false)

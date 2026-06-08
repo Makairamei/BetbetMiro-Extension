@@ -1,9 +1,9 @@
-version = 2
+version = 3
 
 cloudstream {
     authors = listOf("BetbetMiro")
     language = "id"
-    description = "MovieOn21 Stable Candidate provider untuk streaming film subtitle Indonesia dari tv.movieon21.mov dengan parser listing/detail dan resolver playback GDrivePlayer/Stream121 berbasis HAR."
+    description = "MovieOn21 Stable Candidate provider v3 untuk streaming film subtitle Indonesia dari tv.movieon21.mov dengan parser listing/detail dan resolver playback GDrivePlayer/Stream121 berbasis HAR."
     status = 1
 
     tvTypes = listOf(
