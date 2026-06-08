@@ -4,7 +4,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
 }
 
-version = 7
+version = 8
 
 cloudstream {
     language = "id"
@@ -16,5 +16,5 @@ cloudstream {
         "TvSeries",
         "Movie",
     )
-    iconUrl = "https://asianctv.net/favicon.ico"
+    iconUrl = "https://asianctv.in/favicon.ico"
 }

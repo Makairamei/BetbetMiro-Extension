@@ -7,7 +7,7 @@ import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 class Dramacool : MainAPI() {
-    override var mainUrl = "https://asianctv.net"
+    override var mainUrl = "https://asianctv.in"
     override var name = "Dramacool"
     override val hasMainPage = true
     override val hasQuickSearch = true
@@ -21,100 +21,46 @@ class Dramacool : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "recently-added?page=%d" to "Recently Added",
-        "recently-added-movie?page=%d" to "Recently Added Movie",
-        "most-popular-drama?page=%d" to "Popular Drama",
-        "recently-added-kshow?page=%d" to "Recently Added KShow",
+        "recently-added-drama/page/%d/" to "Recently Drama",
+        "recently-added-movie/page/%d/" to "Recently Movie",
+        "recently-added-kshow/page/%d/" to "Recently KShow",
+        "most-popular-drama/page/%d/" to "Popular Drama",
 
-        "genre/action?page=%d" to "Action",
-        "genre/adventure?page=%d" to "Adventure",
-        "genre/animation?page=%d" to "Animation",
-        "genre/comedy?page=%d" to "Comedy",
-        "genre/crime?page=%d" to "Crime",
-        "genre/drama?page=%d" to "Drama",
-        "genre/family?page=%d" to "Family",
-        "genre/fantasy?page=%d" to "Fantasy",
-        "genre/historical?page=%d" to "Historical",
-        "genre/horror?page=%d" to "Horror",
-        "genre/law?page=%d" to "Law",
-        "genre/legal?page=%d" to "Legal",
-        "genre/medical?page=%d" to "Medical",
-        "genre/mystery?page=%d" to "Mystery",
-        "genre/psychological?page=%d" to "Psychological",
-        "genre/reality-show?page=%d" to "Reality Show",
-        "genre/romance?page=%d" to "Romance",
-        "genre/school?page=%d" to "School",
-        "genre/sci-fi?page=%d" to "Sci-Fi",
-        "genre/thriller?page=%d" to "Thriller",
-        "genre/variety?page=%d" to "Variety",
-
-        "genre/accident?page=%d" to "Accident",
-        "genre/alien?page=%d" to "Alien",
-        "genre/amnesia?page=%d" to "Amnesia",
-        "genre/ancient-legend?page=%d" to "Ancient Legend",
-        "genre/animals?page=%d" to "Animals",
-        "genre/artificial-intelligence?page=%d" to "Artificial Intelligence",
-        "genre/award-winning?page=%d" to "Award Winning",
-        "genre/based-on-a-comic?page=%d" to "Based on a Comic",
-        "genre/based-on-true-story?page=%d" to "Based on True Story",
-        "genre/betrayal?page=%d" to "Betrayal",
-        "genre/biography?page=%d" to "Biography",
-        "genre/bl?page=%d" to "BL",
-        "genre/bodyguard?page=%d" to "Bodyguard",
-        "genre/bromance?page=%d" to "Bromance",
-        "genre/business?page=%d" to "Business",
-        "genre/cohabitation?page=%d" to "Cohabitation",
-        "genre/conspiracy?page=%d" to "Conspiracy",
-        "genre/contract-relationship?page=%d" to "Contract Relationship",
-        "genre/corruption?page=%d" to "Corruption",
-        "genre/detective?page=%d" to "Detective",
-        "genre/disaster?page=%d" to "Disaster",
-        "genre/documentary?page=%d" to "Documentary",
-        "genre/entertainment?page=%d" to "Entertainment",
-        "genre/espionage?page=%d" to "Espionage",
-        "genre/friendship?page=%d" to "Friendship",
-        "genre/gangster?page=%d" to "Gangster",
-        "genre/goryeo-dynasty?page=%d" to "Goryeo Dynasty",
-        "genre/gumiho?page=%d" to "Gumiho",
-        "genre/hidden-identity?page=%d" to "Hidden Identity",
-        "genre/hostage?page=%d" to "Hostage",
-        "genre/idol-drama?page=%d" to "Idol Drama",
-        "genre/investigation?page=%d" to "Investigation",
-        "genre/jidai-geki?page=%d" to "Jidai Geki",
-        "genre/kidnapping?page=%d" to "Kidnapping",
-        "genre/kung-fu?page=%d" to "Kung Fu",
-        "genre/love-triangle?page=%d" to "Love Triangle",
-        "genre/mafia?page=%d" to "Mafia",
-        "genre/magic?page=%d" to "Magic",
-        "genre/manga?page=%d" to "Manga",
-        "genre/martial-arts?page=%d" to "Martial Arts",
-        "genre/melodrama?page=%d" to "Melodrama",
-        "genre/military?page=%d" to "Military",
-        "genre/miniseries?page=%d" to "Miniseries",
-        "genre/misunderstanding?page=%d" to "Misunderstanding",
-        "genre/monster?page=%d" to "Monster",
-        "genre/murder?page=%d" to "Murder",
-        "genre/music?page=%d" to "Music",
-        "genre/musical?page=%d" to "Musical",
-        "genre/mythology?page=%d" to "Mythology",
-        "genre/noir?page=%d" to "Noir",
-        "genre/novel?page=%d" to "Novel",
-        "genre/omnibus?page=%d" to "Omnibus",
-        "genre/police?page=%d" to "Police",
-        "genre/political?page=%d" to "Political",
-        "genre/prison?page=%d" to "Prison",
-        "genre/professional?page=%d" to "Professional",
-        "genre/rebellion?page=%d" to "Rebellion",
-        "genre/remake?page=%d" to "Remake",
-        "genre/revenge?page=%d" to "Revenge",
-        "genre/rich-man?page=%d" to "Rich Man",
-        "genre/robot?page=%d" to "Robot",
-        "genre/samurai?page=%d" to "Samurai"
+        "genre/action/page/%d/" to "Action",
+        "genre/adventure/page/%d/" to "Adventure",
+        "genre/business/page/%d/" to "Business",
+        "genre/comedy/page/%d/" to "Comedy",
+        "genre/crime/page/%d/" to "Crime",
+        "genre/drama/page/%d/" to "Drama",
+        "genre/family/page/%d/" to "Family",
+        "genre/fantasy/page/%d/" to "Fantasy",
+        "genre/food/page/%d/" to "Food",
+        "genre/historical/page/%d/" to "Historical",
+        "genre/horror/page/%d/" to "Horror",
+        "genre/law/page/%d/" to "Law",
+        "genre/life/page/%d/" to "Life",
+        "genre/mature/page/%d/" to "Mature",
+        "genre/medical/page/%d/" to "Medical",
+        "genre/melodrama/page/%d/" to "Melodrama",
+        "genre/military/page/%d/" to "Military",
+        "genre/music/page/%d/" to "Music",
+        "genre/mystery/page/%d/" to "Mystery",
+        "genre/political/page/%d/" to "Political",
+        "genre/psychological/page/%d/" to "Psychological",
+        "genre/romance/page/%d/" to "Romance",
+        "genre/sci-fi/page/%d/" to "Sci-Fi",
+        "genre/sitcom/page/%d/" to "Sitcom",
+        "genre/sports/page/%d/" to "Sports",
+        "genre/supernatural/page/%d/" to "Supernatural",
+        "genre/thriller/page/%d/" to "Thriller",
+        "genre/war/page/%d/" to "War",
+        "genre/wuxia/page/%d/" to "Wuxia",
+        "genre/youth/page/%d/" to "Youth"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val safePage = if (page < 1) 1 else page
-        val url = "$mainUrl/${request.data.format(safePage)}"
+        val url = buildMainPageUrl(request.data, safePage)
 
         val document = app.get(
             url,
@@ -125,54 +71,70 @@ class Dramacool : MainAPI() {
         val forceMovie = request.name.contains("Movie", true) || request.data.contains("movie", true)
         val home = document.select(
             "ul.list-episode-item-2 li, div.left-tab-1 ul li, ul.switch-block li, " +
-                "div.content-left ul li, div.content-left li, ul.list-film li"
+                "div.content-left ul li, div.content-left li, ul.list-film li, " +
+                "article, .post, .item, .items li, .recently li, .list li, " +
+                "a[href*=/series/], a[href*=episode-], a[href*=/drama-detail/]"
         )
             .mapNotNull { it.toSearchResult(forceMovie) }
             .distinctBy { it.url }
 
         val hasNext = document.select(
-            "ul.pagination a:contains(Next), div.pagination a:contains(Next), a[href*='page=${safePage + 1}']"
-        ).isNotEmpty() || home.isNotEmpty()
+            "ul.pagination a:contains(Next), div.pagination a:contains(Next), " +
+                "a.next, a.nextpostslink, a[href*='/page/${safePage + 1}/'], a[href*='page=${safePage + 1}']"
+        ).isNotEmpty()
 
         return newHomePageResponse(
             HomePageList(request.name, home, isHorizontalImages = false),
-            hasNext = hasNext
+            hasNext = hasNext || home.isNotEmpty()
         )
     }
 
+    private fun buildMainPageUrl(template: String, page: Int): String {
+        val path = if (page <= 1) {
+            template
+                .replace("page/%d/", "")
+                .replace("page/%d", "")
+                .replace("?page=%d", "")
+        } else {
+            template.format(page)
+        }.trimStart('/')
+
+        return if (path.isBlank()) "$mainUrl/" else "$mainUrl/$path"
+    }
+
     private fun Element.toSearchResult(forceMovie: Boolean = false): SearchResponse? {
-        val detail = selectFirst("a[href*=/drama-detail/]")
-        val episode = selectFirst("a[href*=episode-][href$=.html]")
-        val anchor = detail ?: episode ?: selectFirst("a[href]") ?: return null
+        val detail = selectFirst("a[href*=/series/], a[href*=/drama-detail/]")
+        val episode = selectFirst("a[href*=episode-], a[href*=/video-watch/]")
+        val anchor = detail ?: episode ?: if (tagName().equals("a", true) && hasAttr("href")) this else selectFirst("a[href]") ?: return null
         val href = fixUrlNull(anchor.attr("href")) ?: return null
 
-        if (!href.contains("/drama-detail/", true) && !href.contains("episode-", true)) return null
+        if (!isSupportedContentUrl(href) || isIgnoredUrl(href)) return null
 
         val title = anchor.attr("title").takeIf { it.isNotBlank() }
-            ?: selectFirst("h3.title")?.text()?.trim()
-            ?: selectFirst(".title")?.text()?.trim()
+            ?: selectFirst("h3.title, h2.title, .title, h3, h2")?.text()?.trim()
             ?: selectFirst("img")?.attr("alt")?.trim()
             ?: anchor.text().trim()
 
-        if (title.isBlank()) return null
+        if (title.isBlank() || title.equals("View more", true) || title.equals("Show all episodes", true)) return null
 
         val poster = getPosterUrl()
+        val cleanTitle = title.cleanCardTitle()
         val year = selectFirst("span.year")?.text()?.toIntOrNull()
-            ?: Regex("""\((\d{4})\)""").find(title)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: Regex("""\((\d{4})\)""").find(cleanTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
         val type = when {
             forceMovie -> TvType.Movie
-            href.contains("episode-", true) -> TvType.AsianDrama
-            else -> getTypeFromUrl(href)
+            href.contains("movie", true) -> TvType.Movie
+            else -> TvType.AsianDrama
         }
 
         return if (type == TvType.Movie) {
-            newMovieSearchResponse(title.cleanTitle(), href, TvType.Movie) {
+            newMovieSearchResponse(cleanTitle, href, TvType.Movie) {
                 this.posterUrl = poster
                 this.year = year
             }
         } else {
-            newTvSeriesSearchResponse(title.cleanTitle(), href, TvType.AsianDrama) {
+            newTvSeriesSearchResponse(cleanTitle, href, TvType.AsianDrama) {
                 this.posterUrl = poster
                 this.year = year
             }
@@ -185,22 +147,34 @@ class Dramacool : MainAPI() {
         val encodedQuery = URLEncoder.encode(query.trim(), "UTF-8")
         if (encodedQuery.isBlank()) return emptyList()
 
-        val htmlResults = app.get(
-            "$mainUrl/search?type=movies&keyword=$encodedQuery",
-            headers = defaultHeaders,
-            referer = mainUrl
-        ).document
-            .select("ul.list-episode-item-2 li, div.content-left ul li, div.content-left li")
-            .mapNotNull { it.toSearchResult() }
-            .distinctBy { it.url }
+        val searchUrls = listOf(
+            "$mainUrl/?s=$encodedQuery",
+            "$mainUrl/search?keyword=$encodedQuery",
+            "$mainUrl/search?type=movies&keyword=$encodedQuery"
+        )
 
-        if (htmlResults.isNotEmpty()) return htmlResults
+        searchUrls.forEach { searchUrl ->
+            val htmlResults = runCatching {
+                app.get(searchUrl, headers = defaultHeaders, referer = mainUrl).document
+                    .select(
+                        "ul.list-episode-item-2 li, div.content-left ul li, div.content-left li, " +
+                            "article, .post, .item, .items li, .search-results li, " +
+                            "a[href*=/series/], a[href*=episode-], a[href*=/drama-detail/]"
+                    )
+                    .mapNotNull { it.toSearchResult() }
+                    .distinctBy { it.url }
+            }.getOrNull().orEmpty()
 
-        val apiText = app.get(
-            "$mainUrl/api?a=search&keyword=$encodedQuery&type=drama",
-            headers = defaultHeaders,
-            referer = mainUrl
-        ).text
+            if (htmlResults.isNotEmpty()) return htmlResults
+        }
+
+        val apiText = runCatching {
+            app.get(
+                "$mainUrl/api?a=search&keyword=$encodedQuery&type=drama",
+                headers = defaultHeaders,
+                referer = mainUrl
+            ).text
+        }.getOrNull() ?: return emptyList()
 
         val apiResults = runCatching {
             AppUtils.parseJson<List<SearchItem>>(apiText)
@@ -212,12 +186,12 @@ class Dramacool : MainAPI() {
             val type = getTypeFromUrl(url)
 
             if (type == TvType.Movie) {
-                newMovieSearchResponse(title.cleanTitle(), url, TvType.Movie) {
+                newMovieSearchResponse(title.cleanCardTitle(), url, TvType.Movie) {
                     this.posterUrl = fixUrlNull(item.cover)
                     this.year = Regex("""\((\d{4})\)""").find(title)?.groupValues?.getOrNull(1)?.toIntOrNull()
                 }
             } else {
-                newTvSeriesSearchResponse(title.cleanTitle(), url, TvType.AsianDrama) {
+                newTvSeriesSearchResponse(title.cleanCardTitle(), url, TvType.AsianDrama) {
                     this.posterUrl = fixUrlNull(item.cover)
                     this.year = Regex("""\((\d{4})\)""").find(title)?.groupValues?.getOrNull(1)?.toIntOrNull()
                 }
@@ -226,7 +200,7 @@ class Dramacool : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val detailUrl = if (url.contains("/drama-detail/", true)) url else getDetailUrl(url) ?: url
+        val detailUrl = if (isDetailUrl(url)) url else getDetailUrl(url) ?: episodeUrlToSeriesUrl(url) ?: url
 
         val document = app.get(
             detailUrl,
@@ -234,21 +208,23 @@ class Dramacool : MainAPI() {
             referer = mainUrl
         ).document
 
-        val title = document.selectFirst("div.info h1, h1")
+        val title = document.selectFirst("div.info h1, h1.entry-title, h1")
             ?.text()
             ?.trim()
             ?.takeIf { it.isNotBlank() }
             ?: return null
 
         val poster = fixUrlNull(
-            document.selectFirst("div.details div.img img, div.img img, meta[property=og:image]")
+            document.selectFirst("div.details div.img img, div.img img, .thumb img, .poster img, meta[property=og:image]")
                 ?.let { element ->
-                    if (element.tagName() == "meta") element.attr("content") else element.attr("src")
+                    if (element.tagName() == "meta") element.attr("content") else element.attr("data-src").takeIf { it.isNotBlank() }
+                        ?: element.attr("data-original").takeIf { it.isNotBlank() }
+                        ?: element.attr("src")
                 }
         )
 
-        val description = document.select("div.info p")
-            .firstOrNull { it.selectFirst("span") == null }
+        val description = document.select("div.info p, .entry-content p, .description, .desc")
+            .firstOrNull { it.selectFirst("span") == null && it.text().isNotBlank() }
             ?.text()
             ?.trim()
             ?.takeIf { it.isNotBlank() }
@@ -257,21 +233,23 @@ class Dramacool : MainAPI() {
                 ?.trim()
                 ?.takeIf { it.isNotBlank() }
 
-        val tags = document.select("div.info p:contains(Genre:) a, div.info p:contains(Country:) a")
+        val tags = document.select("div.info p:contains(Genre:) a, div.info p:contains(Country:) a, a[href*=/genre/], a[href*=/country/]")
             .map { it.text().trim() }
             .filter { it.isNotBlank() }
             .distinct()
 
-        val status = getStatus(document.selectFirst("div.info p:contains(Status:)")?.ownText())
+        val status = getStatus(document.selectFirst("div.info p:contains(Status:), .status")?.text())
         val year = Regex("""\((\d{4})\)""").find(title)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
-        val episodes = document.select("a[href*=episode-][href$=.html]")
+        val episodes = document.select("a[href*=episode-], a[href*=/video-watch/]")
             .mapNotNull { it.toEpisode() }
             .distinctBy { it.data }
-            .sortedBy { it.episode ?: Int.MAX_VALUE }
+            .sortedWith(compareBy<Episode> { it.episode ?: Int.MAX_VALUE }.thenBy { it.name })
 
         val recommendations = document.select(
-            "div.content-right a[href*=/drama-detail/], ul.switch-block a[href*=/drama-detail/]"
+            "div.content-right a[href*=/series/], ul.switch-block a[href*=/series/], " +
+                "div.content-right a[href*=/drama-detail/], ul.switch-block a[href*=/drama-detail/], " +
+                ".related a[href*=/series/], .popular a[href*=/series/]"
         )
             .mapNotNull { it.parent()?.toSearchResult() ?: it.toSearchResult() }
             .distinctBy { it.url }
@@ -279,10 +257,10 @@ class Dramacool : MainAPI() {
         val isMovie = title.contains("movie", true) ||
             detailUrl.contains("movie", true) ||
             tags.any { it.contains("Movie", true) } ||
-            episodes.size <= 1 && document.select("div.info p:contains(Type:)").text().contains("Movie", true)
+            episodes.size <= 1 && document.select("div.info p:contains(Type:), .type").text().contains("Movie", true)
 
         return if (isMovie) {
-            newMovieLoadResponse(title.cleanTitle(), detailUrl, TvType.Movie, episodes.firstOrNull()?.data ?: detailUrl) {
+            newMovieLoadResponse(title.cleanCardTitle(), detailUrl, TvType.Movie, episodes.firstOrNull()?.data ?: detailUrl) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
@@ -290,7 +268,7 @@ class Dramacool : MainAPI() {
                 this.recommendations = recommendations
             }
         } else {
-            newTvSeriesLoadResponse(title.cleanTitle(), detailUrl, TvType.AsianDrama, episodes) {
+            newTvSeriesLoadResponse(title.cleanCardTitle(), detailUrl, TvType.AsianDrama, episodes) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
@@ -303,7 +281,9 @@ class Dramacool : MainAPI() {
 
     private fun Element.toEpisode(): Episode? {
         val href = fixUrlNull(attr("href")) ?: return null
-        val name = selectFirst("h3.title")?.text()?.trim()
+        if (!isSupportedContentUrl(href) || !isEpisodeUrl(href)) return null
+
+        val name = selectFirst("h3.title, h2.title, .title, h3, h2")?.text()?.trim()
             ?: attr("title").takeIf { it.isNotBlank() }
             ?: text().trim()
 
@@ -312,14 +292,19 @@ class Dramacool : MainAPI() {
             ?.groupValues
             ?.getOrNull(1)
             ?.toIntOrNull()
+            ?: Regex("""\bEP\s*(\d+)""", RegexOption.IGNORE_CASE)
+                .find(name)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toIntOrNull()
             ?: Regex("""\b(\d+)\b""")
                 .find(name)
                 ?.groupValues
                 ?.getOrNull(1)
                 ?.toIntOrNull()
 
-        val dateText = selectFirst("span.time")?.text()
-            ?: parent()?.selectFirst("span.time")?.text()
+        val dateText = selectFirst("span.time, .time, .date")?.text()
+            ?: parent()?.selectFirst("span.time, .time, .date")?.text()
 
         return newEpisode(href) {
             this.name = name.cleanTitle()
@@ -340,13 +325,25 @@ class Dramacool : MainAPI() {
             referer = mainUrl
         ).document
 
-        val links = document.select("div.muti_link li[data-video], ul.list-server li[data-video], li.linkserver[data-video]")
-            .mapNotNull { li ->
-                fixUrlNull(li.attr("data-video").trim()).takeIf { !it.isNullOrBlank() }
+        val links = document.select(
+            "div.muti_link li[data-video], ul.list-server li[data-video], li.linkserver[data-video], " +
+                "li[data-video], a[data-video], div[data-video], button[data-video], " +
+                "li[data-link], a[data-link], div[data-link], " +
+                "iframe[src], source[src], video[src], a[href*='vid'], a[href*='embed'], a[href*='stream']"
+        )
+            .mapNotNull { element ->
+                val raw = element.attr("data-video").takeIf { it.isNotBlank() }
+                    ?: element.attr("data-link").takeIf { it.isNotBlank() }
+                    ?: element.attr("data-src").takeIf { it.isNotBlank() }
+                    ?: element.attr("src").takeIf { it.isNotBlank() }
+                    ?: element.attr("href").takeIf { it.isNotBlank() }
+                raw?.trim()?.let { fixUrlNull(it) }
             }
+            .filterNot { isIgnoredUrl(it) }
             .distinct()
 
         val extractorLinks = links
+            .filterNot { it.contains("javascript:", true) || it == data }
             .filterNot { it.contains("vidbasic", true) }
             .takeIf { it.isNotEmpty() }
             ?: links
@@ -364,18 +361,19 @@ class Dramacool : MainAPI() {
         }
 
         if (!delivered) {
-            document.select("iframe[src], source[src], video[src]").forEach { element ->
-                val direct = element.attr("src").takeIf { it.isNotBlank() }?.let { fixUrlNull(it) }
-                if (!direct.isNullOrBlank()) {
+            Regex("""https?://[^"'<>\s]+\.(?:m3u8|mp4)(?:\?[^"'<>\s]*)?""", RegexOption.IGNORE_CASE)
+                .findAll(document.html())
+                .map { it.value.replace("\\/", "/") }
+                .distinct()
+                .forEach { direct ->
                     runCatching {
-                        val success = loadExtractor(resolveExtractorUrl(direct), data, subtitleCallback) { extractorLink ->
+                        val success = loadExtractor(direct, data, subtitleCallback) { extractorLink ->
                             delivered = true
                             callback(extractorLink)
                         }
                         if (success) delivered = true
                     }
                 }
-            }
         }
 
         return delivered
@@ -398,9 +396,28 @@ class Dramacool : MainAPI() {
             headers = defaultHeaders,
             referer = mainUrl
         ).document
-            .selectFirst("div.category a[href*=/drama-detail/], a[href*=/drama-detail/]")
+            .selectFirst(
+                "div.category a[href*=/series/], .category a[href*=/series/], a[href*=/series/], " +
+                    "div.category a[href*=/drama-detail/], a[href*=/drama-detail/]"
+            )
             ?.attr("href")
             ?.let { fixUrl(it) }
+    }
+
+    private fun episodeUrlToSeriesUrl(url: String): String? {
+        if (!isEpisodeUrl(url)) return null
+        val path = Regex("""https?://[^/]+/([^?#]+)/?""", RegexOption.IGNORE_CASE)
+            .find(url)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: url.trim('/').substringAfterLast('/')
+
+        val seriesSlug = path
+            .replace(Regex("""-episode-\d+.*$""", RegexOption.IGNORE_CASE), "")
+            .takeIf { it.isNotBlank() }
+            ?: return null
+
+        return "$mainUrl/series/$seriesSlug/"
     }
 
     private fun Element.getPosterUrl(): String? {
@@ -416,7 +433,50 @@ class Dramacool : MainAPI() {
     private fun String.cleanTitle(): String {
         return replace(Regex("""\s+"""), " ")
             .replace("SUB ", "", ignoreCase = true)
+            .replace("DUB ", "", ignoreCase = true)
             .trim()
+    }
+
+    private fun String.cleanCardTitle(): String {
+        return cleanTitle()
+            .replace(Regex("""\s+Episode\s*\d+.*$""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+EP\s*\d+.*$""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+\d+\s*(?:seconds?|minutes?|hours?|days?|weeks?|months?)\s+ago.*$""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+about\s+\d+\s+\w+.*$""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+delayed.*$""", RegexOption.IGNORE_CASE), "")
+            .trim()
+    }
+
+    private fun isDetailUrl(url: String): Boolean {
+        return url.contains("/series/", true) || url.contains("/drama-detail/", true)
+    }
+
+    private fun isEpisodeUrl(url: String): Boolean {
+        return url.contains("episode-", true) || url.contains("/video-watch/", true)
+    }
+
+    private fun isSupportedContentUrl(url: String): Boolean {
+        return isDetailUrl(url) || isEpisodeUrl(url)
+    }
+
+    private fun isIgnoredUrl(url: String): Boolean {
+        return url.contains("/wp-content/", true) ||
+            url.contains("/wp-admin/", true) ||
+            url.contains("/wp-login", true) ||
+            url.contains("/login", true) ||
+            url.contains("/about", true) ||
+            url.contains("/drama-list", true) ||
+            url.contains("/popular-star", true) ||
+            url.contains("/genres", true) ||
+            url.contains("/genre/", true) ||
+            url.contains("/country/", true) ||
+            url.contains("/tag/", true) ||
+            url.contains("/cdn-cgi/", true) ||
+            url.contains("discord", true) ||
+            url.contains("telegram", true) ||
+            url.startsWith("mailto:", true) ||
+            url.startsWith("javascript:", true) ||
+            url == mainUrl || url == "$mainUrl/"
     }
 
     private fun getTypeFromUrl(url: String): TvType {
