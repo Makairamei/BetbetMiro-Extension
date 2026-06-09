@@ -7,6 +7,7 @@ import java.net.URLEncoder
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.jsoup.parser.Parser
 
 class Anoboy : MainAPI() {
     override var mainUrl = "https://anoboy.be"
@@ -226,6 +227,7 @@ class Anoboy : MainAPI() {
         val (embeddedReferer, requestData) = decodeEpisodeData(data)
         val referer = embeddedReferer ?: mainUrl
         val emittedKeys = linkedSetOf<String>()
+        val visitedCandidates = linkedSetOf<String>()
         var emitted = false
 
         fun callbackOnce(link: ExtractorLink) {
@@ -238,16 +240,37 @@ class Anoboy : MainAPI() {
 
         suspend fun processCandidate(raw: String?, baseUrl: String = requestData) {
             val url = resolvePlayerUrl(raw, baseUrl) ?: return
+            val visitKey = canonicalLink(url)
+            if (!visitedCandidates.add(visitKey)) return
             if (!isPlayerCandidate(url)) return
 
+            val candidateReferer = baseUrl.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }
+                ?: referer
+
             if (isDirectMedia(url)) {
-                emitDirect(url, referer, ::callbackOnce)
+                emitDirect(url, candidateReferer, ::callbackOnce)
             } else if (url.contains("blogger.com/video.g", ignoreCase = true)) {
-                emitBloggerVideo(url, baseUrl, ::callbackOnce)
+                emitBloggerVideo(url, candidateReferer, ::callbackOnce)
             } else {
                 try {
-                    loadExtractor(url, referer, subtitleCallback, ::callbackOnce)
+                    loadExtractor(url, candidateReferer, subtitleCallback, ::callbackOnce)
                 } catch (_: Exception) {
+                }
+
+                if (!emitted) {
+                    val nested = runCatching {
+                        app.get(
+                            url,
+                            referer = candidateReferer,
+                            headers = defaultHeaders(candidateReferer),
+                            timeout = 20L
+                        ).document
+                    }.getOrNull()
+
+                    nested?.let { nestedDocument ->
+                        collectPlayerCandidates(nestedDocument)
+                            .forEach { processCandidate(it, url) }
+                    }
                 }
             }
         }
@@ -301,46 +324,44 @@ class Anoboy : MainAPI() {
                 "select[class*=server] option[value], select[id*=mirror] option[value], select[class*=mirror] option[value]"
         ).forEach { option ->
             val value = option.attr("value").trim()
-            if (value.isBlank() || !isLikelyServerValue(value)) return@forEach
+            if (value.isBlank()) return@forEach
 
-            val decoded = runCatching { base64Decode(value) }.getOrNull()
-                ?: runCatching { String(android.util.Base64.decode(value, android.util.Base64.DEFAULT)) }.getOrNull()
+            addServerValueCandidates(value, candidates)
+            decodeServerValue(value)?.let { decoded -> addServerValueCandidates(decoded, candidates) }
 
-            if (decoded != null) {
-                val decodedDoc = Jsoup.parse(decoded)
-                decodedDoc.select(
-                    "iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src], " +
-                        "video[src], source[src], embed[src], a[href]"
-                ).forEach { embedded ->
-                    candidates.add(embedded.iframeAttr().orEmpty())
-                    candidates.add(embedded.attr("src"))
-                    candidates.add(embedded.attr("href"))
-                }
-            } else {
+            if (isLikelyServerValue(value) && !isEmbeddedPlayerPayload(value)) {
                 candidates.add(value)
             }
         }
 
         document.select(
             "#fplay [data-video], #fplay [data-src], #fplay [data-url], #fplay [data-iframe], " +
+                "#fplay [data-embed], #fplay [data-player], #fplay [data-file], " +
                 ".player [data-video], .player [data-src], .player [data-url], .player [data-iframe], " +
-                ".server [data-video], .server [data-src], .server [data-url], .server [data-iframe]"
+                ".player [data-embed], .player [data-player], .player [data-file], " +
+                ".server [data-video], .server [data-src], .server [data-url], .server [data-iframe], " +
+                ".server [data-embed], .server [data-player], .server [data-file]"
         ).forEach { element ->
             candidates.add(element.attr("data-video"))
             candidates.add(element.attr("data-src"))
             candidates.add(element.attr("data-url"))
             candidates.add(element.attr("data-iframe"))
+            candidates.add(element.attr("data-embed"))
+            candidates.add(element.attr("data-player"))
+            candidates.add(element.attr("data-file"))
         }
 
         document.select(
             "a[href*='gofile.io'], a[href*='mp4upload.com'], a[href*='mir.cr'], " +
                 "a[href*='ranoz.gg'], a[href*='playerwish.com'], a[href*='blogger.com/video.g'], " +
-                "a[href*='.mp4'], a[href*='.m3u8']"
+                "a[href*='filedon'], a[href*='.mp4'], a[href*='.m3u8']"
         ).forEach { element ->
             candidates.add(element.attr("href"))
         }
 
         val html = document.html()
+        addServerValueCandidates(html, candidates)
+
         Regex("""https?:\\?/\\?/[^"'<>\s]+""")
             .findAll(html)
             .forEach { match -> candidates.add(match.value) }
@@ -353,6 +374,99 @@ class Anoboy : MainAPI() {
             .map { it.trim() }
             .filter { it.isNotBlank() }
             .distinct()
+    }
+
+    private fun addServerValueCandidates(raw: String?, candidates: MutableSet<String>) {
+        expandServerPayload(raw).forEach { payload ->
+            val parsed = Jsoup.parseBodyFragment(payload)
+            parsed.select(
+                "iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src], " +
+                    "video[src], video[data-src], source[src], embed[src], object[data], a[href]"
+            ).forEach { embedded ->
+                candidates.add(embedded.iframeAttr().orEmpty())
+                candidates.add(embedded.attr("src"))
+                candidates.add(embedded.attr("data-src"))
+                candidates.add(embedded.attr("data-litespeed-src"))
+                candidates.add(embedded.attr("data-lazy-src"))
+                candidates.add(embedded.attr("href"))
+                candidates.add(embedded.attr("data"))
+            }
+
+            Regex(
+                """(?i)<iframe[^>]+(?:src|data-src|data-litespeed-src|data-lazy-src)\s*=\s*["']([^"']+)["']"""
+            ).findAll(payload).forEach { match ->
+                candidates.add(match.groupValues[1])
+            }
+
+            Regex(
+                """(?i)(?:src|file|url|data-video|data-src|data-url|data-iframe|data-embed|data-player|data-file)\s*[:=]\s*["']([^"']+)["']"""
+            ).findAll(payload).forEach { match ->
+                candidates.add(match.groupValues[1])
+            }
+
+            Regex("""https?:\\?/\\?/[^"'<>\s&]+""")
+                .findAll(payload)
+                .forEach { match -> candidates.add(match.value) }
+
+            Regex("""(?<!:)//[^"'<>\s&]+""")
+                .findAll(payload)
+                .forEach { match -> candidates.add(match.value) }
+        }
+    }
+
+    private fun expandServerPayload(raw: String?): List<String> {
+        val value = raw.orEmpty().trim()
+        if (value.isBlank()) return emptyList()
+
+        val decoded = decodePlayerPayload(value)
+        val urlDecoded = runCatching { java.net.URLDecoder.decode(decoded, "UTF-8") }.getOrNull()
+
+        return listOfNotNull(value, decoded, urlDecoded)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
+    private fun decodeServerValue(value: String): String? {
+        val decoded = runCatching { base64Decode(value) }.getOrNull()
+            ?: runCatching { String(android.util.Base64.decode(value, android.util.Base64.DEFAULT)) }.getOrNull()
+            ?: return null
+
+        return decodePlayerPayload(decoded)
+    }
+
+    private fun isEmbeddedPlayerPayload(value: String): Boolean {
+        val lower = decodePlayerPayload(value).lowercase()
+        return lower.contains("<iframe") ||
+            lower.contains("&lt;iframe") ||
+            lower.contains("src=") ||
+            lower.contains("data-src") ||
+            lower.contains("data-video") ||
+            lower.contains("data-iframe")
+    }
+
+    private fun decodePlayerPayload(input: String): String {
+        var output = input
+        repeat(2) {
+            output = Regex("""\\u([0-9a-fA-F]{4})""").replace(output) { match ->
+                match.groupValues[1].toInt(16).toChar().toString()
+            }
+        }
+
+        output = Parser.unescapeEntities(output, false)
+        return output
+            .replace("\\/", "/")
+            .replace("\\u002F", "/")
+            .replace("\\u003A", ":")
+            .replace("\\u003C", "<")
+            .replace("\\u003E", ">")
+            .replace("\\u0026", "&")
+            .replace("\\u003D", "=")
+            .replace("\\\"", "\"")
+            .replace("\\'", "'")
+            .replace("&amp;", "&")
+            .replace("&quot;", "\"")
+            .replace("&#038;", "&")
     }
 
     private fun collectCards(document: Document): List<CardData> {
@@ -788,7 +902,8 @@ class Anoboy : MainAPI() {
             lower.contains("gofile.io") ||
             lower.contains("mp4upload.com") ||
             lower.contains("mir.cr") ||
-            lower.contains("ranoz.gg")
+            lower.contains("ranoz.gg") ||
+            lower.contains("filedon")
     }
 
     private fun isBadUrl(url: String): Boolean {
@@ -882,6 +997,8 @@ class Anoboy : MainAPI() {
         if (isPlayerCandidate(clean) || isDirectMedia(clean)) return true
 
         val lower = clean.lowercase()
+        if (isEmbeddedPlayerPayload(clean)) return true
+
         if (clean.startsWith("//") || clean.startsWith("http://", true) || clean.startsWith("https://", true)) {
             return lower.contains("embed") ||
                 lower.contains("player") ||
