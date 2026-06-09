@@ -1,0 +1,94 @@
+# Documentation Index
+
+This directory contains maintenance and compatibility documentation for **BetbetMiro Extension**.
+
+Use this page as a quick map for repository contributors, issue reporters, and maintainers.
+
+---
+
+## Provider Maintenance
+
+- [`PROVIDER_MAINTENANCE.md`](PROVIDER_MAINTENANCE.md)
+
+Use this guide for provider fixes, new providers, version bump rules, source evidence, CloudStream behavior validation, and honest status reporting.
+
+Recommended for:
+
+- Provider fixes.
+- New provider development.
+- Domain migration review.
+- Playback resolver validation.
+- Pull Request review.
+
+---
+
+## Compatibility
+
+- [`COMPATIBILITY.md`](COMPATIBILITY.md)
+
+Use this guide to understand CloudStream compatibility, stable vs prerelease behavior, Gradle/Java notes, repository metadata, GitHub Actions, and runtime validation boundaries.
+
+Recommended for:
+
+- Build issues.
+- CloudStream app compatibility questions.
+- Runtime/device behavior reports.
+- `repo.json` and `plugins.json` impact review.
+
+---
+
+## Domain Check Tool
+
+- [`DOMAIN_CHECK.md`](DOMAIN_CHECK.md)
+
+Use this guide before running or reviewing `DomainCheck.py`.
+
+Recommended for:
+
+- Source domain migration.
+- `mainUrl` redirect checks.
+- Reviewing automated domain update diffs.
+- Avoiding false claims that a domain update proves provider playback.
+
+---
+
+## Repository-Level Documents
+
+These files live in the repository root:
+
+- [`../README.md`](../README.md) — Indonesian main README.
+- [`../README_EN.md`](../README_EN.md) — English README.
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — contribution guide.
+- [`../SUPPORT.md`](../SUPPORT.md) — support guide.
+- [`../SECURITY.md`](../SECURITY.md) — security policy.
+- [`../CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md) — community rules.
+- [`../CHANGELOG.md`](../CHANGELOG.md) — changelog.
+
+---
+
+## GitHub Templates
+
+These files live under `.github/`:
+
+- [`../.github/pull_request_template.md`](../.github/pull_request_template.md) — Pull Request checklist.
+- [`../.github/ISSUE_TEMPLATE/provider_broken.yml`](../.github/ISSUE_TEMPLATE/provider_broken.yml) — broken provider report.
+- [`../.github/ISSUE_TEMPLATE/provider_request.yml`](../.github/ISSUE_TEMPLATE/provider_request.yml) — new provider request.
+- [`../.github/ISSUE_TEMPLATE/bug_report.yml`](../.github/ISSUE_TEMPLATE/bug_report.yml) — repository/build/workflow bug report.
+
+---
+
+## Maintainer Rule
+
+For provider work, prioritize evidence and CloudStream app behavior over theory.
+
+A good provider fix should clearly state:
+
+```text
+Homepage category cards: proven / not proven
+Load detail/episode: proven / not proven
+Playback callback link > 0: proven / not proven
+Gradle build: SUCCESS / failed / not run
+File scope: related files only / unrelated files touched
+```
+
+Do not claim a status that was not actually verified.
