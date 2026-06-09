@@ -37,10 +37,10 @@ class Archivebate : MainAPI() {
         platform("Y2Ftc29kYQ==") to "Camsoda",
         platform("Y2hhdHVyYmF0ZQ==") to "Chaturbate",
         platform("c3RyaXBjaGF0") to "Stripchat",
-        platform("ZmVtYWxl") to "Female",
-        platform("Y291cGxl") to "Couple",
-        platform("bWFsZQ==") to "Male",
-        platform("dHJhbnM=") to "Trans",
+        gender("ZmVtYWxl") to "Female",
+        gender("Y291cGxl") to "Couple",
+        gender("bWFsZQ==") to "Male",
+        gender("dHJhbnM=") to "Trans",
     )
 
     companion object {
@@ -53,6 +53,7 @@ class Archivebate : MainAPI() {
         private val profilePosterCache = mutableMapOf<String, String?>()
 
         private fun platform(encoded: String): String = "$URL/platform/$encoded"
+        private fun gender(encoded: String): String = "$URL/gender/$encoded"
     }
 
     private fun requestHeaders(referer: String = mainUrl): Map<String, String> = mapOf(
@@ -294,7 +295,11 @@ class Archivebate : MainAPI() {
     }
 
     private fun defaultLivewireMethod(url: String): String {
-        return if (url.contains("/platform/")) "load_platform_videos" else "loadVideos"
+        return when {
+            url.contains("/platform/") -> "load_platform_videos"
+            url.contains("/gender/") -> "load_gender_videos"
+            else -> "loadVideos"
+        }
     }
 
     private fun rewriteArchivebatePage(url: String, page: Int): String {
