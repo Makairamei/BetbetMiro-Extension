@@ -22,6 +22,22 @@ Recommended for:
 
 ---
 
+## Evidence Collection Guide
+
+- [`EVIDENCE_COLLECTION_GUIDE.md`](EVIDENCE_COLLECTION_GUIDE.md)
+
+Use this guide before changing provider parser, selector, endpoint, headers, extractor, or playback flow.
+
+Recommended for:
+
+- Source URL and HTML/API evidence collection.
+- HAR/logcat/screenshot evidence review.
+- Root cause comparison between old provider and active source.
+- Evidence boundaries and claim limits.
+- Stopping safely when evidence is insufficient.
+
+---
+
 ## Runtime Testing Guide
 
 - [`RUNTIME_TESTING_GUIDE.md`](RUNTIME_TESTING_GUIDE.md)
