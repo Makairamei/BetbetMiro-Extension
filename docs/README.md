@@ -260,6 +260,21 @@ Recommended for:
 
 ---
 
+## Smart Health Check Guide
+
+- [`SMART_HEALTH_CHECK_GUIDE.md`](SMART_HEALTH_CHECK_GUIDE.md)
+
+Use this guide before running or reviewing search/detail sample health checks.
+
+Recommended for:
+
+- Search sample availability reports.
+- Detail sample availability reports.
+- Provider `mainUrl` extraction review.
+- Detecting early parser-break signals without claiming runtime playback.
+
+---
+
 ## FAQ
 
 - [`FAQ.md`](FAQ.md)
