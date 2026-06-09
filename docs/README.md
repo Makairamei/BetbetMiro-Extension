@@ -22,6 +22,21 @@ Recommended for:
 
 ---
 
+## Troubleshooting
+
+- [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md)
+
+Use this guide when diagnosing build failures, GitHub Actions failures, repository metadata problems, provider homepage/detail/playback issues, domain changes, and network/region issues.
+
+Recommended for:
+
+- Debugging before patching.
+- Provider issue triage.
+- Build or workflow failure analysis.
+- Honest status reporting.
+
+---
+
 ## Compatibility
 
 - [`COMPATIBILITY.md`](COMPATIBILITY.md)
