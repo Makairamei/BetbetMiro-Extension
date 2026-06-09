@@ -22,6 +22,22 @@ Recommended for:
 
 ---
 
+## New Provider Guide
+
+- [`NEW_PROVIDER_GUIDE.md`](NEW_PROVIDER_GUIDE.md)
+
+Use this guide before adding a new CloudStream provider.
+
+Recommended for:
+
+- New provider planning.
+- Source evidence collection.
+- Homepage/search/load/loadLinks implementation checks.
+- Initial provider version and build metadata review.
+- Avoiding unfinished skeleton providers.
+
+---
+
 ## Validation Checklist
 
 - [`VALIDATION_CHECKLIST.md`](VALIDATION_CHECKLIST.md)
