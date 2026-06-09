@@ -296,6 +296,8 @@ class Alqanime : MainAPI() {
 
             val qualityInt = linkData.quality.fixQuality()
 
+            if (resolvedUrl.isArchiveDownloadUrl()) continue
+
             if (resolvedUrl.contains("pixeldrain.com/api/file/", true)) {
                 markEmit(newExtractorLink("Pixeldrain", "Pixeldrain", resolvedUrl) {
                     this.referer = "https://pixeldrain.com/"
@@ -314,6 +316,10 @@ class Alqanime : MainAPI() {
 
             if (resolvedUrl.contains("resharer.org", true)) {
                 if (tryReshare(resolvedUrl, qualityInt, ::markEmit, subtitleCallback)) continue
+            }
+
+            if (resolvedUrl.contains("yurinime.com", true)) {
+                if (tryExternalStreaming(resolvedUrl, qualityInt, ::markEmit, subtitleCallback)) continue
             }
 
             val directFromUrl = emitDirect(
@@ -577,6 +583,85 @@ class Alqanime : MainAPI() {
         return emitted
     }
 
+    private suspend fun tryExternalStreaming(
+        url: String,
+        quality: Int,
+        callback: (ExtractorLink) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit
+    ): Boolean {
+        val visited = linkedSetOf<String>()
+        val pageQueue = mutableListOf<String>()
+
+        fun addPage(page: String, baseUrl: String = url) {
+            val normalized = normalizeUrl(page, baseUrl)?.cleanEscaped() ?: return
+            if (normalized.isBlank() || normalized == "#") return
+            if (normalized.isArchiveDownloadUrl()) return
+            if (visited.add(normalized)) pageQueue.add(normalized)
+        }
+
+        addPage(url)
+        var emitted = false
+        var index = 0
+
+        while (index < pageQueue.size && index < 5) {
+            val pageUrl = pageQueue[index++]
+            val response = runCatching {
+                app.get(
+                    pageUrl,
+                    headers = commonHeaders + mapOf("Referer" to "$mainUrl/"),
+                    referer = "$mainUrl/",
+                    timeout = 20000L
+                )
+            }.getOrNull() ?: continue
+
+            val document = response.document
+            val html = response.text.cleanEscaped()
+            val referer = pageUrl
+
+            collectPlayableUrls(document, html, pageUrl)
+                .filterNot { it.isArchiveDownloadUrl() }
+                .forEach { direct ->
+                    val type = if (direct.contains(".m3u8", true)) {
+                        ExtractorLinkType.M3U8
+                    } else {
+                        ExtractorLinkType.VIDEO
+                    }
+                    callback(newExtractorLink("Alqanime Streaming", "Alqanime Streaming", direct, type) {
+                        this.referer = referer
+                        this.quality = quality
+                        this.headers = commonHeaders + mapOf("Referer" to referer)
+                    })
+                    emitted = true
+                }
+
+            if (emitted) return true
+
+            document.select("iframe[src], embed[src], video[src], video source[src], source[src]")
+                .map { it.attr("src") }
+                .forEach { addPage(it, pageUrl) }
+
+            document.select("a[href], [data-url], [data-href], [data-link], [data-iframe], [data-src]")
+                .forEach { element ->
+                    listOf("href", "data-url", "data-href", "data-link", "data-iframe", "data-src")
+                        .map { element.attr(it) }
+                        .map { it.cleanEscaped() }
+                        .filter { it.isLikelyResolvableUrl() || it.contains("yurinime.com", true) }
+                        .forEach { addPage(it, pageUrl) }
+                }
+
+            runCatching {
+                loadExtractor(pageUrl, "$mainUrl/", subtitleCallback) { link ->
+                    callback(link)
+                    emitted = true
+                }
+            }
+
+            if (emitted) return true
+        }
+
+        return emitted
+    }
+
     private fun collectPlayableUrls(
         document: org.jsoup.nodes.Document,
         html: String,
@@ -586,12 +671,13 @@ class Alqanime : MainAPI() {
 
         document.select("video[src], video source[src], source[src], a[href]").forEach { element ->
             val raw = element.attr("src").ifBlank { element.attr("href") }
-            normalizeUrl(raw, baseUrl)?.cleanEscaped()?.takeIf { it.isPlayableMediaUrl() }?.let(results::add)
+            normalizeUrl(raw, baseUrl)?.cleanEscaped()?.takeIf { it.isPlayableMediaUrl() && !it.isArchiveDownloadUrl() }?.let(results::add)
         }
 
         Regex("""https?://[^"'\\\s<>]+?\.(?:m3u8|mp4|webm)(?:\?[^"'\\\s<>]*)?""", RegexOption.IGNORE_CASE)
             .findAll(html)
             .map { it.value.cleanEscaped() }
+            .filterNot { it.isArchiveDownloadUrl() }
             .forEach { results.add(it) }
 
         Regex("""https?%3A%2F%2F[^"'\\\s<>]+?(?:%2Em3u8|%2Emp4|%2Ewebm)[^"'\\\s<>]*""", RegexOption.IGNORE_CASE)
@@ -600,6 +686,7 @@ class Alqanime : MainAPI() {
                 runCatching { URLDecoder.decode(it.value, "UTF-8") }.getOrDefault(it.value)
             }
             .map { it.cleanEscaped() }
+            .filterNot { it.isArchiveDownloadUrl() }
             .forEach { results.add(it) }
 
         Regex("""(?i)(?:file|src|source|url|video)\s*[:=]\s*["']([^"']+)["']""")
@@ -607,7 +694,7 @@ class Alqanime : MainAPI() {
             .mapNotNull { it.groupValues.getOrNull(1) }
             .mapNotNull { normalizeUrl(it, baseUrl) }
             .map { it.cleanEscaped() }
-            .filter { it.isPlayableMediaUrl() }
+            .filter { it.isPlayableMediaUrl() && !it.isArchiveDownloadUrl() }
             .forEach { results.add(it) }
 
         return results.toList()
@@ -869,6 +956,18 @@ class Alqanime : MainAPI() {
     }
 
 
+    private fun String.isArchiveDownloadUrl(): Boolean {
+        val lower = substringBefore("?").lowercase()
+        return lower.endsWith(".zip") ||
+            lower.endsWith(".rar") ||
+            lower.endsWith(".7z") ||
+            lower.endsWith(".tar") ||
+            lower.endsWith(".gz") ||
+            lower.endsWith(".apk") ||
+            lower.contains("-zip") ||
+            lower.contains("/zip")
+    }
+
     private fun String.isOuoUrl(): Boolean {
         val host = runCatching { URI(this).host.orEmpty().lowercase() }.getOrDefault("")
         return host == "ouo.io" || host.endsWith(".ouo.io") || host == "ouo.press" || host.endsWith(".ouo.press")
@@ -899,6 +998,7 @@ class Alqanime : MainAPI() {
             lower.contains("mediafire.com") ||
             lower.contains("pixeldrain.com") ||
             lower.contains("gofile.io") ||
+            lower.contains("yurinime.com") ||
             lower.contains("terabox") ||
             lower.contains("drive.google.com")
     }
