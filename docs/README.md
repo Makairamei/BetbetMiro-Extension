@@ -22,6 +22,22 @@ Recommended for:
 
 ---
 
+## Runtime Testing Guide
+
+- [`RUNTIME_TESTING_GUIDE.md`](RUNTIME_TESTING_GUIDE.md)
+
+Use this guide for app-level provider validation and runtime status reporting.
+
+Recommended for:
+
+- Homepage/category/detail runtime checks.
+- Playback callback validation.
+- Subtitle callback verification.
+- Runtime failure type reporting.
+- Evidence-based runtime status wording.
+
+---
+
 ## New Provider Guide
 
 - [`NEW_PROVIDER_GUIDE.md`](NEW_PROVIDER_GUIDE.md)
