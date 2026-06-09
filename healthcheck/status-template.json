@@ -1,0 +1,14 @@
+{
+  "providers": [
+    {
+      "name": "ExampleProvider",
+      "domain": "UNKNOWN",
+      "search": "UNKNOWN",
+      "detail": "UNKNOWN",
+      "playerPage": "UNKNOWN",
+      "mediaSignal": "UNKNOWN",
+      "headerSignal": "UNKNOWN",
+      "notes": "Sample provider status entry. Replace with reviewed report data."
+    }
+  ]
+}
