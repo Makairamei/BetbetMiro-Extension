@@ -30,34 +30,10 @@ class Anichin : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.Anime)
 
     override val mainPage = mainPageOf(
-        "anime/?order=update" to "Rilisan Terbaru",
         "anime/?status=ongoing&order=update" to "Series Ongoing",
         "anime/?status=completed&order=update" to "Series Completed",
         "anime/?status=hiatus&order=update" to "Series Drop/Hiatus",
         "anime/?type=movie&order=update" to "Movie",
-        "genres/action/?order=update" to "Action",
-        "genres/adventure/?order=update" to "Adventure",
-        "genres/comedy/?order=update" to "Comedy",
-        "genres/demons/?order=update" to "Demons",
-        "genres/drama/?order=update" to "Drama",
-        "genres/fantasy/?order=update" to "Fantasy",
-        "genres/game/?order=update" to "Game",
-        "genres/harem/?order=update" to "Harem",
-        "genres/historical/?order=update" to "Historical",
-        "genres/horror/?order=update" to "Horror",
-        "genres/isekai/?order=update" to "Isekai",
-        "genres/magic/?order=update" to "Magic",
-        "genres/martial-arts/?order=update" to "Martial Arts",
-        "genres/military/?order=update" to "Military",
-        "genres/mystery/?order=update" to "Mystery",
-        "genres/psychological/?order=update" to "Psychological",
-        "genres/romance/?order=update" to "Romance",
-        "genres/school/?order=update" to "School",
-        "genres/sci-fi/?order=update" to "Sci-Fi",
-        "genres/shounen/?order=update" to "Shounen",
-        "genres/slice-of-life/?order=update" to "Slice of Life",
-        "genres/supernatural/?order=update" to "Supernatural",
-        "genres/thriller/?order=update" to "Thriller",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
