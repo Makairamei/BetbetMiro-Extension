@@ -242,7 +242,7 @@ class AstronimeProvider : MainAPI() {
         return mediaUrls.isNotEmpty()
     }
 
-    private fun ((ExtractorLink) -> Unit).directLink(
+    private suspend fun ((ExtractorLink) -> Unit).directLink(
         mediaUrl: String,
         linkType: ExtractorLinkType
     ) {
@@ -324,7 +324,7 @@ class AstronimeProvider : MainAPI() {
         }
     }
 
-    private fun Document.toEpisodeLoadResponse(url: String): LoadResponse {
+    private suspend fun Document.toEpisodeLoadResponse(url: String): LoadResponse {
         val title = cleanTitle()
         val poster = posterUrl()
         val plot = plotText()
