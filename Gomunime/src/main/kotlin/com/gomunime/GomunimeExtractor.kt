@@ -13,6 +13,7 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.nodes.Document
+import org.json.JSONObject
 import java.net.URI
 
 object GomunimeExtractor {
@@ -143,7 +144,10 @@ object GomunimeExtractor {
             )
             lower.contains("btube") || lower.contains("b-tube") || lower.contains("anime-indo.lol") -> resolveBTube(sourceName, fixedUrl, referer, subtitleCallback, callback)
             lower.contains("xtwap.top") || lower.contains("cepat") -> resolveXtwap(sourceName, fixedUrl, referer, subtitleCallback, callback)
-            lower.contains("gdplayer") || lower.contains("gdriveplayer") || lower.contains("drive.google") || lower.contains("/gdrive") -> resolveGenericEmbed(sourceName, fixedUrl, referer, subtitleCallback, callback)
+            lower.contains("gdplayer") || lower.contains("gdriveplayer") || lower.contains("drive.google") || lower.contains("/gdrive") -> {
+                val gdplayerResolved = resolveGdplayer(sourceName, fixedUrl, referer, subtitleCallback, callback)
+                gdplayerResolved || resolveGenericEmbed(sourceName, fixedUrl, referer, subtitleCallback, callback)
+            }
             else -> false
         }
     }
@@ -216,8 +220,11 @@ object GomunimeExtractor {
 
         val fileValues = linkedSetOf<String>()
         Regex("""(?i)["']file["']\s*:\s*["']([^"']+)["']""").findAll(raw).forEach { fileValues.add(it.groupValues[1]) }
+        Regex("""(?i)\bfile\s*:\s*["']([^"']+)["']""").findAll(raw).forEach { fileValues.add(it.groupValues[1]) }
         Regex("""(?i)["']src["']\s*:\s*["']([^"']+)["']""").findAll(raw).forEach { fileValues.add(it.groupValues[1]) }
+        Regex("""(?i)\bsrc\s*:\s*["']([^"']+)["']""").findAll(raw).forEach { fileValues.add(it.groupValues[1]) }
         Regex("""(?i)["']url["']\s*:\s*["']([^"']+)["']""").findAll(raw).forEach { fileValues.add(it.groupValues[1]) }
+        Regex("""(?i)\burl\s*:\s*["']([^"']+)["']""").findAll(raw).forEach { fileValues.add(it.groupValues[1]) }
 
         for (value in fileValues) {
             val media = when {
@@ -243,6 +250,90 @@ object GomunimeExtractor {
                     found = true
                     callback(link)
                 }
+            }
+        }
+
+        return found
+    }
+
+    private suspend fun resolveGdplayer(
+        sourceName: String,
+        url: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val response = try {
+            app.get(url, headers = pageHeaders(url), referer = referer)
+        } catch (_: Throwable) {
+            return false
+        }
+
+        val document = response.document
+        val raw = normalizedText(response.text)
+        collectSubtitles(url, document, subtitleCallback)
+        var found = false
+
+        val kakenValues = linkedSetOf<String>()
+        Regex("""(?i)\bkaken\s*=\s*["']([^"']+)["']""").findAll(raw).forEach { kakenValues.add(it.groupValues[1]) }
+        Regex("""(?i)["']kaken["']\s*[:=]\s*["']([^"']+)["']""").findAll(raw).forEach { kakenValues.add(it.groupValues[1]) }
+
+        val gdOrigin = when {
+            url.contains("gdplayer.to", true) -> "https://gdplayer.to"
+            url.contains("gdriveplayer", true) -> originOf(url)
+            else -> originOf(url)
+        }
+
+        for (kaken in kakenValues.filter { it.isNotBlank() }) {
+            val apiUrl = "$gdOrigin/api/?$kaken=&_=${System.currentTimeMillis()}"
+            val jsonText = try {
+                app.get(
+                    apiUrl,
+                    referer = url,
+                    headers = pageHeaders(apiUrl) + mapOf(
+                        "Accept" to "application/json, text/javascript, */*; q=0.01",
+                        "X-Requested-With" to "XMLHttpRequest"
+                    )
+                ).text
+            } catch (_: Throwable) {
+                null
+            } ?: continue
+
+            val sources = runCatching { JSONObject(jsonText).optJSONArray("sources") }.getOrNull() ?: continue
+            for (index in 0 until sources.length()) {
+                val file = sources.optJSONObject(index)?.optString("file").orEmpty()
+                val media = normalizeMediaUrl(gdOrigin, url, file) ?: continue
+                if (media.isPlayableMediaUrl() || media.isLikelyHls()) {
+                    emitDirect(sourceName, "GDRIVE", media, url, callback, forceHls = media.isLikelyHls())
+                    found = true
+                } else if (media.isPotentialServerUrl()) {
+                    runCatching {
+                        loadExtractor(media, url, subtitleCallback) { link ->
+                            found = true
+                            callback(link)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!found) {
+            val fileValues = linkedSetOf<String>()
+            Regex("""(?i)["']file["']\s*:\s*["']([^"']+)["']""").findAll(raw).forEach { fileValues.add(it.groupValues[1]) }
+            Regex("""(?i)\bfile\s*:\s*["']([^"']+)["']""").findAll(raw).forEach { fileValues.add(it.groupValues[1]) }
+            for (value in fileValues) {
+                val media = normalizeMediaUrl(gdOrigin, url, value) ?: continue
+                if (media.isPlayableMediaUrl() || media.isLikelyHls()) {
+                    emitDirect(sourceName, "GDRIVE", media, url, callback, forceHls = media.isLikelyHls())
+                    found = true
+                }
+            }
+        }
+
+        if (!found) {
+            for (media in extractUrlsFromText(gdOrigin, url, raw).filter { it.isPlayableMediaUrl() || it.isLikelyHls() }) {
+                emitDirect(sourceName, "GDRIVE", media, url, callback, forceHls = media.isLikelyHls())
+                found = true
             }
         }
 
