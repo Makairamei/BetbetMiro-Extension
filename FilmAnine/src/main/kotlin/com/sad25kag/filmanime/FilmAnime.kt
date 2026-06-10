@@ -14,6 +14,8 @@ import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.stream.StreamInfo
 import java.net.URLEncoder
 
 class FilmAnime : MainAPI() {
@@ -30,6 +32,13 @@ class FilmAnime : MainAPI() {
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer" to "$mainUrl/"
+    )
+
+    private val youtubeHeaders = mapOf(
+        "User-Agent" to USER_AGENT,
+        "Accept" to "*/*",
+        "Origin" to "https://www.youtube.com",
+        "Referer" to "https://www.youtube.com/"
     )
 
     override val mainPage = mainPageOf(
@@ -186,21 +195,86 @@ class FilmAnime : MainAPI() {
             }
         }
 
+        suspend fun emitYouTube(url: String, label: String?): Boolean {
+            val watchUrl = url.toYouTubeWatchUrl() ?: return false
+            val key = watchUrl.normalizedMediaKey()
+            if (!emitted.add(key)) return false
+
+            val info = runCatching {
+                StreamInfo.getInfo(ServiceList.YouTube, watchUrl)
+            }.getOrNull() ?: return false
+
+            var delivered = false
+            info.hlsUrl?.takeIf { it.isNotBlank() }?.let { hls ->
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = listOf(name, label ?: "YouTube HLS").filter { it.isNotBlank() }.joinToString(" "),
+                        url = hls
+                    ) {
+                        referer = "https://www.youtube.com/"
+                        quality = Qualities.Unknown.value
+                        headers = youtubeHeaders
+                    }
+                )
+                delivered = true
+                hasLinks = true
+            }
+
+            info.videoStreams
+                .orEmpty()
+                .mapNotNull { stream ->
+                    val streamUrl = stream.url?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    streamUrl to stream.resolution.orEmpty()
+                }
+                .distinctBy { it.first }
+                .sortedByDescending { it.second.youtubeQuality() }
+                .forEach { (streamUrl, resolution) ->
+                    val quality = resolution.youtubeQuality()
+                    val qualityLabel = resolution.ifBlank { streamUrl.qualityLabelFromUrl().ifBlank { "Video" } }
+                    callback(
+                        newExtractorLink(
+                            source = name,
+                            name = listOf(name, "YouTube", qualityLabel).filter { it.isNotBlank() }.joinToString(" "),
+                            url = streamUrl,
+                            type = ExtractorLinkType.VIDEO
+                        ) {
+                            referer = "https://www.youtube.com/"
+                            this.quality = quality
+                            headers = youtubeHeaders
+                        }
+                    )
+                    delivered = true
+                    hasLinks = true
+                }
+
+            return delivered
+        }
+
         suspend fun emitExtractor(url: String, label: String?, referer: String) {
             val fixed = normalizeMediaUrl(url) ?: return
             if (fixed.isDirectMedia()) {
                 emitDirect(fixed, label, referer)
                 return
             }
-
-            val resolverUrls = fixed.youtubeResolverUrls().ifEmpty { listOf(fixed) }
-            for (resolverUrl in resolverUrls) {
-                val key = resolverUrl.normalizedMediaKey()
-                if (!emitted.add(key)) continue
-                loadExtractor(resolverUrl, referer, subtitleCallback) { link ->
-                    callback(link)
-                    hasLinks = true
+            if (fixed.isYouTubeUrl()) {
+                if (emitYouTube(fixed, label)) return
+                for (resolverUrl in fixed.youtubeResolverUrls()) {
+                    val key = resolverUrl.normalizedMediaKey()
+                    if (!emitted.add(key)) continue
+                    loadExtractor(resolverUrl, "https://www.youtube.com/", subtitleCallback) { link ->
+                        callback(link)
+                        hasLinks = true
+                    }
                 }
+                return
+            }
+
+            val key = fixed.normalizedMediaKey()
+            if (!emitted.add(key)) return
+            loadExtractor(fixed, referer, subtitleCallback) { link ->
+                callback(link)
+                hasLinks = true
             }
         }
 
@@ -544,16 +618,31 @@ class FilmAnime : MainAPI() {
             lower.contains("googlevideo.com/videoplayback") || lower.contains("mime=video") || lower.contains("cloudflarestorage.com")
     }
 
-    private fun String.youtubeResolverUrls(): List<String> {
+    private fun String.isYouTubeUrl(): Boolean {
         val lower = lowercase()
-        if (!lower.contains("youtube.com") && !lower.contains("youtu.be")) return emptyList()
+        return lower.contains("youtube.com") || lower.contains("youtu.be")
+    }
+
+    private fun String.youtubeVideoId(): String? {
+        val lower = lowercase()
         val videoId = when {
             lower.contains("/embed/") -> substringAfter("/embed/").substringBefore("?").substringBefore("/")
             lower.contains("youtu.be/") -> substringAfter("youtu.be/").substringBefore("?").substringBefore("/")
-            lower.contains("watch") -> Regex("""[?&]v=([^&]+)""").find(this)?.groupValues?.getOrNull(1).orEmpty()
-            else -> ""
+            lower.contains("/shorts/") -> substringAfter("/shorts/").substringBefore("?").substringBefore("/")
+            lower.contains("/live/") -> substringAfter("/live/").substringBefore("?").substringBefore("/")
+            lower.contains("watch") -> Regex("""[?&]v=([A-Za-z0-9_-]{11})""").find(this)?.groupValues?.getOrNull(1).orEmpty()
+            else -> Regex("""(?:v=|youtu\.be/|shorts/|live/|embed/)([A-Za-z0-9_-]{11})""").find(this)?.groupValues?.getOrNull(1).orEmpty()
         }.trim()
-        if (videoId.isBlank()) return listOf(this)
+        return videoId.takeIf { it.length == 11 }
+    }
+
+    private fun String.toYouTubeWatchUrl(): String? {
+        val videoId = youtubeVideoId() ?: return null
+        return "https://www.youtube.com/watch?v=$videoId"
+    }
+
+    private fun String.youtubeResolverUrls(): List<String> {
+        val videoId = youtubeVideoId() ?: return if (isYouTubeUrl()) listOf(this) else emptyList()
         return listOf("https://www.youtube.com/watch?v=$videoId", "https://www.youtube.com/embed/$videoId").distinct()
     }
 
@@ -680,6 +769,7 @@ class FilmAnime : MainAPI() {
     }
 
     private fun String.parseQuality(): Int? = Regex("""(\d{3,4})p""", RegexOption.IGNORE_CASE).find(this)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    private fun String.youtubeQuality(): Int = parseQuality() ?: Qualities.Unknown.value
     private fun String.qualityLabelFromUrl(): String = parseQuality()?.let { "${it}p" }.orEmpty()
     private fun String.cleanLabel(): String = htmlDecode().replace(Regex("\\s+"), " ").trim()
 
