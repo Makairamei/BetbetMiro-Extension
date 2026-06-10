@@ -64,7 +64,6 @@ class Gerakin21 : MainAPI() {
     override val mainPage = mainPageOf(
         "" to "Update Terbaru",
 
-        // Current Gerakin21 menu structure.
         "category/movie/" to "Semua Film",
         "category/superhero/" to "Superhero",
         "category/sweet/" to "Sweet",
@@ -76,7 +75,6 @@ class Gerakin21 : MainAPI() {
         "category/serial-indonesia/" to "Serial Indonesia",
         "category/serial-thailand/" to "Serial Thailand",
 
-        // Film semi rows from the active site menu.
         "category/brother-musang/" to "Brother Musang",
         "category/indo-lokal/" to "Indo Lokal",
         "category/jav-sub-indo/" to "Jepang JAV",
@@ -86,7 +84,6 @@ class Gerakin21 : MainAPI() {
         "category/kelas-bintang/" to "Kelas Bintang",
         "category/togefilm/" to "TOGEFILM",
 
-        // Genre rows use /category/* on the current site, not /genre/*.
         "category/action/" to "Action",
         "category/adventure/" to "Adventure",
         "category/comedy/" to "Comedy",
@@ -151,7 +148,6 @@ class Gerakin21 : MainAPI() {
         )
     }
 
-
     private fun parseHomeRows(document: Document): List<HomePageList> {
         val rows = mutableListOf<HomePageList>()
 
@@ -162,7 +158,7 @@ class Gerakin21 : MainAPI() {
             val rowTitle = section.selectFirst("h2, h3, .section-title, .widget-title, .heading")
                 ?.text()
                 ?.cleanTitle()
-                ?.takeIf { it.isNotBlank() && !it.isUiText() }
+                ?.takeIf { it.isNotBlank() && !it.isUiText() && !it.isBlockedCardTitle() }
                 ?: return@forEach
 
             val items = parseCards(Jsoup.parse(section.html(), mainUrl))
@@ -257,9 +253,6 @@ class Gerakin21 : MainAPI() {
 
         val image = findPosterElement(this, anchor)
         val title = listOf(
-            anchor.attr("title"),
-            anchor.attr("aria-label"),
-            image?.attr("alt"),
             selectFirst("h2")?.text(),
             selectFirst("h3")?.text(),
             selectFirst("h4")?.text(),
@@ -268,15 +261,20 @@ class Gerakin21 : MainAPI() {
             selectFirst(".movie-title")?.text(),
             selectFirst(".film-title")?.text(),
             selectFirst(".jt")?.text(),
-            anchor.text()
-        ).mapNotNull { it?.cleanTitle()?.takeIf { clean -> clean.isNotBlank() && !clean.isUiText() } }
-            .firstOrNull()
-            ?: return null
+            anchor.text(),
+            anchor.attr("title"),
+            anchor.attr("aria-label"),
+            image?.attr("alt")
+        ).mapNotNull {
+            it?.cleanTitle()?.takeIf { clean ->
+                clean.isNotBlank() && !clean.isUiText() && !clean.isBlockedCardTitle()
+            }
+        }.firstOrNull() ?: return null
 
         if (title.length < 2) return null
+        if (title.isBlockedCardTitle()) return null
 
         val poster = extractPosterUrl(this, anchor) ?: return null
-
         val type = getTypeFromUrl(href, title, text())
 
         return if (type == TvType.TvSeries) {
@@ -307,6 +305,9 @@ class Gerakin21 : MainAPI() {
             "year",
             "tag",
             "category",
+            "archive",
+            "archives",
+            "18-archives",
             "privacy",
             "dmca",
             "contact",
@@ -325,6 +326,8 @@ class Gerakin21 : MainAPI() {
             "year/",
             "tag/",
             "category/",
+            "archive/",
+            "archives/",
             "page/",
             "search",
             "feed",
@@ -393,6 +396,8 @@ class Gerakin21 : MainAPI() {
                 .replace("-", " ")
                 .cleanTitle()
 
+        if (title.isBlockedCardTitle()) return null
+
         val poster = document.selectFirst(
             "meta[property=og:image], meta[name=twitter:image], " +
                 "div.poster img, .poster img, .s-cover img, .thumb img, " +
@@ -413,8 +418,8 @@ class Gerakin21 : MainAPI() {
         val tags = document.select(
             "a[href*='/genre/'], a[href*='/category/'], a[href*='/tag/'], " +
                 ".genres a, .genre a, .tags a, .category a"
-        ).map { it.text().trim() }
-            .filter { it.isNotBlank() && !it.isUiText() }
+        ).map { it.text().trim().cleanTitle() }
+            .filter { it.isNotBlank() && !it.isUiText() && !it.isBlockedCardTitle() }
             .distinct()
 
         val recommendations = document.select(
@@ -485,6 +490,8 @@ class Gerakin21 : MainAPI() {
             ).firstOrNull { !it.isNullOrBlank() && !it.isUiText() }
                 ?.cleanTitle()
                 ?: "Episode ${index + 1}"
+
+            if (epTitle.isBlockedCardTitle()) return@forEachIndexed
 
             val epNumber = extractEpisodeNumber(epTitle, href) ?: index + 1
             result[href] = newEpisode(href) {
@@ -685,7 +692,6 @@ class Gerakin21 : MainAPI() {
         return found
     }
 
-
     private suspend fun tryResolveFufafilm(
         url: String,
         referer: String,
@@ -787,7 +793,6 @@ class Gerakin21 : MainAPI() {
                 "a[href*='paged=${page + 1}']"
         ) != null
     }
-
 
     private fun String.isBlockedHomeRow(): Boolean {
         val lower = cleanTitle().lowercase()
@@ -915,8 +920,7 @@ class Gerakin21 : MainAPI() {
     }
 
     private fun isDirectM3u8(url: String): Boolean {
-        val lower = url.lowercase()
-        return lower.contains(".m3u8")
+        return url.lowercase().contains(".m3u8")
     }
 
     private fun isDirectVideo(url: String): Boolean {
@@ -1042,8 +1046,20 @@ class Gerakin21 : MainAPI() {
         )
     }
 
+    private fun String.isBlockedCardTitle(): Boolean {
+        val lower = cleanTitle().lowercase()
+        return lower in setOf(
+            "archive",
+            "archives",
+            "18+ archives",
+            "18 archives"
+        ) || lower.endsWith(" archives")
+    }
+
     private fun String.cleanTitle(): String {
         return replace(Regex("""(?i)^\s*permalink\s+to\s*:\s*"""), "")
+            .replace(Regex("""(?i)^\s*poster\s+(?:film|movie|serial|series|anime)\s+"""), "")
+            .replace(Regex("""(?i)^\s*poster\s+"""), "")
             .replace(Regex("""\s+-\s+Gerakin21.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+\|\s+Gerakin21.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+Subtitle\s+Indonesia.*$""", RegexOption.IGNORE_CASE), "")
