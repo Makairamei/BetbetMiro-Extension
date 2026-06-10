@@ -48,7 +48,7 @@ open class SoraStream : TmdbProvider() {
     companion object {
         /** TOOLS */
         var context: android.content.Context? = null
-        
+
         private const val tmdbAPI = "https://api.themoviedb.org/3"
         const val gdbot = "https://gdtot.pro"
         const val anilistAPI = "https://graphql.anilist.co"
@@ -141,7 +141,7 @@ open class SoraStream : TmdbProvider() {
             TvType.Movie,
         ) {
             this.posterUrl = getImageUrl(posterPath)
-            this.score= Score.from10(voteAverage)
+            this.score = Score.from10(voteAverage)
         }
     }
 
@@ -155,22 +155,22 @@ open class SoraStream : TmdbProvider() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-    val data: Data? = try {
-        parseJson<Data>(url)
-    } catch (e: Exception) {
-        // fallback kalau ternyata string url (misalnya tmdb.org/...)
-        if (url.startsWith("http")) {
-            val id = url.substringAfterLast("/").toIntOrNull()
-            val type = if (url.contains("/movie/")) "movie" else "tv"
-            Data(id, type)
-        } else {
-            null
+        val data: Data? = try {
+            parseJson<Data>(url)
+        } catch (e: Exception) {
+            // fallback kalau ternyata string url (misalnya tmdb.org/...)
+            if (url.startsWith("http")) {
+                val id = url.substringAfterLast("/").toIntOrNull()
+                val type = if (url.contains("/movie/")) "movie" else "tv"
+                Data(id, type)
+            } else {
+                null
+            }
         }
-    }
 
-    if (data == null || data.id == null) {
-        throw ErrorLoadingException("Invalid Data Format: $url")
-    }
+        if (data == null || data.id == null) {
+            throw ErrorLoadingException("Invalid Data Format: $url")
+        }
         val type = getType(data.type)
         val append = "alternative_titles,credits,external_ids,keywords,videos,recommendations"
         val resUrl = if (type == TvType.Movie) {
@@ -332,7 +332,7 @@ open class SoraStream : TmdbProvider() {
                 )
             },
             {
-            invokeKisskh(
+                invokeKisskh(
                     res.title ?: return@runAllAsync,
                     res.year,
                     res.season,
@@ -342,9 +342,35 @@ open class SoraStream : TmdbProvider() {
                 )
             },
             {
+                val altTitle = res.orgTitle
+                if (!altTitle.isNullOrBlank() && !altTitle.equals(res.title, ignoreCase = true) &&
+                    (res.isAsian || res.isAnime || res.isBollywood)
+                ) {
+                    invokeKisskh(
+                        altTitle,
+                        res.year,
+                        res.season,
+                        res.episode,
+                        subtitleCallback,
+                        callback
+                    )
+                }
+            },
+            {
                 invokeVidsrccc(
                     res.id,
                     res.imdbId,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            {
+                invokeXprime(
+                    res.id,
+                    res.title,
+                    res.year,
                     res.season,
                     res.episode,
                     subtitleCallback,
@@ -404,6 +430,15 @@ open class SoraStream : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
+                    callback
+                )
+            },
+            {
+                invokeGomovies(
+                    res.title,
+                    res.year,
+                    res.season,
+                    res.episode,
                     callback
                 )
             }
