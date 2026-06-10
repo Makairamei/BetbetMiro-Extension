@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import java.util.Base64
 
 object DuniaFilm21Extractor {
     private val candidatePatterns = listOf(
@@ -18,7 +19,7 @@ object DuniaFilm21Extractor {
         Regex("""(?:file|src|source|video|videoUrl|video_url|hls\d*|url|embed|embed_url|embed_frame_url)\s*[:=]\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE),
         Regex("""["']((?:https?:)?//[^"']+(?:\.m3u8|\.mp4|\.webm|\.mpd|\.txt)(?:\?[^"']*)?)["']""", RegexOption.IGNORE_CASE),
         Regex("""["']((?:/[^"']*)/(?:embed|player|stream|get|watch|video|dl)[^"']*)["']""", RegexOption.IGNORE_CASE),
-        Regex("""["']((?:https?:)?//[^"']*(?:gdriveplayer\.io|hlsplaylist\.php)[^"']*)["']""", RegexOption.IGNORE_CASE),
+        Regex("""["']((?:https?:)?//[^"']*(?:gdriveplayer\.(?:io|to|me)|hlsplaylist\.php)[^"']*)["']""", RegexOption.IGNORE_CASE),
         Regex("""["'](https?://[^"']*(?:minochinos|pixibay|abyssplayer|dood|streamtape|filemoon|vidhide|vidguard|voe|mixdrop|streamwish|wishfast|mp4upload|uqload|krakenfiles|streamlare|filelions|gdrive|drive\.google)[^"']*)["']""", RegexOption.IGNORE_CASE)
     )
 
@@ -45,7 +46,7 @@ object DuniaFilm21Extractor {
                     subtitleCallback(newSubtitleFile("Indonesian", url))
                     return
                 }
-                url.contains("gdriveplayer.io/hlsplaylist.php", ignoreCase = true) -> {
+                url.contains("/hlsplaylist.php", ignoreCase = true) && url.isGdrivePlayerUrl() -> {
                     emitGdriveHlsVariants(url, ::emit)
                     return
                 }
@@ -57,7 +58,7 @@ object DuniaFilm21Extractor {
                     extractMinochinos(url, ::emit)
                     return
                 }
-                url.contains("gdriveplayer.io", ignoreCase = true) -> {
+                url.isGdrivePlayerUrl() -> {
                     extractGdrivePlayer(url, referer, ::emit)
                     return
                 }
@@ -91,7 +92,7 @@ object DuniaFilm21Extractor {
         val html = DuniaFilm21Network.getText(pageUrl, DuniaFilm21Provider.DEFAULT_MAIN_URL).cleanDf21()
         val document = DuniaFilm21Parser.parseDocumentFromHtml(html, pageUrl)
 
-        document.select(".gmr-embed-responsive iframe[src], iframe[src], .muvipro-player-tabs a[href], .gmr-download-wrap a[href], a[href*='minochinos.com'], a[href*='gdriveplayer.io'], video source[src], source[src], track[src], a[href*='.srt'], a[href*='.vtt'], a[href*='.mp4'], a[href*='.m3u8'], a[href*='.webm']").forEach { element ->
+        document.select(".gmr-embed-responsive iframe[src], iframe[src], .muvipro-player-tabs a[href], .gmr-download-wrap a[href], a[href*='minochinos.com'], a[href*='gdriveplayer.io'], a[href*='gdriveplayer.to'], a[href*='gdriveplayer.me'], video source[src], source[src], track[src], a[href*='.srt'], a[href*='.vtt'], a[href*='.mp4'], a[href*='.m3u8'], a[href*='.webm']").forEach { element ->
             val candidate = listOf("src", "href", "data-src", "data-embed", "data-video", "data-url", "data-link", "data-file")
                 .map { element.attr(it) }
                 .firstOrNull { it.isNotBlank() }
@@ -170,14 +171,19 @@ object DuniaFilm21Extractor {
             .ifBlank { playerHtml }
 
         val hlsCandidates = linkedSetOf<String>()
-        listOf(playerHtml, unpacked)
-            .distinct()
+        val sources = linkedSetOf<String>()
+        sources.add(playerHtml)
+        sources.add(unpacked)
+        collectGdriveDecodedScripts(playerHtml).forEach(sources::add)
+        collectGdriveDecodedScripts(unpacked).forEach(sources::add)
+
+        sources
+            .filter { it.isNotBlank() }
             .forEach { source ->
                 collectGdriveHlsCandidates(source, playerUrl).forEach(hlsCandidates::add)
                 collectCandidates(source, playerUrl)
                     .filter { candidate ->
-                        candidate.contains("gdriveplayer.io/hlsplaylist.php", ignoreCase = true) ||
-                            candidate.contains("/hlsplaylist.php", ignoreCase = true)
+                        candidate.isGdrivePlayerUrl() && candidate.contains("/hlsplaylist.php", ignoreCase = true)
                     }
                     .forEach(hlsCandidates::add)
             }
@@ -192,15 +198,21 @@ object DuniaFilm21Extractor {
     private fun collectGdriveHlsCandidates(html: String, baseUrl: String): Set<String> {
         val clean = html.cleanDf21()
         val out = linkedSetOf<String>()
+        val gdriveBase = baseUrl.toGdrivePlayerBaseUrl() ?: "https://gdriveplayer.io"
 
-        Regex("""((?:https?:)?//gdriveplayer\.io/hlsplaylist\.php[^\s"'<>),;]+)""", RegexOption.IGNORE_CASE)
+        Regex("""((?:https?:)?//gdriveplayer\.(?:io|to|me)/hlsplaylist\.php[^\s"'<>),;]+)""", RegexOption.IGNORE_CASE)
             .findAll(clean)
-            .mapNotNull { match -> match.groupValues.getOrNull(1)?.trim()?.trimEnd(',', ';', ')')?.absUrlDf21(baseUrl) }
+            .mapNotNull { match -> match.groupValues.getOrNull(1)?.cleanGdriveCandidate()?.absUrlDf21(baseUrl) }
             .forEach(out::add)
 
         Regex("""(?:^|["'=:(\s])(/hlsplaylist\.php[^\s"'<>),;]+)""", RegexOption.IGNORE_CASE)
             .findAll(clean)
-            .mapNotNull { match -> match.groupValues.getOrNull(1)?.trim()?.trimEnd(',', ';', ')')?.absUrlDf21(baseUrl) }
+            .mapNotNull { match -> match.groupValues.getOrNull(1)?.cleanGdriveCandidate()?.absUrlDf21(gdriveBase) }
+            .forEach(out::add)
+
+        Regex("""(?i)HLS\s*=\s*["']([^"']*hlsplaylist\.php[^"']+)["']""")
+            .findAll(clean)
+            .mapNotNull { match -> match.groupValues.getOrNull(1)?.cleanGdriveCandidate()?.absUrlDf21(gdriveBase) }
             .forEach(out::add)
 
         val sValue = Regex("""(?i)(?:["']?s["']?\s*[:=]\s*["'])([^"']+)(?:["'])""").find(clean)?.groupValues?.getOrNull(1)
@@ -208,10 +220,32 @@ object DuniaFilm21Extractor {
 
         if (!sValue.isNullOrBlank() && !idhlsValue.isNullOrBlank()) {
             val idhls = idhlsValue.cleanDf21().let { value -> if (value.endsWith(".m3u8", true)) value else "$value.m3u8" }
-            out.add("https://gdriveplayer.io/hlsplaylist.php?s=${sValue.toGdriveQueryValue()}&idhls=${idhls.toGdriveQueryValue()}")
+            out.add("$gdriveBase/hlsplaylist.php?s=${sValue.toGdriveQueryValue()}&idhls=${idhls.toGdriveQueryValue()}")
         }
 
         return out
+    }
+
+    private fun collectGdriveDecodedScripts(html: String): Set<String> {
+        val out = linkedSetOf<String>()
+        val clean = html.cleanDf21()
+        Regex("""var\s+k\s*=\s*["']([^"']+)["']\s*,\s*b\s*=\s*atob\(["']([^"']+)["']\)""", RegexOption.IGNORE_CASE)
+            .findAll(clean)
+            .mapNotNull { match -> decodeGdriveXor(match.groupValues.getOrNull(1), match.groupValues.getOrNull(2)) }
+            .forEach(out::add)
+        return out
+    }
+
+    private fun decodeGdriveXor(key: String?, encoded: String?): String? {
+        val actualKey = key?.takeIf { it.isNotBlank() } ?: return null
+        val raw = encoded?.replace("\\/", "/")?.takeIf { it.isNotBlank() } ?: return null
+        val bytes = runCatching { Base64.getDecoder().decode(raw) }.getOrNull() ?: return null
+        val builder = StringBuilder(bytes.size)
+        bytes.forEachIndexed { index, value ->
+            val decoded = (value.toInt() and 0xff) xor actualKey[index % actualKey.length].code
+            builder.append(decoded.toChar())
+        }
+        return builder.toString().cleanDf21()
     }
 
     fun collectCandidates(html: String, baseUrl: String): Set<String> {
@@ -281,9 +315,29 @@ object DuniaFilm21Extractor {
     private fun String.gdriveHlsVariants(): List<String> {
         val clean = cleanDf21()
         val variants = linkedSetOf<String>()
-        variants.add(clean.replace(Regex("^http://gdriveplayer\\.io", RegexOption.IGNORE_CASE), "https://gdriveplayer.io"))
         variants.add(clean)
+        variants.add(clean.replace(Regex("^http://gdriveplayer\\.(io|to|me)", RegexOption.IGNORE_CASE), "https://gdriveplayer.$1"))
+        variants.add(clean.replace(Regex("^https://gdriveplayer\\.(io|to|me)", RegexOption.IGNORE_CASE), "http://gdriveplayer.$1"))
         return variants.filter { it.isNotBlank() }
+    }
+
+    private fun String.isGdrivePlayerUrl(): Boolean {
+        return contains("gdriveplayer.io", ignoreCase = true) ||
+            contains("gdriveplayer.to", ignoreCase = true) ||
+            contains("gdriveplayer.me", ignoreCase = true)
+    }
+
+    private fun String.toGdrivePlayerBaseUrl(): String? {
+        return Regex("""(?i)^(https?:)?//(gdriveplayer\.(?:io|to|me))""")
+            .find(cleanDf21())
+            ?.let { match -> "${match.groupValues.getOrNull(1).orEmpty().ifBlank { "https:" }}//${match.groupValues[2]}" }
+    }
+
+    private fun String.cleanGdriveCandidate(): String {
+        return cleanDf21()
+            .trim()
+            .trimEnd(',', ';', ')')
+            .replace("\\/", "/")
     }
 
     private fun String.toGdriveQueryValue(): String {
