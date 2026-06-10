@@ -6,7 +6,7 @@ version = 8
 
 cloudstream {
     language = "id"
-    description = "Streaming Drama Korea Subtitle Indonesia"
+    description = "Streaming Drama Korea Subtitle Indonesia."
     authors = listOf("BetbetMiro")
     status = 1
     tvTypes = listOf(
