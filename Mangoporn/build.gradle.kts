@@ -1,7 +1,7 @@
 version = 3
 
 cloudstream {
-    authors     = listOf("BetbetMiro")
+    authors = emptyList()
     language    = "id"
     description = "MangoPorn"
 

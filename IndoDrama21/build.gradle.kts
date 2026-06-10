@@ -2,7 +2,7 @@ version = 4
 
 cloudstream {
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     description = "IndoDrama21 active IP build with compact website-backed categories, stable episode mapping, and hardened playback extraction."
 
     /**

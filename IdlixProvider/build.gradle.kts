@@ -2,7 +2,7 @@ version = 44
 
 cloudstream {
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     description = "Idlix provider with direct IP main URL, origin fallback routing, safe play-session JSON bodies, compile-safe extractor emission, merged redeem fallback parsing, and hardened iframe playback handling."
 
     /**

@@ -3,7 +3,7 @@ version = 8
 cloudstream {
     description = "Gojodesu - Anime Streaming Site"
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     status = 1
 

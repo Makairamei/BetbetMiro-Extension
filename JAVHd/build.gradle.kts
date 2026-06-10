@@ -1,7 +1,7 @@
 version = 8
 
 cloudstream {
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     language = "id"
     description = "Provider JAVHD dengan kategori situs yang dirapikan, pencarian, subtitle eksternal, dan extractor playback aktif."
 

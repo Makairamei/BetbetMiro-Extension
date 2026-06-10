@@ -1,7 +1,7 @@
 version = 5
 
 cloudstream {
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     language = "id"
     description = "DuniaFilm21 — source HAR-verified untuk movie LK21/Dunia21 dari 207.180.246.102 dengan homepage, genre, detail, resolver Minochinos HLS, gdriveplayer multi-domain, dan encoded HLS player."
     status = 1

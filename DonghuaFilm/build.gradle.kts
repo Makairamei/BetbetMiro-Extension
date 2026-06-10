@@ -3,7 +3,7 @@ version = 6
 cloudstream {
     description = "DonghuaFilm - Nonton Donghua Gratis Sub Indonesia."
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     status = 1
 

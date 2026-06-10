@@ -3,7 +3,7 @@ version = 3
 cloudstream {
     description = "AzMovies + Noxx"
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     status = 1
     tvTypes = listOf(

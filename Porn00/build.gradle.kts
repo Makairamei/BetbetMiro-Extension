@@ -1,7 +1,7 @@
 version = 5
 
 cloudstream {
-    authors     = listOf("BetbetMiro")
+    authors = emptyList()
     language    = "id"
     description = "Porn00 provides hd porn videos for fee. And we're offering latest 720p porn, xxx and sex videos at porn00."
 

@@ -2,7 +2,7 @@ version = 4
 
 cloudstream {
     description = "PasarBokep provider by BetbetMiro"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     language = "id"
     status = 1

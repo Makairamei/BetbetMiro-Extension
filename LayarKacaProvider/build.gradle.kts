@@ -2,7 +2,7 @@ version = 5
 
 cloudstream {
     language = "id"
-    authors = listOf("sad25kag")
+    authors = emptyList()
 
     status = 1
     tvTypes = listOf(

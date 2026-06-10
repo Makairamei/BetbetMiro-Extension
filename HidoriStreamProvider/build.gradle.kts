@@ -3,7 +3,7 @@ version = 8
 cloudstream {
     description = "HidoriStream — Streaming Anime Subtitle Indonesia"
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     /**
      * Status int as the following:

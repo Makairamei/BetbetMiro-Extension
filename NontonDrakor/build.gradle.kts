@@ -1,7 +1,7 @@
 version = 1
 
 cloudstream {
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     language = "id"
     description = "Provider CloudStream untuk NontonDrakor / Drakor ID - film dan serial TV subtitle Indonesia."
     status = 1

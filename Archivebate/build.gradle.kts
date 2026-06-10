@@ -1,7 +1,7 @@
 version = 6
 
 cloudstream {
-    authors     = listOf("BetbetMiro")
+    authors = emptyList()
     language    = "id"
     description = "Watch your favourite camgirls for free. Cam Videos and Camgirls from Chaturbate, Camsoda, Stripchat etc."
 

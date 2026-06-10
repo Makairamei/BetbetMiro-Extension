@@ -1,7 +1,7 @@
 version = 8
 
 cloudstream {
-    authors     = listOf("BetbetMiro")
+    authors = emptyList()
     language    = "id"
     description = "Provider CloudStream untuk Gerakin21."
     status      = 1

@@ -3,7 +3,7 @@ version = 13
 cloudstream {
     description = "Melongmovie provider maintained by BetbetMiro"
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     /**
      * Status int as the following:

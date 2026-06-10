@@ -2,7 +2,7 @@ version = 3
 
 cloudstream {
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     description = "Provider CloudStream untuk HentaiCity"
 
     /**

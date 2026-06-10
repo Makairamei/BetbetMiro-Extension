@@ -3,7 +3,7 @@ version = 4
 
 cloudstream {
     description = "Astronime - anime subtitle Indonesia, runtime-clean parser, player_ajax, Turbovid HLS, and Hydrax/Abyss resolver flow"
-    authors = listOf("sad25kag")
+    authors = emptyList()
 
     /**
      * Status int as the following:

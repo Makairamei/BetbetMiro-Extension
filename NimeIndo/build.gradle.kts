@@ -3,7 +3,7 @@ version = 1
 
 cloudstream {
     description = "NimeIndo - Nonton streaming anime dan donghua subtitle Indonesia"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     /**
      * Status int as the following:

@@ -1,10 +1,10 @@
 version = 3
 
 cloudstream {
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     language = "id"
     description = "Heavy-R.com provider for CloudStream"
-    
+
     /**
      * Status int as the following:
      * 0: Down

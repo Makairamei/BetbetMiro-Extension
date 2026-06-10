@@ -3,7 +3,7 @@ version = 10
 cloudstream {
     description = "Kazefuri"
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     status = 1
     tvTypes = listOf(

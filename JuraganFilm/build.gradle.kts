@@ -2,7 +2,7 @@ version = 17
 
 cloudstream {
     language = "id"
-    authors = listOf("sad25kag")
+    authors = emptyList()
     description = "JuraganFilm provider for tv44.juragan.film with HTML catalog parsing, search, detail metadata, episode parsing, direct MP4/HLS links, subtitles, and extractor fallback support."
 
     /**

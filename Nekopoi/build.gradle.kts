@@ -3,7 +3,7 @@ version = 2
 
 cloudstream {
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     /**
      * Status int as the following:
@@ -12,7 +12,7 @@ cloudstream {
      * 2: Slow
      * 3: Beta only
      * */
-    status = 1 
+    status = 1
     tvTypes = listOf(
         "NSFW",
     )

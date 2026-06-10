@@ -3,7 +3,7 @@ version = 4
 cloudstream {
     language = "id"
     description = "Winbu — Streaming Anime, Movie and TV Series"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     status = 1
     tvTypes = listOf(
         "Movie",

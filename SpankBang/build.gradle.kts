@@ -1,7 +1,7 @@
 version = 5
 
 cloudstream {
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     language = "en"
     description = "SpankBang adult video provider using direct HLS and MP4 stream_data extraction from spankbang.party."
 

@@ -6,7 +6,7 @@ cloudstream {
     language = "id"
 
     description = "Drakor — Streaming Drama Korean, Movie and TV Series"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     /**
      * Status int as the following:

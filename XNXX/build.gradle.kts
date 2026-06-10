@@ -5,7 +5,7 @@ cloudstream {
     // All of these properties are optional, you can safely remove any of them.
 
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     /**
      * Status int as one of the following:

@@ -3,7 +3,7 @@ version = 33
 
 cloudstream {
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     description = "FreeReels / DramaWave short drama provider"
 

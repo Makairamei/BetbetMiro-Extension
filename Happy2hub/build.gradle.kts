@@ -1,10 +1,10 @@
 version = 4
 
 cloudstream {
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     language = "id"
     description = "Provider CloudStream untuk Happy2hub"
-    
+
     /**
      * Status int as the following:
      * 0: Down

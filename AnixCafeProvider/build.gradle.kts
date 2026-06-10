@@ -3,7 +3,7 @@ version = 7
 
 cloudstream {
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     description = "AnixCafe / Anixverse donghua provider with safer core categories and dynamic guarded playback resolver"
 
     /**

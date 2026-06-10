@@ -1,7 +1,7 @@
 version = 26
 
 cloudstream {
-    authors     = listOf("BetbetMiro")
+    authors = emptyList()
     language    = "id"
     description = "Watch WWE | WWE Raw | Smackdown Live"
     status  = 1 // will be 3 if unspecified

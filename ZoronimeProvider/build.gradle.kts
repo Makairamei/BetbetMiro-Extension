@@ -3,7 +3,7 @@ version = 2
 cloudstream {
     description = "Zoronime"
     language = "id"
-    authors = listOf("Duro92")
+    authors = emptyList()
     status = 1
     tvTypes = listOf(
         "Anime",

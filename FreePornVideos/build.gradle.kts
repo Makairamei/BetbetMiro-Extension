@@ -1,7 +1,7 @@
 version = 7
 
 cloudstream {
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     language = "id"
     description = "Premium porn with 4K support"
 

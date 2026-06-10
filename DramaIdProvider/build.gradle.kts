@@ -3,7 +3,7 @@ version = 11
 cloudstream {
     description = "DramaID - drama Asia subtitle Indonesia."
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     /**
      * Status int:

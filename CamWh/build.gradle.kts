@@ -1,7 +1,7 @@
 version = 11
 
 cloudstream {
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     language = "id"
     description = "Provider NSFW untuk konten video dewasa dari CamWH."
 

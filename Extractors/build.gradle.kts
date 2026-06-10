@@ -1,7 +1,7 @@
 version = 17
 
 cloudstream {
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     language = "id"
     description = "Extractors for my sources"
 

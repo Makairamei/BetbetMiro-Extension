@@ -7,7 +7,7 @@ cloudstream {
 
     description = "InternetChicks"
     language    = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     /**
     * Status int as the following:

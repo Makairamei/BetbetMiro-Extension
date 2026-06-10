@@ -1,7 +1,7 @@
 version = 6
 
 cloudstream {
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     language = "id"
     description = "FitNakedGirls NSFW video provider"
 

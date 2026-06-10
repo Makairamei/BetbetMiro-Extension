@@ -1,7 +1,7 @@
 version = 3
 
 cloudstream {
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     language = "id"
     description =
         "Best Japan AV porn site, free forever, high speed, no lag, over 100,000 videos with daily update."

@@ -2,7 +2,7 @@
 version = 1
 cloudstream {
     description ="adult content"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     /**
     * Status int as the following:

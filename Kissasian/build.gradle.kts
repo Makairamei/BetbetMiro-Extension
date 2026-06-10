@@ -3,7 +3,7 @@ version = 4
 cloudstream {
     description = "Kissasian"
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
 
     /**
      * Status int as the following:

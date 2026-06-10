@@ -2,7 +2,7 @@ version = 10
 
 cloudstream {
     description = "Hentai AHO Streaming"
-    authors = listOf("BetbetMiro")
+    authors = emptyList()
     language = "id"
 
     /**
