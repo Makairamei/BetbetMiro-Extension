@@ -85,41 +85,44 @@ object GomunimeExtractor {
             )
         }
 
-        var found = resolveKnownHost(providerName, normalizedUrl, referer, subtitleCallback, callback)
+        var found = false
 
-        if (!normalizedUrl.contains("gomunime", true)) {
-            runCatching {
-                loadExtractor(normalizedUrl, referer, subtitleCallback) { link ->
-                    if (link.url.isPlayableMediaUrl() || link.url.isLikelyHls()) {
-                        found = true
-                        callback(link)
-                    }
+        // Source-backed local parsing is intentionally executed before CloudStream's generic
+        // loadExtractor fallback. Gomunime currently exposes B-TUBE / CEPAT / GDRIVE through
+        // player pages and script/data payloads, so trying generic extraction too early can miss
+        // the page context and silently return callback 0.
+        val document = try {
+            app.get(normalizedUrl, headers = pageHeaders(normalizedUrl), referer = referer).document
+        } catch (_: Throwable) {
+            null
+        }
+
+        if (document != null) {
+            collectSubtitles(normalizedUrl, document, subtitleCallback)
+
+            for (candidate in extractMediaCandidates(providerName, mainUrl, normalizedUrl, document)) {
+                if (emitCandidate(providerName, candidate, subtitleCallback, callback)) found = true
+            }
+
+            val servers = extractServers(mainUrl, normalizedUrl, document)
+            for (server in servers) {
+                val sourceName = server.name.ifBlank { serverName(server.url).ifBlank { providerName } }
+                if (resolveKnownHost(sourceName, server.url, normalizedUrl, subtitleCallback, callback)) {
+                    found = true
+                    continue
+                }
+                if (loadFromUrl(sourceName, mainUrl, server.url, normalizedUrl, subtitleCallback, callback, visited, depth + 1)) {
+                    found = true
                 }
             }
         }
 
-        val document = try {
-            app.get(normalizedUrl, headers = pageHeaders(normalizedUrl), referer = referer).document
-        } catch (_: Throwable) {
-            return found
+        if (!found && resolveKnownHost(providerName, normalizedUrl, referer, subtitleCallback, callback)) {
+            found = true
         }
 
-        collectSubtitles(normalizedUrl, document, subtitleCallback)
-
-        for (candidate in extractMediaCandidates(providerName, mainUrl, normalizedUrl, document)) {
-            if (emitCandidate(providerName, candidate, subtitleCallback, callback)) found = true
-        }
-
-        val servers = extractServers(mainUrl, normalizedUrl, document)
-        for (server in servers) {
-            val sourceName = server.name.ifBlank { serverName(server.url).ifBlank { providerName } }
-            if (resolveKnownHost(sourceName, server.url, normalizedUrl, subtitleCallback, callback)) {
-                found = true
-                continue
-            }
-            if (loadFromUrl(sourceName, mainUrl, server.url, normalizedUrl, subtitleCallback, callback, visited, depth + 1)) {
-                found = true
-            }
+        if (!found) {
+            found = runLoadExtractorFallback(normalizedUrl, referer, subtitleCallback, callback)
         }
 
         return found
@@ -184,11 +187,8 @@ object GomunimeExtractor {
         }
 
         if (!found) {
-            runCatching {
-                loadExtractor(url, referer, subtitleCallback) { link ->
-                    found = true
-                    callback(link)
-                }
+            if (runLoadExtractorFallback(url, referer, subtitleCallback, callback)) {
+                found = true
             }
         }
 
@@ -245,11 +245,8 @@ object GomunimeExtractor {
         }
 
         if (!found) {
-            runCatching {
-                loadExtractor(url, referer, subtitleCallback) { link ->
-                    found = true
-                    callback(link)
-                }
+            if (runLoadExtractorFallback(url, referer, subtitleCallback, callback)) {
+                found = true
             }
         }
 
@@ -307,11 +304,8 @@ object GomunimeExtractor {
                     emitDirect(sourceName, "GDRIVE", media, url, callback, forceHls = media.isLikelyHls())
                     found = true
                 } else if (media.isPotentialServerUrl()) {
-                    runCatching {
-                        loadExtractor(media, url, subtitleCallback) { link ->
-                            found = true
-                            callback(link)
-                        }
+                    if (runLoadExtractorFallback(media, url, subtitleCallback, callback)) {
+                        found = true
                     }
                 }
             }
@@ -349,37 +343,50 @@ object GomunimeExtractor {
     ): Boolean {
         var found = false
 
-        runCatching {
-            loadExtractor(url, referer, subtitleCallback) { link ->
-                if (link.url.isPlayableMediaUrl() || link.url.isLikelyHls()) {
-                    found = true
-                    callback(link)
-                }
-            }
-        }
-        if (found) return true
-
         val document = try {
             app.get(url, headers = pageHeaders(url), referer = referer).document
         } catch (_: Throwable) {
-            return false
+            null
         }
 
-        collectSubtitles(url, document, subtitleCallback)
-        for (candidate in extractMediaCandidates(sourceName, originOf(url), url, document)) {
-            if (emitCandidate(sourceName, candidate, subtitleCallback, callback)) found = true
+        if (document != null) {
+            collectSubtitles(url, document, subtitleCallback)
+            for (candidate in extractMediaCandidates(sourceName, originOf(url), url, document)) {
+                if (emitCandidate(sourceName, candidate, subtitleCallback, callback)) found = true
+            }
+
+            document.select("iframe[src], iframe[data-src], embed[src]").forEach { frame ->
+                val iframe = normalizeMediaUrl(originOf(url), url, frame.attr("src").ifBlank { frame.attr("data-src") }) ?: return@forEach
+                if (iframe.isDirectMedia() || iframe.isBloggerVideo()) {
+                    if (emitCandidate(sourceName, GomunimeMediaCandidate(iframe, serverName(iframe), url, iframe.isLikelyHls()), subtitleCallback, callback)) found = true
+                } else if (!found) {
+                    if (runLoadExtractorFallback(iframe, url, subtitleCallback, callback)) found = true
+                }
+            }
         }
 
-        document.select("iframe[src], iframe[data-src], embed[src]").forEach { frame ->
-            val iframe = normalizeMediaUrl(originOf(url), url, frame.attr("src").ifBlank { frame.attr("data-src") }) ?: return@forEach
-            runCatching {
-                loadExtractor(iframe, url, subtitleCallback) { link ->
+        if (!found) {
+            found = runLoadExtractorFallback(url, referer, subtitleCallback, callback)
+        }
+
+        return found
+    }
+
+    private suspend fun runLoadExtractorFallback(
+        url: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        var found = false
+        runCatching {
+            loadExtractor(url, referer, subtitleCallback) { link ->
+                if (link.url.isCallbackPlayableUrl()) {
                     found = true
                     callback(link)
                 }
             }
         }
-
         return found
     }
 
@@ -433,17 +440,7 @@ object GomunimeExtractor {
             return true
         }
 
-        val extracted = try {
-            loadExtractor(candidate.url, candidate.referer, subtitleCallback) { link ->
-                if (link.url.isPlayableMediaUrl() || link.url.isLikelyHls()) {
-                    emitted = true
-                    callback(link)
-                }
-            }
-        } catch (_: Throwable) {
-            false
-        }
-
+        val extracted = runLoadExtractorFallback(candidate.url, candidate.referer, subtitleCallback, callback)
         return emitted || extracted
     }
 
@@ -801,6 +798,8 @@ object GomunimeExtractor {
         when {
             url.contains("gofile.io", true) -> headers["Origin"] = "https://gofile.io"
             url.contains("xtwap.top", true) -> headers["Origin"] = "https://xtwap.top"
+            url.contains("gdplayer.to", true) -> headers["Origin"] = "https://gdplayer.to"
+            url.contains("gdriveplayer", true) -> headers["Origin"] = originOf(url)
             url.contains("anime-indo.lol", true) -> headers["Origin"] = "https://anime-indo.lol"
         }
         return headers
@@ -809,7 +808,7 @@ object GomunimeExtractor {
     private fun mediaReferer(url: String, fallback: String): String {
         return when {
             url.isGoogleVideoUrl() -> ""
-            url.contains("xtwap.top/play.php", true) -> ""
+            url.contains("xtwap.top", true) -> fallback.ifBlank { originOf(url) }
             url.contains("blogger.googleusercontent.com", true) -> BLOGGER_REFERER
             else -> fallback
         }
@@ -822,7 +821,9 @@ object GomunimeExtractor {
         )
         if (referer.isNotBlank()) headers["Referer"] = referer
         if (referer.contains("blogger.com", true) && !url.isGoogleVideoUrl()) headers["Origin"] = "https://www.blogger.com"
-        if (referer.contains("xtwap.top", true)) headers["Origin"] = "https://xtwap.top"
+        if (referer.contains("xtwap.top", true) || url.contains("xtwap.top", true)) headers["Origin"] = "https://xtwap.top"
+        if (referer.contains("gdplayer.to", true) || url.contains("gdplayer.to", true)) headers["Origin"] = "https://gdplayer.to"
+        if (referer.contains("gdriveplayer", true)) headers["Origin"] = originOf(referer)
         return headers
     }
 
@@ -864,13 +865,18 @@ object GomunimeExtractor {
         return isDirectMedia() || isBloggerVideo() || isGoogleVideoUrl()
     }
 
+    private fun String.isCallbackPlayableUrl(): Boolean {
+        val lower = lowercase()
+        if (isNoiseUrl()) return false
+        if (lower.endsWith(".html") || lower.endsWith(".htm")) return false
+        if (lower.contains("/embed/") && !isDirectMedia()) return false
+        if (lower.contains("/player/") && !isDirectMedia()) return false
+        return isPlayableMediaUrl() || isLikelyHls()
+    }
+
     private fun String.isLikelyHls(): Boolean {
         val lower = lowercase()
-        return lower.contains(".m3u8") ||
-            lower.contains("playlist") ||
-            lower.contains("hls") ||
-            lower.contains("master") ||
-            lower.contains("xtwap.top/play.php")
+        return lower.contains(".m3u8") || lower.contains("xtwap.top/play.php")
     }
 
     private fun String.isDirectMedia(): Boolean = isPlayableMediaUrl() || isLikelyHls()
