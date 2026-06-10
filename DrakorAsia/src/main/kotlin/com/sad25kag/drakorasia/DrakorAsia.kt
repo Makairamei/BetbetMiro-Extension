@@ -83,16 +83,7 @@ class DrakorAsia : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "" to "Episode Terbaru",
-        "Series" to "Drama List",
-        "Movie" to "Movie",
-        "Romance" to "Romance",
-        "Comedy" to "Comedy",
-        "Action" to "Action",
-        "Thriller" to "Thriller",
-        "Mystery" to "Mystery",
-        "Fantasy" to "Fantasy",
-        "Drama" to "Drama"
+        "" to "Episode Terbaru"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest) = getMainPageData(request.data, page).let { data ->

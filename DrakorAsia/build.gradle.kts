@@ -2,11 +2,11 @@ android {
     namespace = "com.BetbetMiro.drakorasia"
 }
 
-version = 8
+version = 9
 
 cloudstream {
     language = "id"
-    description = "Streaming Drama Korea Subtitle Indonesia."
+    description = "Streaming Drama Korea Subtitle Indonesia"
     authors = listOf("BetbetMiro")
     status = 1
     tvTypes = listOf(
