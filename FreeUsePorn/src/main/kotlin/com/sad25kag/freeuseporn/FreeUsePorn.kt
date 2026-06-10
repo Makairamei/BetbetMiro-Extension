@@ -39,14 +39,7 @@ class FreeUsePorn : MainAPI() {
         "$mainUrl/videos/japanese" to "Japanese",
         "$mainUrl/videos/time-stop" to "Time Stop",
         "$mainUrl/videos/ignored-sex" to "Ignored Sex",
-        "$mainUrl/videos/glory-hole" to "Glory Hole",
-
-        "$mainUrl/videos/hypno" to "Hypno",
-        "$mainUrl/videos/maid" to "Maid",
-        "$mainUrl/videos/creampie" to "Creampie",
-        "$mainUrl/videos/cosplay" to "Cosplay",
-        "$mainUrl/videos/amateur" to "Amateur",
-        "$mainUrl/videos/compilation" to "Compilation"
+        "$mainUrl/videos/glory-hole" to "Glory Hole"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): com.lagradost.cloudstream3.HomePageResponse {
