@@ -28,10 +28,8 @@ class DonghuaFilm : MainAPI() {
     override val mainPage = mainPageOf(
         "" to "Latest Release",
         "anime/?order=update&status=&type=" to "New Donghua",
-        "anime/?order=update&status=ongoing&type=" to "Donghua Ongoing",
         "anime/?order=update&status=completed&type=" to "Completed",
         "anime/?order=popular&status=&type=" to "Popular",
-        "anime/?order=update&status=&type=movie" to "Movie",
         "genres/action/" to "Action",
         "genres/adventure/" to "Adventure",
         "genres/comedy/" to "Comedy",
@@ -40,10 +38,8 @@ class DonghuaFilm : MainAPI() {
         "genres/fantasy/" to "Fantasy",
         "genres/historical/" to "Historical",
         "genres/martial-arts/" to "Martial Arts",
-        "genres/movie/" to "Movie Genre",
         "genres/romance/" to "Romance",
         "genres/sci-fi/" to "Sci-Fi",
-        "az-list/" to "AZ List",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -52,12 +48,7 @@ class DonghuaFilm : MainAPI() {
         val parsed = parseCards(document, request.data)
             .distinctBy { it.url.normalizedKey() }
             .filter { !it.posterUrl.isNullOrBlank() }
-        val filteredResults = if (request.name.equals("Movie", true) || request.name.equals("Movie Genre", true)) {
-            filterMovieCards(parsed)
-        } else {
-            parsed
-        }
-        val results = filteredResults
+        val results = parsed
         val hasNext = results.isNotEmpty() && document.selectFirst("a.next, .pagination a.next, a.next.page-numbers, link[rel=next], a[href*='/page/${page + 1}/'], a[href*='page=${page + 1}']") != null
         return newHomePageResponse(HomePageList(request.name, results, isHorizontalImages = false), hasNext = hasNext)
     }
@@ -229,33 +220,6 @@ class DonghuaFilm : MainAPI() {
             .mapNotNull { it.toDonghuaFilmCard() }
             .distinctBy { it.url.normalizedKey() }
             .toList()
-    }
-
-    private suspend fun filterMovieCards(cards: List<SearchResponse>): List<SearchResponse> {
-        val movies = mutableListOf<SearchResponse>()
-        for (card in cards.take(32)) {
-            val isMovie = runCatching {
-                val document = app.get(card.url, headers = browserHeaders, referer = "$mainUrl/").document
-                val title = cleanTitle(
-                    document.selectFirst("h1.entry-title, h1[itemprop=name], .infox h1, .entry-title")?.text()
-                        ?: document.selectFirst("meta[property=og:title]")?.attr("content")
-                        ?: document.title()
-                ) ?: card.name
-                val detailRoot = document.detailRoot()
-                val tags = detailRoot.select("a[href*='/genres/'], a[rel=tag]")
-                    .map { it.text().cleanText() }
-                    .filter { it.isNotBlank() }
-                    .distinct()
-                val infoText = listOf(
-                    detailRoot.text().cleanText(),
-                    document.selectFirst(".spe, .info-content, .infotable, .bigcontent")?.text()?.cleanText().orEmpty(),
-                ).joinToString(" ").cleanText()
-                val episodes = parseEpisodes(document, card.url).distinctBy { it.data.normalizedKey() }
-                detectDetailType(title, infoText, tags, episodes) == TvType.AnimeMovie
-            }.getOrDefault(false)
-            if (isMovie) movies.add(card)
-        }
-        return movies
     }
 
     private fun Element.isSidebarOrWidgetCard(): Boolean {
