@@ -20,16 +20,9 @@ class Cam4Provider : MainAPI() {
 
     override val mainPage = mainPageOf(
         "/api/directoryCams?directoryJson=true&online=true&url=true&orderBy=VIDEO_QUALITY&resultsPerPage=60" to "Semua",
-        "/api/directoryCams?directoryJson=true&online=true&url=true&orderBy=VIEWERS_COUNT&resultsPerPage=60" to "Paling Ramai",
         "/api/directoryCams?directoryJson=true&online=true&url=true&orderBy=NEWEST&resultsPerPage=60" to "Terbaru",
         "/api/directoryCams?directoryJson=true&online=true&url=true&orderBy=VIDEO_QUALITY&gender=female&broadcastType=female_group&broadcastType=solo&broadcastType=male_female_group&resultsPerPage=60" to "Perempuan",
-        "/api/directoryCams?directoryJson=true&online=true&url=true&orderBy=VIDEO_QUALITY&gender=male&broadcastType=male_group&broadcastType=solo&broadcastType=male_female_group&resultsPerPage=60" to "Pria",
-        "/api/directoryCams?directoryJson=true&online=true&url=true&orderBy=VIDEO_QUALITY&gender=shemale&resultsPerPage=60" to "Transgender",
-        "/api/directoryCams?directoryJson=true&online=true&url=true&orderBy=VIDEO_QUALITY&broadcastType=male_group&broadcastType=female_group&broadcastType=male_female_group&resultsPerPage=60" to "Pasangan",
-        "/api/directoryCams?directoryJson=true&online=true&url=true&orderBy=VIDEO_QUALITY&hd=true&resultsPerPage=60" to "HD",
-        "/api/directoryCams?directoryJson=true&online=true&url=true&orderBy=VIEWERS_COUNT&gender=female&resultsPerPage=60" to "Perempuan Populer",
-        "/api/directoryCams?directoryJson=true&online=true&url=true&orderBy=VIEWERS_COUNT&gender=male&resultsPerPage=60" to "Pria Populer",
-        "/api/directoryCams?directoryJson=true&online=true&url=true&orderBy=VIEWERS_COUNT&gender=shemale&resultsPerPage=60" to "Transgender Populer"
+        "/api/directoryCams?directoryJson=true&online=true&url=true&orderBy=VIDEO_QUALITY&broadcastType=male_group&broadcastType=female_group&broadcastType=male_female_group&resultsPerPage=60" to "Pasangan"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
