@@ -1,9 +1,9 @@
-version = 16
+version = 17
 
 cloudstream {
     authors = listOf("sad25kag", "BetbetMiro")
     language = "id"
-    description = "GudangFilm provider untuk domain aktif huazai6.com dengan detail movie/series valid dan resolver playback/download dari player sumber termasuk Upload18."
+    description = "GudangFilm provider untuk domain aktif huazai6.com dengan detail movie/series valid dan resolver playback/download dari player sumber termasuk Upload18 dengan media header source-backed."
     status = 1
 
     tvTypes = listOf(

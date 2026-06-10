@@ -207,8 +207,10 @@ class GudangFilm : MainAPI() {
             if (!fixed.isPlayableMedia()) return false
             val key = fixed.substringBefore("#")
             if (!emitted.add(key)) return false
+            val mediaReferer = mediaReferer(fixed, referer)
+            val mediaHeaders = mediaHeaders(fixed, referer)
             if (fixed.isM3u8Like()) {
-                val links = try { generateM3u8(source, fixed, referer, headers = headers + mapOf("Referer" to referer, "Accept" to "*/*")) } catch (_: Throwable) { emptyList() }
+                val links = try { generateM3u8(source, fixed, mediaReferer, headers = mediaHeaders) } catch (_: Throwable) { emptyList() }
                 links.forEach { link ->
                     val linkKey = link.url.substringBefore("#")
                     if (emitted.add(linkKey)) callback(link)
@@ -216,9 +218,9 @@ class GudangFilm : MainAPI() {
                 if (links.isNotEmpty()) return true
             }
             callback(newExtractorLink(source, source, fixed, if (fixed.isM3u8Like()) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
-                this.referer = referer
+                this.referer = mediaReferer
                 this.quality = qualityFromUrl(fixed)
-                this.headers = headers + mapOf("Referer" to referer, "Accept" to "*/*")
+                this.headers = mediaHeaders
             })
             return true
         }
@@ -593,6 +595,28 @@ class GudangFilm : MainAPI() {
         "Origin" to mainUrl,
         "Referer" to referer
     )
+
+    private fun mediaReferer(url: String, referer: String): String {
+        val mediaHost = runCatching { URI(url).host.orEmpty().lowercase(Locale.ROOT) }.getOrDefault("")
+        return when {
+            mediaHost.contains("upload18.org") || mediaHost.contains("upload18.cc") -> "${origin(url)}/"
+            else -> referer
+        }
+    }
+
+    private fun mediaHeaders(url: String, referer: String): Map<String, String> {
+        val mediaReferer = mediaReferer(url, referer)
+        val mediaHost = runCatching { URI(url).host.orEmpty().lowercase(Locale.ROOT) }.getOrDefault("")
+        val base = headers + mapOf(
+            "Accept" to "*/*",
+            "Referer" to mediaReferer
+        )
+        return if (mediaHost.contains("upload18.org") || mediaHost.contains("upload18.cc")) {
+            base
+        } else {
+            base
+        }
+    }
 
     private fun fixUrl(value: String?, baseUrl: String): String? {
         val raw = urlDecode(value.orEmpty().replace("\\/", "/").replace("\\u0026", "&").replace("&amp;", "&").trim().trim('"', '\'', ',', ';'))
