@@ -828,6 +828,41 @@ class Indo18 : MainAPI() {
             value.contains("do0od.com") || value.contains("doods.pro") || value.contains("doods.to") || value.contains("doodcdn.co") || value.contains("ds2play.com")
     }
 
+    private fun prioritizeEmbeds(links: Collection<String>): List<String> {
+        return links
+            .filterNot { isAdUrl(it) || shouldSkipUrl(it) }
+            .filter { isKnownHost(it) || isPlayerLikeUrl(it) || it.startsWith("http", true) }
+            .distinctBy { canonicalUrl(it) }
+            .sortedWith(compareBy<String> { hostPriority(it) }.thenBy { it.length })
+    }
+
+    private fun hostPriority(url: String): Int {
+        val value = url.lowercase()
+        return when {
+            isDoodstreamHost(value) -> 0
+            value.contains("jomblo.org") -> 1
+            value.contains("playmogo.com") -> 2
+            isStreamApiHost(value) -> 3
+            value.contains("majorplay") -> 4
+            value.contains("jeniusplay") -> 4
+            value.contains("hglink") -> 4
+            value.contains("hgcloud") -> 5
+            value.contains("lulustream") || value.contains("luluvdoo") || value.contains("lulu") -> 6
+            value.contains("streamwish") || value.contains("wishfast") -> 7
+            value.contains("filemoon") -> 8
+            value.contains("vidhide") -> 9
+            value.contains("vidguard") -> 10
+            value.contains("voe") -> 11
+            value.contains("mixdrop") -> 12
+            value.contains("mp4upload") -> 13
+            value.contains("streamtape") -> 14
+            value.contains("embed") -> 30
+            value.contains("player") -> 31
+            value.contains("stream") -> 32
+            else -> 50
+        }
+    }
+
     private fun isKnownHost(url: String): Boolean {
         val value = url.lowercase()
         return isDoodstreamHost(value) || listOf(
