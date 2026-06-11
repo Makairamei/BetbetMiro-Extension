@@ -266,16 +266,17 @@ class Indo18 : MainAPI() {
             if (isAdUrl(fixed) || !isPlayableMedia(fixed)) return false
             val key = canonicalUrl(fixed)
             if (!emitted.add(key)) return false
+            val mediaReferer = playbackRefererFor(fixed, referer)
             val linkHeaders = mapOf(
                 "User-Agent" to USER_AGENT,
-                "Referer" to referer,
-                "Origin" to origin(referer),
+                "Referer" to mediaReferer,
+                "Origin" to origin(mediaReferer),
                 "Accept" to "*/*"
             )
             var generated = false
             if (isHlsLike(fixed)) {
                 runCatching {
-                    generateM3u8(name, fixed, referer, headers = linkHeaders).forEach { link ->
+                    generateM3u8(name, fixed, mediaReferer, headers = linkHeaders).forEach { link ->
                         generated = true
                         callback(link)
                     }
@@ -287,9 +288,9 @@ class Indo18 : MainAPI() {
                         source = name,
                         name = name,
                         url = fixed,
-                        type = if (isHlsLike(fixed)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                        type = when { isDashLike(fixed) -> ExtractorLinkType.DASH; isHlsLike(fixed) -> ExtractorLinkType.M3U8; else -> ExtractorLinkType.VIDEO }
                     ) {
-                        this.referer = referer
+                        this.referer = mediaReferer
                         this.quality = getQualityFromName(fixed).takeIf { it != Qualities.Unknown.value } ?: qualityFromUrl(fixed)
                         this.headers = linkHeaders
                     }
@@ -325,6 +326,8 @@ class Indo18 : MainAPI() {
             jombloGoCandidates(effectiveUrl).forEach { links.add(it) }
             collectElementLinks(document, effectiveUrl).forEach { links.add(it) }
             extractPlayableUrls(html, effectiveUrl).forEach { links.add(it) }
+            extractDirectVideoUrls(html, effectiveUrl).forEach { links.add(it) }
+            extractPlaymogoWatchUrls(html, effectiveUrl).forEach { links.add(it) }
             extractDoodstreamLinks(html, effectiveUrl).forEach { links.add(it) }
             extractPackedLinks(html, effectiveUrl).forEach { links.add(it) }
             extractEncodedLinks(html, effectiveUrl).forEach { links.add(it) }
@@ -391,6 +394,90 @@ class Indo18 : MainAPI() {
             return localFound
         }
 
+        suspend fun tryPlaymogo(link: String, referer: String): Boolean {
+            val fixed = fixUrl(link, referer) ?: return false
+            if (!isPlaymogoHost(fixed)) return false
+
+            var localFound = false
+            val pageReferer = if (isJombloHost(referer)) referer else "https://jomblo.org/"
+            val pageData = fetchPage(fixed, pageReferer, timeout = 20L)
+
+            if (pageData != null) {
+                val html = pageData.text.cleanEscaped()
+                val pageUrl = pageData.url
+                val nestedLinks = linkedSetOf<String>()
+
+                extractDirectVideoUrls(html, pageUrl).forEach { nestedLinks.add(it) }
+                extractPlayableUrls(html, pageUrl).forEach { nestedLinks.add(it) }
+                extractInlinePlayerLinks(html, pageUrl).forEach { nestedLinks.add(it) }
+                extractRedirectTargets(html, pageUrl).forEach { nestedLinks.add(it) }
+                extractPlaymogoWatchUrls(html, pageUrl).forEach { nestedLinks.add(it) }
+                collectElementLinks(pageData.document, pageUrl).forEach { nestedLinks.add(it) }
+
+                nestedLinks.forEach { nested ->
+                    val target = fixUrl(nested, pageUrl) ?: return@forEach
+                    when {
+                        emitDirect(target, pageUrl) -> localFound = true
+                        tryStreamApi(target, pageUrl) -> localFound = true
+                        tryExtractor(target, pageUrl) -> localFound = true
+                    }
+                }
+
+                extractPlaymogoWatchUrls(html, pageUrl).forEach { api ->
+                    val apiUrl = fixUrl(api, pageUrl) ?: return@forEach
+                    val response = runCatching {
+                        app.get(
+                            apiUrl,
+                            headers = headers + mapOf(
+                                "Referer" to pageUrl,
+                                "Origin" to origin(pageUrl),
+                                "Accept" to "*/*",
+                                "X-Requested-With" to "XMLHttpRequest"
+                            ),
+                            referer = pageUrl,
+                            timeout = 20L
+                        )
+                    }.getOrNull() ?: return@forEach
+
+                    val text = response.text.cleanEscaped()
+                    extractDirectVideoUrls(text, apiUrl).forEach { if (emitDirect(it, apiUrl)) localFound = true }
+                    extractPlayableUrls(text, apiUrl).forEach { if (emitDirect(it, apiUrl)) localFound = true }
+                    extractInlinePlayerLinks(text, apiUrl).forEach { nested ->
+                        when {
+                            emitDirect(nested, apiUrl) -> localFound = true
+                            tryExtractor(nested, apiUrl) -> localFound = true
+                        }
+                    }
+                }
+            }
+
+            return localFound
+        }
+
+        val manualScanVisited = linkedSetOf<String>()
+
+        suspend fun tryManualPageScan(link: String, referer: String): Boolean {
+            val fixed = fixUrl(link, referer) ?: return false
+            if (isAdUrl(fixed) || shouldSkipUrl(fixed)) return false
+            if (!isKnownHost(fixed) && !isPlayerLikeUrl(fixed)) return false
+            if (!manualScanVisited.add(canonicalUrl(fixed))) return false
+
+            val nestedLinks = collectFromPage(fixed, referer)
+            if (nestedLinks.isEmpty()) return false
+
+            var localFound = false
+            prioritizeEmbeds(nestedLinks).take(24).forEach { nested ->
+                val target = fixUrl(nested, fixed) ?: return@forEach
+                when {
+                    emitDirect(target, fixed) -> localFound = true
+                    tryPlaymogo(target, fixed) -> localFound = true
+                    tryStreamApi(target, fixed) -> localFound = true
+                    tryExtractor(target, fixed) -> localFound = true
+                }
+            }
+            return localFound
+        }
+
         suspend fun tryAny(link: String, referer: String): Boolean {
             val fixed = fixUrl(link, referer) ?: return false
             val targets = linkedSetOf<String>()
@@ -401,8 +488,10 @@ class Indo18 : MainAPI() {
             targets.forEach { target ->
                 when {
                     emitDirect(target, referer) -> localFound = true
+                    tryPlaymogo(target, referer) -> localFound = true
                     tryStreamApi(target, referer) -> localFound = true
                     tryExtractor(target, referer) -> localFound = true
+                    tryManualPageScan(target, referer) -> localFound = true
                 }
             }
             return localFound
@@ -449,6 +538,8 @@ class Indo18 : MainAPI() {
             )
             values.filter { it.isNotBlank() }.forEach { raw ->
                 extractPlayableUrls(raw, baseUrl).forEach { results.add(it) }
+                extractDirectVideoUrls(raw, baseUrl).forEach { results.add(it) }
+                extractPlaymogoWatchUrls(raw, baseUrl).forEach { results.add(it) }
                 extractDoodstreamLinks(raw, baseUrl).forEach { results.add(it) }
                 extractRedirectTargets(raw, baseUrl).forEach { results.add(it) }
                 extractJombloLinks(raw, baseUrl).forEach { results.add(it) }
@@ -471,8 +562,10 @@ class Indo18 : MainAPI() {
             val looksLikeSource = text.contains("download") || text.contains("server") || text.contains("watch") ||
                 text.contains("play") || isKnownHost(raw) || isPlayerLikeUrl(raw)
             if (!looksLikeSource) return@forEach
-            extractPlayableUrls(raw, baseUrl).forEach { results.add(it) }
-            extractDoodstreamLinks(raw, baseUrl).forEach { results.add(it) }
+                extractPlayableUrls(raw, baseUrl).forEach { results.add(it) }
+                extractDirectVideoUrls(raw, baseUrl).forEach { results.add(it) }
+                extractPlaymogoWatchUrls(raw, baseUrl).forEach { results.add(it) }
+                extractDoodstreamLinks(raw, baseUrl).forEach { results.add(it) }
             extractRedirectTargets(raw, baseUrl).forEach { results.add(it) }
             extractJombloLinks(raw, baseUrl).forEach { results.add(it) }
             extractInlinePlayerLinks(raw, baseUrl).forEach { results.add(it) }
@@ -486,6 +579,8 @@ class Indo18 : MainAPI() {
         return unpacked?.let { unpackedHtml ->
             val clean = unpackedHtml.cleanEscaped()
             (extractPlayableUrls(clean, baseUrl) +
+                extractDirectVideoUrls(clean, baseUrl) +
+                extractPlaymogoWatchUrls(clean, baseUrl) +
                 extractDoodstreamLinks(clean, baseUrl) +
                 extractInlinePlayerLinks(clean, baseUrl))
                 .distinct()
@@ -497,6 +592,8 @@ class Indo18 : MainAPI() {
         val clean = html.cleanEscaped()
         runCatching { URLDecoder.decode(clean, "UTF-8") }.getOrNull()?.takeIf { it != clean }?.let { decoded ->
             extractPlayableUrls(decoded.cleanEscaped(), baseUrl).forEach { links.add(it) }
+            extractDirectVideoUrls(decoded.cleanEscaped(), baseUrl).forEach { links.add(it) }
+            extractPlaymogoWatchUrls(decoded.cleanEscaped(), baseUrl).forEach { links.add(it) }
             extractDoodstreamLinks(decoded.cleanEscaped(), baseUrl).forEach { links.add(it) }
             extractRedirectTargets(decoded.cleanEscaped(), baseUrl).forEach { links.add(it) }
             extractJombloLinks(decoded.cleanEscaped(), baseUrl).forEach { links.add(it) }
@@ -504,6 +601,8 @@ class Indo18 : MainAPI() {
         }
         Regex("""(?i)atob\(['"]([^'"]+)['"]\)""").findAll(clean).mapNotNull { decodeBase64(it.groupValues[1]) }.forEach { payload ->
             extractPlayableUrls(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
+            extractDirectVideoUrls(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
+            extractPlaymogoWatchUrls(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
             extractDoodstreamLinks(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
             extractRedirectTargets(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
             extractJombloLinks(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
@@ -512,6 +611,8 @@ class Indo18 : MainAPI() {
         }
         Regex("""(?i)(?:base64|data|hash|embed|source)\s*[:=]\s*['"]([A-Za-z0-9+/=_-]{20,})['"]""").findAll(clean).mapNotNull { decodeBase64(it.groupValues[1]) }.forEach { payload ->
             extractPlayableUrls(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
+            extractDirectVideoUrls(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
+            extractPlaymogoWatchUrls(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
             extractDoodstreamLinks(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
             extractRedirectTargets(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
             extractJombloLinks(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
@@ -552,6 +653,8 @@ class Indo18 : MainAPI() {
             .mapNotNull { decodeBase64(it.groupValues[1]) }
             .forEach { payload ->
                 extractPlayableUrls(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
+                extractDirectVideoUrls(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
+                extractPlaymogoWatchUrls(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
                 extractDoodstreamLinks(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
                 extractStreamApiCandidates(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
                 extractRedirectTargets(payload.cleanEscaped(), baseUrl).forEach { links.add(it) }
@@ -563,14 +666,50 @@ class Indo18 : MainAPI() {
         return links.filterNot { isAdUrl(it) || shouldSkipUrl(it) }.distinct()
     }
 
+    private fun extractDirectVideoUrls(text: String, baseUrl: String = mainUrl): List<String> {
+        val links = linkedSetOf<String>()
+        val clean = text.cleanEscaped()
+        val decoded = runCatching { URLDecoder.decode(clean, "UTF-8") }.getOrDefault(clean)
+        val source = if (decoded != clean) "$clean $decoded" else clean
+        Regex(
+            """(?i)(?:https?:)?//[^"'\\\s<>]+?cloudatacdn\.com/[^"'\\\s<>]+""",
+            RegexOption.IGNORE_CASE
+        ).findAll(source)
+            .map { it.value.trimEnd('\\', '"', '\'', ',', ';', ')', ']') }
+            .forEach { raw -> fixUrl(raw, baseUrl)?.let { links.add(it) } }
+        return links.filterNot { isAdUrl(it) || shouldSkipUrl(it) }.distinct()
+    }
+
+    private fun extractPlaymogoWatchUrls(text: String, baseUrl: String = mainUrl): List<String> {
+        val links = linkedSetOf<String>()
+        val clean = text.cleanEscaped()
+        val decoded = runCatching { URLDecoder.decode(clean, "UTF-8") }.getOrDefault(clean)
+        val source = if (decoded != clean) "$clean $decoded" else clean
+        Regex(
+            """(?i)(?:https?:)?//(?:www\.)?playmogo\.com/(?:dood\?[^"'\\\s<>]+|e/[A-Za-z0-9_-]+[^"'\\\s<>]*)""",
+            RegexOption.IGNORE_CASE
+        ).findAll(source)
+            .map { it.value.trimEnd('\\', '"', '\'', ',', ';', ')', ']') }
+            .forEach { raw -> fixUrl(raw, baseUrl)?.let { links.add(it) } }
+        Regex(
+            """(?i)(?:src|href|data-src|data-url|url|embed|player|file)\s*[:=]\s*["']([^"']*playmogo\.com[^"']*)["']""",
+            RegexOption.IGNORE_CASE
+        ).findAll(source)
+            .mapNotNull { it.groupValues.getOrNull(1) }
+            .forEach { raw -> fixUrl(raw, baseUrl)?.let { links.add(it) } }
+        return links.filterNot { isAdUrl(it) || shouldSkipUrl(it) }.distinct()
+    }
+
     private fun extractPlayableUrls(text: String, baseUrl: String = mainUrl): List<String> {
         val urls = linkedSetOf<String>()
         val clean = text.cleanEscaped()
-        Regex("""https?://[^"'\\\s<>]+?\.(?:m3u8|mp4|webm|txt)(?:\?[^"'\\\s<>]*)?""", RegexOption.IGNORE_CASE)
+        extractDirectVideoUrls(clean, baseUrl).forEach { urls.add(it) }
+        extractPlaymogoWatchUrls(clean, baseUrl).forEach { urls.add(it) }
+        Regex("""https?://[^"'\\\s<>]+?\.(?:m3u8|mp4|webm|mpd|mkv|mov|txt)(?:\?[^"'\\\s<>]*)?""", RegexOption.IGNORE_CASE)
             .findAll(clean).map { it.value }.forEach { fixUrl(it.replace(".txt", ".m3u8"), baseUrl)?.let(urls::add) }
-        Regex("""//[^"'\\\s<>]+?\.(?:m3u8|mp4|webm|txt)(?:\?[^"'\\\s<>]*)?""", RegexOption.IGNORE_CASE)
+        Regex("""//[^"'\\\s<>]+?\.(?:m3u8|mp4|webm|mpd|mkv|mov|txt)(?:\?[^"'\\\s<>]*)?""", RegexOption.IGNORE_CASE)
             .findAll(clean).map { "https:${it.value}" }.forEach { fixUrl(it.replace(".txt", ".m3u8"), baseUrl)?.let(urls::add) }
-        Regex("""https?%3A%2F%2F[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.webm|\.txt)[^"'\\\s<>]*""", RegexOption.IGNORE_CASE)
+        Regex("""https?%3A%2F%2F[^"'\\\s<>]+?(?:\.m3u8|\.mp4|\.webm|\.mpd|\.mkv|\.mov|\.txt)[^"'\\\s<>]*""", RegexOption.IGNORE_CASE)
             .findAll(clean).map { runCatching { URLDecoder.decode(it.value, "UTF-8") }.getOrDefault(it.value) }
             .forEach { fixUrl(it.replace(".txt", ".m3u8"), baseUrl)?.let(urls::add) }
         Regex(
@@ -812,6 +951,10 @@ class Indo18 : MainAPI() {
 
     private fun isJombloHost(url: String): Boolean = runCatching { URI(url).host.orEmpty().lowercase().endsWith("jomblo.org") }.getOrDefault(false)
 
+    private fun isPlaymogoHost(url: String): Boolean = runCatching { URI(url).host.orEmpty().lowercase().endsWith("playmogo.com") }.getOrDefault(false)
+
+    private fun isDirectVideoHost(url: String): Boolean = runCatching { URI(url).host.orEmpty().lowercase().endsWith("cloudatacdn.com") }.getOrDefault(url.lowercase().contains("cloudatacdn.com"))
+
     private fun isStreamApiHost(url: String): Boolean {
         val value = url.lowercase()
         return value.contains("rupertisdivingintoocean.com") || value.contains("bysezoxexe.com") ||
@@ -839,9 +982,10 @@ class Indo18 : MainAPI() {
     private fun hostPriority(url: String): Int {
         val value = url.lowercase()
         return when {
-            isDoodstreamHost(value) -> 0
-            value.contains("jomblo.org") -> 1
-            value.contains("playmogo.com") -> 2
+            isDirectVideoHost(value) -> 0
+            isDoodstreamHost(value) -> 1
+            value.contains("jomblo.org") -> 2
+            value.contains("playmogo.com") -> 3
             isStreamApiHost(value) -> 3
             value.contains("majorplay") -> 4
             value.contains("jeniusplay") -> 4
@@ -866,7 +1010,10 @@ class Indo18 : MainAPI() {
     private fun isKnownHost(url: String): Boolean {
         val value = url.lowercase()
         return isDoodstreamHost(value) || listOf(
-            "jomblo.org", "playmogo.com", "rupertisdivingintoocean.com", "bysezoxexe.com",
+            "jomblo.org", "playmogo.com", "cloudatacdn.com", "playeriframe.sbs", "gdplayer.to", "abyssplayer.com",
+            "streamruby", "svanila", "svilla", "wishfast", "filedon", "play.putar.in", "streamhg", "megaplay",
+            "awsstream", "dhcplay", "xtwap", "movearnpre", "short.icu", "ok.ru", "dailymotion", "rumble",
+            "rupertisdivingintoocean.com", "bysezoxexe.com",
             "fufafilm.upns.pro", "fufafilm.strp2p.com", "myvidplay.com", "filemoon", "streamwish", "wishfast", "streamtape",
             "vidhide", "vidguard", "voe", "mixdrop", "mp4upload", "lulustream", "luluvdoo", "lulu",
             "hglink", "hgcloud", "majorplay", "jeniusplay", "pornhub", "xvideos", "xhamster", "redtube", "spankbang",
@@ -875,16 +1022,21 @@ class Indo18 : MainAPI() {
     }
 
     private fun isLikelyPlayable(url: String): Boolean {
-        return url.contains(".m3u8", true) || url.contains(".mp4", true) || url.contains(".webm", true) || url.contains(".txt", true) || isKnownHost(url)
+        return url.contains(".m3u8", true) || url.contains(".mp4", true) || url.contains(".webm", true) ||
+            url.contains(".mpd", true) || url.contains(".mkv", true) || url.contains(".mov", true) ||
+            url.contains(".txt", true) || isDirectVideoHost(url) || isKnownHost(url)
     }
 
-    private fun isPlayableMedia(url: String): Boolean = url.contains(".m3u8", true) || url.contains(".mp4", true) || url.contains(".webm", true)
+    private fun isPlayableMedia(url: String): Boolean {
+        return url.contains(".m3u8", true) || url.contains(".mp4", true) || url.contains(".webm", true) ||
+            url.contains(".mpd", true) || url.contains(".mkv", true) || url.contains(".mov", true) || isDirectVideoHost(url)
+    }
 
     private fun isPlayerLikeUrl(url: String): Boolean {
         val value = url.lowercase()
         val path = runCatching { URI(url).path.orEmpty().lowercase() }.getOrDefault(value)
         return listOf("/embed", "/player", "/stream", "/watch", "/file", "/go", "/e/", "/v/", "/d/").any { path.contains(it) } ||
-            listOf("embed", "player", "stream", "watch", "file", "hls", "m3u8", "mp4").any { value.contains(it) }
+            listOf("embed", "player", "stream", "watch", "file", "hls", "m3u8", "mp4", "cloudatacdn").any { value.contains(it) }
     }
 
     private fun shouldSkipUrl(url: String): Boolean {
@@ -988,6 +1140,13 @@ class Indo18 : MainAPI() {
         }
     }
 
+    private fun playbackRefererFor(mediaUrl: String, fallbackReferer: String): String {
+        return when {
+            isDirectVideoHost(mediaUrl) -> "https://playmogo.com/"
+            else -> fallbackReferer
+        }
+    }
+
     private fun origin(url: String): String = runCatching {
         val uri = URI(url)
         "${uri.scheme}://${uri.host}"
@@ -1021,6 +1180,8 @@ class Indo18 : MainAPI() {
     }
 
     private fun isHlsLike(url: String): Boolean = url.contains(".m3u8", true) || (url.contains("majorplay", true) && url.contains("config", true) && url.contains(".json", true))
+
+    private fun isDashLike(url: String): Boolean = url.contains(".mpd", true)
 
     private fun canonicalUrl(url: String): String = url.substringBefore("#").substringBefore("?").trimEnd('/').lowercase()
 
