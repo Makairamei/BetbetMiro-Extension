@@ -1,9 +1,9 @@
-version = 13
+version = 14
 
 cloudstream {
     language = "id"
     authors = listOf("sad25kag")
-    description = "Indo18 provider with active www.indo18.com origin, root-slug detail parsing, source-matched categories, safer posters, and hardened playback resolving from Jomblo/Playmogo redirects, embed/player payloads, stream API hosts, Doodstream, HLS, MP4, and Cloudstream extractors."
+    description = "Indo18 provider with cleaned categories, content-removal filtering, root-slug detail parsing, and hardened playback resolving for encoded player/redirect payloads, Jomblo/Playmogo, Doodstream, HLS, MP4, and Cloudstream extractors."
 
     /**
      * Status int as the following:
