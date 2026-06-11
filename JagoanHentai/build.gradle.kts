@@ -2,7 +2,7 @@ android {
     namespace = "com.sad25kag.jagoanhentai"
 }
 
-version = 1
+version = 3
 
 cloudstream {
     authors = listOf("sad25kag")
