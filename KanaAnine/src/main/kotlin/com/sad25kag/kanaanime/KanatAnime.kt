@@ -39,18 +39,12 @@ class KanatAnime : MainAPI() {
     override val mainPage = mainPageOf(
         "otakudesu:ongoing" to "Anime Ongoing",
         "otakudesu:complete" to "Anime Complete",
-        "otakudesu:schedule" to "Jadwal Rilis",
-        "donghua:latest_updates" to "Donghua Update",
-        "donghua:ongoing_series" to "Donghua Ongoing",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val results = when (request.data) {
             "otakudesu:ongoing" -> apiData("/api/otakudesu/home").array("ongoing").mapNotNull { it.toOtakudesuAnimeSearch() }
             "otakudesu:complete" -> apiData("/api/otakudesu/home").array("complete").mapNotNull { it.toOtakudesuAnimeSearch() }
-            "otakudesu:schedule" -> parseScheduleItems()
-            "donghua:latest_updates" -> apiData("/api/donghua/home").array("latest_updates").mapNotNull { it.toDonghuaEpisodeSearch() }
-            "donghua:ongoing_series" -> apiData("/api/donghua/home").array("ongoing_series").mapNotNull { it.toDonghuaEpisodeSearch() }
             else -> emptyList()
         }.distinctBy { it.url.normalizedKey() }
 
