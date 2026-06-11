@@ -2,7 +2,6 @@ package com.sad25kag.hidoristream
 
 import com.lagradost.cloudstream3.Actor
 import com.lagradost.cloudstream3.DubStatus
-import com.lagradost.cloudstream3.Episode
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
@@ -31,7 +30,6 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getQualityFromName
-import com.lagradost.cloudstream3.utils.httpsify
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.Jsoup
@@ -42,7 +40,7 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 
 class HidoristreamProvider : MainAPI() {
-    override var mainUrl = "https://hidoristream.my.id"
+    override var mainUrl = "https://v8.hidoristream.online"
     override var name = "HidoriStream"
     override val hasMainPage = true
     override val hasQuickSearch = true
@@ -84,12 +82,13 @@ class HidoristreamProvider : MainAPI() {
     }
 
     private val sourceDomains = listOf(
+        "https://v8.hidoristream.online",
+        "https://hidoristream.com",
         "https://hidoristream.my.id",
         "https://v4.hidoristream.online",
         "https://v3.hidoristream.online",
         "https://v2.hidoristream.online",
-        "https://v1.hidoristream.online",
-        "https://hidoristream.com"
+        "https://v1.hidoristream.online"
     )
 
     override val mainPage = mainPageOf(
@@ -292,6 +291,7 @@ class HidoristreamProvider : MainAPI() {
                 ".genxed a, " +
                 ".genre-info a, " +
                 ".mgen a, " +
+                "a[href*='/genres/'], " +
                 "a[href*='/genre/'], " +
                 "a[href*='genre=']"
         ).map { it.text().trim() }
@@ -321,19 +321,22 @@ class HidoristreamProvider : MainAPI() {
             .filter { it.url != url }
 
         val episodeElements = document.select(
-            "div.eplister ul li a[href], " +
+            "div.bixbox.bxcl.epcheck div.eplister ul li a[href], " +
+                "div.bixbox:has(.releases:contains(Episode)) div.eplister ul li a[href], " +
+                "div.eplister ul li a[href], " +
                 ".eplister ul li a[href], " +
-                ".episodelist a[href], " +
                 ".episodelist ul li a[href], " +
-                ".eplister a[href], " +
-                "a[href*='episode']"
-        ).distinctBy { it.attr("href") }
+                ".episodelist a[href]"
+        ).filter { element ->
+            val href = element.attr("abs:href").ifBlank { element.attr("href") }
+            href.contains("episode", true) && !href.contains("/anime/", true)
+        }.distinctBy { element -> element.attr("abs:href").ifBlank { element.attr("href") } }
 
         val episodes = if (episodeElements.isEmpty() || type == TvType.AnimeMovie) {
             listOf(
                 newEpisode(url) {
                     name = title
-                    episode = 1
+                    episode = extractEpisodeNumber(title, url) ?: 1
                     posterUrl = poster
                     description?.let { this.description = it }
                     duration?.let { this.runTime = it }
@@ -342,10 +345,14 @@ class HidoristreamProvider : MainAPI() {
         } else {
             episodeElements.reversed().mapIndexed { index, element ->
                 val href = element.attr("abs:href").ifBlank { element.attr("href") }
-                val epNum = extractEpisodeNumber(element.text(), href) ?: index + 1
+                val text = element.selectFirst(".epl-title")?.text()?.trim()
+                    ?: element.text().trim()
+                val epNum = element.selectFirst(".epl-num")?.text()?.trim()?.toIntOrNull()
+                    ?: extractEpisodeNumber(text, href)
+                    ?: index + 1
 
                 newEpisode(fixUrl(href)) {
-                    name = element.text().trim().ifBlank { "Episode $epNum" }.cleanTitle()
+                    name = text.ifBlank { "Episode $epNum" }.cleanTitle()
                     episode = epNum
                     posterUrl = poster
                     duration?.let { this.runTime = it }
@@ -413,7 +420,7 @@ class HidoristreamProvider : MainAPI() {
             val fixed = normalizePlayableUrl(decoded, pageUrl)
 
             when {
-                fixed.contains(".m3u8", true) || fixed.contains(".mp4", true) -> directLinks.add(fixed)
+                isDirectMediaUrl(fixed) -> directLinks.add(fixed)
                 fixed.startsWith("http", true) -> embedLinks.add(fixed)
             }
         }
@@ -457,7 +464,9 @@ class HidoristreamProvider : MainAPI() {
                 ".mirror a[href], " +
                 "a[href*='.m3u8'], " +
                 "a[href*='.mp4'], " +
+                "a[href*='abyssplayer'], " +
                 "a[href*='hidoristream'], " +
+                "a[href*='stotagehidori'], " +
                 "a[href*='streamwish'], " +
                 "a[href*='hglink'], " +
                 "a[href*='hgcloud'], " +
@@ -493,29 +502,31 @@ class HidoristreamProvider : MainAPI() {
                 }
         }
 
-        var found = false
+        var emitted = 0
+        val countedCallback: (ExtractorLink) -> Unit = { link ->
+            emitted++
+            callback(link)
+        }
 
         directLinks.distinct().forEach { link ->
-            emitDirectLink(link, pageUrl, callback)
-            found = true
+            emitDirectLink(link, pageUrl, countedCallback)
         }
 
         embedLinks
             .filterNot { it == pageUrl }
             .distinct()
-            .take(24)
+            .sortedWith(compareByDescending<String> { it.contains("abyssplayer", true) }.thenBy { it })
+            .take(32)
             .forEach { embed ->
-                val success = loadExtractor(
+                loadExtractor(
                     embed,
                     pageUrl,
                     subtitleCallback,
-                    callback
+                    countedCallback
                 )
-
-                if (success) found = true
             }
 
-        return found
+        return emitted > 0
     }
 
     private suspend fun fetchDocument(urlOrPath: String): Document {
@@ -605,9 +616,11 @@ class HidoristreamProvider : MainAPI() {
             .filter {
                 it.contains(".m3u8", true) ||
                     it.contains(".mp4", true) ||
+                    it.contains("abyssplayer", true) ||
                     it.contains("embed", true) ||
                     it.contains("player", true) ||
                     it.contains("hidoristream", true) ||
+                    it.contains("stotagehidori", true) ||
                     it.startsWith("http", true)
             }
             .forEach { links.add(it) }
@@ -635,18 +648,18 @@ class HidoristreamProvider : MainAPI() {
             .forEach { encoded ->
                 runCatching { base64Decode(encoded) }
                     .getOrNull()
-                    ?.takeIf { it.contains("iframe", true) || it.contains("source", true) }
+                    ?.takeIf { it.contains("iframe", true) || it.contains("source", true) || it.contains("video", true) }
                     ?.let { decoded.add(it) }
             }
 
         Regex("""["']([A-Za-z0-9+/=]{40,})["']""")
             .findAll(html)
             .mapNotNull { it.groupValues.getOrNull(1) }
-            .take(40)
+            .take(60)
             .forEach { encoded ->
                 runCatching { base64Decode(encoded) }
                     .getOrNull()
-                    ?.takeIf { it.contains("iframe", true) || it.contains("source", true) }
+                    ?.takeIf { it.contains("iframe", true) || it.contains("source", true) || it.contains("video", true) }
                     ?.let { decoded.add(it) }
             }
 
@@ -668,6 +681,16 @@ class HidoristreamProvider : MainAPI() {
                 URI(baseUrl).resolve(clean).toString()
             }.getOrDefault(clean)
         }
+    }
+
+    private fun isDirectMediaUrl(url: String): Boolean {
+        val value = url.lowercase()
+        return value.contains(".m3u8") ||
+            value.contains(".mp4") ||
+            value.contains("/stream-vid/") ||
+            value.contains("stotagehidori.my.id/") ||
+            value.contains("storage.hidoristream") ||
+            value.contains("ayokunjungi.hidoristream")
     }
 
     private fun parseDuration(text: String): Int? {

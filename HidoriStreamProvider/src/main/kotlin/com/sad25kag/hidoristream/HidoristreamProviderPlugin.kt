@@ -11,6 +11,9 @@ class HidoristreamProviderPlugin : Plugin() {
 
         registerMainAPI(HidoristreamProvider())
 
+        // HAR 2026-06-11 shows HidoriStream primary playback through abyssplayer.com.
+        registerExtractorAPI(AbyssPlayer())
+
         registerExtractorAPI(Dingtezuni())
         registerExtractorAPI(Dintezuvio())
         registerExtractorAPI(Bingezove())
