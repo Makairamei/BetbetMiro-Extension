@@ -4,9 +4,12 @@ import com.hentaicop.HentaiCopUtils.absoluteUrl
 import com.hentaicop.HentaiCopUtils.cleanText
 import com.hentaicop.HentaiCopUtils.cleanTitle
 import com.hentaicop.HentaiCopUtils.episodeNumber
+import com.hentaicop.HentaiCopUtils.isDirectPostUrl
 import com.hentaicop.HentaiCopUtils.isEpisodeUrl
+import com.hentaicop.HentaiCopUtils.isLikelyPlayableCardText
 import com.hentaicop.HentaiCopUtils.isPlayablePageUrl
 import com.hentaicop.HentaiCopUtils.isPseudoUrl
+import com.hentaicop.HentaiCopUtils.isSeriesUrl
 import com.hentaicop.HentaiCopUtils.isUsablePosterUrl
 import com.hentaicop.HentaiCopUtils.statusFromText
 import com.hentaicop.HentaiCopUtils.titleFromSlug
@@ -55,6 +58,7 @@ object HentaiCopParser {
 
         val href = absoluteUrl(api.mainUrl, link.attr("href")) ?: return null
         if (!isPlayablePageUrl(href)) return null
+        if (!isSafeDirectPostCard(href, element, link)) return null
 
         val targetUrl = href
         val poster = posterFromElement(api, element, link) ?: return null
@@ -68,6 +72,7 @@ object HentaiCopParser {
 
         val title = cleanTitle(rawTitle).ifBlank { titleFromSlug(targetUrl) }
         if (title.length < 3 || title.equals("lihat semua", true)) return null
+        if (isDirectPostUrl(targetUrl) && !isLikelyPlayableCardText(element.text())) return null
 
         return api.newAnimeSearchResponse(title, targetUrl, TvType.NSFW) {
             posterUrl = poster
@@ -77,6 +82,10 @@ object HentaiCopParser {
     private fun parseAnchorCard(api: MainAPI, anchor: Element): AnimeSearchResponse? {
         val href = absoluteUrl(api.mainUrl, anchor.attr("href")) ?: return null
         if (!isPlayablePageUrl(href)) return null
+        val parentText = sequenceOf(anchor, anchor.parent(), anchor.parent()?.parent())
+            .filterNotNull()
+            .joinToString(" ") { it.text() }
+        if (isDirectPostUrl(href) && !isLikelyPlayableCardText(parentText)) return null
         val poster = posterFromElement(api, anchor, anchor) ?: return null
         val targetUrl = href
         val text = cleanTitle(
@@ -88,6 +97,19 @@ object HentaiCopParser {
         return api.newAnimeSearchResponse(text, targetUrl, TvType.NSFW) {
             posterUrl = poster
         }
+    }
+
+    private fun isSafeDirectPostCard(href: String, element: Element, link: Element): Boolean {
+        if (isSeriesUrl(href) || isEpisodeUrl(href)) return true
+        if (!isDirectPostUrl(href)) return false
+        val context = listOf(
+            element.text(),
+            link.text(),
+            link.attr("title"),
+            element.className(),
+            link.className()
+        ).joinToString(" ")
+        return isLikelyPlayableCardText(context)
     }
 
     private fun posterFromElement(api: MainAPI, vararg elements: Element?): String? {

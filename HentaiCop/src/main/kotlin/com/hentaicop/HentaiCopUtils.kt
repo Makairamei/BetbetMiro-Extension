@@ -88,10 +88,35 @@ object HentaiCopUtils {
             Regex("/[^/?#]+-episode-\\d{1,4}(?:-[^/?#]+)?$").containsMatchIn(lower)
     }
 
+    fun isDirectPostUrl(url: String): Boolean {
+        val lower = url.lowercase(Locale.ROOT).substringBefore('#')
+        if (!isHentaiCopUrl(lower)) return false
+        if (isSeriesUrl(lower) || isEpisodeUrl(lower)) return true
+        if (isCatalogPageUrl(lower) || isBlockedCatalogUrl(lower)) return false
+
+        val path = runCatching { URI(lower).path.orEmpty() }.getOrDefault("")
+            .trim('/')
+            .substringBefore('?')
+        if (path.isBlank() || path.contains('/')) return false
+        if (path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".png") || path.endsWith(".webp")) return false
+
+        return listOf(
+            "download-apk", "preview-gambar", "catatan-perubahan", "changelog",
+            "faq", "contact", "request", "dmca", "privacy", "disclaimer"
+        ).none { path.contains(it) }
+    }
+
     fun isPlayablePageUrl(url: String): Boolean {
         val lower = url.lowercase(Locale.ROOT).substringBefore('#')
-        if (!lower.contains("hentaicop.com")) return false
-        return isSeriesUrl(lower) || isEpisodeUrl(lower)
+        if (!isHentaiCopUrl(lower)) return false
+        return isSeriesUrl(lower) || isEpisodeUrl(lower) || isDirectPostUrl(lower)
+    }
+
+    fun isLikelyPlayableCardText(value: String?): Boolean {
+        val lower = cleanText(value).lowercase(Locale.ROOT)
+        if (lower.isBlank()) return false
+        if (listOf("download apk", "preview gambar", "catatan perubahan", "latest blog", "faq", "contact", "request", "dmca").any { lower.contains(it) }) return false
+        return listOf("hentai", "jav", "2d", "episode", " ep ", " eps ", "sub", "uncensored", "completed", "ongoing", "movie").any { lower.contains(it) }
     }
 
     fun isCatalogPageUrl(url: String): Boolean {
@@ -103,7 +128,8 @@ object HentaiCopUtils {
         val lower = url.lowercase(Locale.ROOT)
         return listOf(
             "/tag/", "/category/", "/wp-", "/series/list-mode", "/jadwal-hentai-baru",
-            "/privacy", "/dmca", "/contact", "/about", "/disclaimer"
+            "/privacy", "/dmca", "/contact", "/about", "/disclaimer", "/faq", "/request",
+            "/bookmark", "/riwayat-tontonan", "/catatan-perubahan"
         ).any { lower.contains(it) }
     }
 
