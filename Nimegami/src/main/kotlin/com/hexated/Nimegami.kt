@@ -44,8 +44,6 @@ class Nimegami : MainAPI() {
         "" to "Updated Anime",
         "/type/tv" to "Anime",
         "/type/movie" to "Movie",
-        "/type/ona" to "ONA",
-        "/type/live-action" to "Live Action",
     )
 
     override suspend fun getMainPage(
