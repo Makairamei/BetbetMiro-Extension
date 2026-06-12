@@ -9,7 +9,7 @@ android {
 
 cloudstream {
     language = "id"
-    description = "AKTV live channel provider from APK-extracted playlist evidence"
+    description = "AKTV live channel provider from APK and HAR-backed playlist evidence"
     authors = listOf("sad25kag")
 
     /**
