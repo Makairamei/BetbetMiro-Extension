@@ -1,9 +1,9 @@
-version = 2
+version = 3
 
 cloudstream {
     description = "MyNimeku — Streaming Anime Subtitle Indonesia"
     language = "id"
-    authors = listOf("BetbetMiro")
+    authors = listOf("sad25kag")
 
     status = 1
     tvTypes = listOf(
