@@ -26,11 +26,21 @@ class NimeIndo : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
 
+    private val chromeUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+
     private val siteHeaders = mapOf(
-        "User-Agent" to USER_AGENT,
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "User-Agent" to chromeUa,
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
         "Cache-Control" to "no-cache",
+        "Sec-Ch-Ua" to "\"Google Chrome\";v=\"125\", \"Chromium\";v=\"125\", \"Not.A/Brand\";v=\"24\"",
+        "Sec-Ch-Ua-Mobile" to "?0",
+        "Sec-Ch-Ua-Platform" to "\"Windows\"",
+        "Sec-Fetch-Dest" to "document",
+        "Sec-Fetch-Mode" to "navigate",
+        "Sec-Fetch-Site" to "none",
+        "Sec-Fetch-User" to "?1",
+        "Upgrade-Insecure-Requests" to "1",
         "Referer" to "$mainUrl/"
     )
 
@@ -499,7 +509,7 @@ class NimeIndo : MainAPI() {
                     batchUrl,
                     data = mapOf("f.req" to payload),
                     headers = bloggerHeaders(url) + mapOf("Content-Type" to "application/x-www-form-urlencoded;charset=UTF-8", "Origin" to "https://www.blogger.com", "X-Same-Domain" to "1"),
-                    referer = "https://www.blogger.com/"
+                    referer = url
                 ).text
             }.getOrNull().orEmpty().basicHtmlDecode().unescapeJs()
             body.extractUrls().filter { it.isDirectMedia() }.forEach(results::add)
@@ -509,9 +519,13 @@ class NimeIndo : MainAPI() {
 
     private fun mediaHeaders(url: String, referer: String): Map<String, String> {
         val lower = url.lowercase(Locale.ROOT)
-        val base = mapOf("User-Agent" to USER_AGENT, "Accept" to "*/*", "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7")
+        val base = mapOf(
+            "User-Agent" to chromeUa,
+            "Accept" to "*/*",
+            "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
+        )
         return when {
-            lower.contains("googlevideo.com") || lower.contains("videoplayback") -> base + mapOf("Referer" to "https://youtube.googleapis.com/", "Range" to "bytes=0-")
+            lower.contains("googlevideo.com") || lower.contains("videoplayback") -> base + mapOf("Range" to "bytes=0-")
             lower.contains("dmcdn.net") || lower.contains("dailymotion.com") || lower.contains("cdndirector.dailymotion.com") -> base + mapOf("Referer" to "https://geo.dailymotion.com/", "Origin" to "https://geo.dailymotion.com")
             else -> base + mapOf("Referer" to referer, "Origin" to origin(referer), "Range" to "bytes=0-")
         }
@@ -521,7 +535,7 @@ class NimeIndo : MainAPI() {
         val lower = url.lowercase(Locale.ROOT)
         return when {
             lower.contains("dmcdn.net") || lower.contains("dailymotion.com") || lower.contains("cdndirector.dailymotion.com") -> "https://geo.dailymotion.com/"
-            lower.contains("googlevideo.com") || lower.contains("videoplayback") -> "https://youtube.googleapis.com/"
+            lower.contains("googlevideo.com") || lower.contains("videoplayback") -> ""
             else -> referer
         }
     }
@@ -529,7 +543,7 @@ class NimeIndo : MainAPI() {
     private fun playerHeaders(referer: String): Map<String, String> = siteHeaders + mapOf("Referer" to referer, "Origin" to origin(referer))
 
     private fun dailymotionHeaders(): Map<String, String> = mapOf(
-        "User-Agent" to USER_AGENT,
+        "User-Agent" to chromeUa,
         "Accept" to "application/json,text/plain,*/*",
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer" to "https://geo.dailymotion.com/",
@@ -537,9 +551,12 @@ class NimeIndo : MainAPI() {
     )
 
     private fun bloggerHeaders(referer: String): Map<String, String> = mapOf(
-        "User-Agent" to USER_AGENT,
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent" to chromeUa,
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Sec-Ch-Ua" to "\"Google Chrome\";v=\"125\", \"Chromium\";v=\"125\", \"Not.A/Brand\";v=\"24\"",
+        "Sec-Ch-Ua-Mobile" to "?0",
+        "Sec-Ch-Ua-Platform" to "\"Windows\"",
         "Referer" to referer
     )
 

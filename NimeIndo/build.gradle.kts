@@ -1,5 +1,5 @@
 // use an integer for version numbers
-version = 2
+version = 5
 
 cloudstream {
     description = "NimeIndo - Nonton streaming anime dan donghua subtitle Indonesia"
