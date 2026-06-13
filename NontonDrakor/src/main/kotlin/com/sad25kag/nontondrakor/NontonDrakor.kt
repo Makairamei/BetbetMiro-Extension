@@ -196,7 +196,7 @@ class NontonDrakor : MainAPI() {
         val emitted = linkedSetOf<String>()
         var delivered = 0
 
-        fun emitDirect(rawUrl: String?, sourceName: String, refererUrl: String, typeHint: ExtractorLinkType? = null) {
+        suspend fun emitDirect(rawUrl: String?, sourceName: String, refererUrl: String, typeHint: ExtractorLinkType? = null) {
             val fixed = rawUrl.decodeCandidate()?.absoluteUrl(refererUrl)?.cleanMediaUrl() ?: return
             if (!fixed.isEvidenceMediaUrl() || !emitted.add(fixed)) return
             val type = typeHint ?: if (fixed.contains(".m3u8", true)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
