@@ -49,15 +49,10 @@ class NoDrasia : MainAPI() {
         "$mainUrl/category/drama-china/page/%d/" to "Drama China",
         "$mainUrl/category/drama-taiwan/page/%d/" to "Drama Taiwan",
         "$mainUrl/category/drama-thailand/page/%d/" to "Drama Thailand",
-        "$mainUrl/genre/drama/page/%d/" to "Drama",
-        "$mainUrl/genre/romance/page/%d/" to "Romance",
         "$mainUrl/genre/comedy/page/%d/" to "Comedy",
         "$mainUrl/genre/fantasy/page/%d/" to "Fantasy",
         "$mainUrl/genre/historical/page/%d/" to "Historical",
-        "$mainUrl/genre/youth/page/%d/" to "Youth",
-        "$mainUrl/country/korea/page/%d/" to "Korea",
-        "$mainUrl/country/china/page/%d/" to "China",
-        "$mainUrl/country/thailand/page/%d/" to "Thailand"
+        "$mainUrl/genre/youth/page/%d/" to "Youth"
     )
 
     private val headers = mapOf(
