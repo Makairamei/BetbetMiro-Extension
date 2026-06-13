@@ -1,5 +1,6 @@
 package com.nonton01
 
+import com.lagradost.cloudstream3.TvType
 import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -16,22 +17,27 @@ object Nonton01Utils {
         "Referer" to "${(originOf(referer) ?: Nonton01Seeds.MAIN_URL).trimEnd('/')}/"
     )
 
-    fun videoHeaders(referer: String): Map<String, String> = mapOf(
-        "User-Agent" to USER_AGENT,
-        "Accept" to "*/*",
-        "Referer" to referer
-    )
+    fun ajaxHeaders(pageUrl: String): Map<String, String> {
+        val origin = originOf(pageUrl) ?: Nonton01Seeds.SOURCE_URL
+        return siteHeadersFor(pageUrl) + mapOf(
+            "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+            "Referer" to pageUrl,
+            "Origin" to origin,
+            "Accept" to "application/json, text/javascript, */*; q=0.01",
+            "X-Requested-With" to "XMLHttpRequest"
+        )
+    }
 
-    private val catalogSegments = setOf(
-        "", "page", "dmca", "faq", "kontak", "contact", "about", "privacy",
-        "movie", "movies", "film", "tv-series", "series", "tvshows", "tv-shows",
-        "film-semi", "film-dewasa", "adult", "semi", "bokep", "jav", "drakor", "dracin", "k-drama", "drama-china",
-        "action", "adventure", "animation", "anime", "comedy", "crime",
-        "drama", "fantasy", "horror", "mystery", "romance", "sci-fi",
-        "science-fiction", "thriller", "k-drama", "indonesia", "usa", "korea",
-        "japan", "year", "country", "genre", "quality", "tag", "cast",
-        "director", "author", "category", "search"
-    )
+    fun videoHeaders(referer: String): Map<String, String> {
+        val origin = originOf(referer)
+        val headers = linkedMapOf(
+            "User-Agent" to USER_AGENT,
+            "Accept" to "*/*",
+            "Referer" to referer
+        )
+        if (!origin.isNullOrBlank()) headers["Origin"] = origin
+        return headers
+    }
 
     fun cleanText(value: String?): String = value.orEmpty()
         .replace("\u00a0", " ")
@@ -97,9 +103,7 @@ object Nonton01Utils {
         return raw.trimEnd('/') + "/page/$page/"
     }
 
-    fun searchUrl(mainUrl: String, query: String): String {
-        return "${mainUrl.trimEnd('/')}/?s=${query.urlEncoded()}"
-    }
+    fun searchUrl(mainUrl: String, query: String): String = "${mainUrl.trimEnd('/')}/?s=${query.urlEncoded()}"
 
     fun isValidPoster(url: String?): Boolean {
         val raw = url.orEmpty().trim()
@@ -132,28 +136,41 @@ object Nonton01Utils {
     }
 
     fun mirrorUrlsFor(url: String): List<String> {
-        val currentOrigin = originOf(url) ?: return Nonton01Seeds.MIRROR_URLS.map { base ->
-            base.trimEnd('/') + "/" + url.trimStart('/')
-        }.distinct()
+        val currentOrigin = originOf(url)
         val pathAndQuery = runCatching {
             val uri = URI(url)
             val path = uri.rawPath.orEmpty().ifBlank { "/" }
             val query = uri.rawQuery?.let { "?$it" }.orEmpty()
             path + query
-        }.getOrDefault("/")
-        return (listOf(currentOrigin) + Nonton01Seeds.MIRROR_URLS)
-            .distinct()
-            .map { it.trimEnd('/') + pathAndQuery }
-            .distinct()
+        }.getOrDefault("/" + url.trimStart('/'))
+        val origins = (listOfNotNull(currentOrigin) + Nonton01Seeds.MIRROR_URLS).distinct()
+        return origins.map { it.trimEnd('/') + pathAndQuery }.distinct()
     }
+
+    private val catalogSegments = setOf(
+        "", "page", "dmca", "faq", "kontak", "contact", "about", "privacy",
+        "movie", "movies", "film", "tv-series", "series", "tvshows", "tv-shows",
+        "genre-film", "film-semi", "adult", "semi", "drakor", "dracin",
+        "action", "adventure", "animation", "anime", "biography", "comedy", "crime",
+        "documentary", "drama", "erotic", "family", "fantasy", "history", "horror",
+        "music", "mystery", "reality", "romance", "sci-fi", "science-fiction",
+        "soap", "sport", "talk-show", "thriller", "tv-movie", "tv-special", "war",
+        "western", "indonesia", "usa", "korea", "japan", "year", "country", "genre",
+        "quality", "tag", "cast", "director", "author", "category", "search"
+    )
+
+    private val playablePrefixes = setOf(
+        "movie", "movies", "film", "tv-series", "series", "tvshows", "tv-shows",
+        "episode", "episodes", "film-semi", "drakor", "dracin"
+    )
 
     fun isCatalogUrl(url: String): Boolean {
         val path = runCatching { URI(url).path.orEmpty().trim('/') }.getOrDefault("")
         if (path.isBlank()) return true
         val parts = path.split('/').filter { it.isNotBlank() }
         if (parts.isEmpty()) return true
-        if (parts.first() in setOf("year", "country", "genre", "tag", "quality", "cast", "director", "page")) return true
-        if (parts.size > 1 && parts.contains("page")) return true
+        if (parts.first().lowercase() in setOf("year", "country", "genre", "tag", "quality", "cast", "director", "page")) return true
+        if (parts.size > 1 && parts.any { it.equals("page", true) }) return true
         return parts.size == 1 && parts.first().lowercase() in catalogSegments
     }
 
@@ -164,25 +181,19 @@ object Nonton01Utils {
         if (path.isBlank()) return false
         val parts = path.split('/').filter { it.isNotBlank() }
         if (parts.isEmpty()) return false
-
         val slug = parts.last().lowercase()
         if (slug in catalogSegments || slug == "page") return false
         if (slug.toIntOrNull() != null) return false
-        if (slug.contains("wp-") || slug.endsWith(".jpg") || slug.endsWith(".png") || slug.endsWith(".webp") || slug.endsWith(".gif")) return false
-
-        return when {
-            parts.size == 1 -> true
-            parts.size == 2 && parts.first().lowercase() in setOf("movie", "movies", "film", "tv-series", "series", "film-semi", "film-dewasa", "drakor", "dracin") -> true
-            else -> false
-        }
+        if (slug.endsWith(".jpg") || slug.endsWith(".png") || slug.endsWith(".webp") || slug.endsWith(".gif")) return false
+        return parts.size == 1 || (parts.size == 2 && parts.first().lowercase() in playablePrefixes)
     }
 
-    fun typeFromUrlOrTitle(url: String, title: String): com.lagradost.cloudstream3.TvType {
+    fun typeFromUrlOrTitle(url: String, title: String): TvType {
         val low = "$url $title".lowercase()
         return when {
-            low.contains("jav") || low.contains("adult") || low.contains("dewasa") || low.contains("semi") || low.contains("bokep") -> com.lagradost.cloudstream3.TvType.NSFW
-            low.contains("series") || low.contains("episode") || low.contains("season") -> com.lagradost.cloudstream3.TvType.TvSeries
-            else -> com.lagradost.cloudstream3.TvType.Movie
+            low.contains("adult") || low.contains("semi") || low.contains("erotic") -> TvType.NSFW
+            low.contains("tvshows") || low.contains("tv-series") || low.contains("series") || low.contains("episode") || low.contains("season") -> TvType.TvSeries
+            else -> TvType.Movie
         }
     }
 
@@ -197,10 +208,9 @@ object Nonton01Utils {
         }
     }
 
-    fun decodeMaybe(value: String): String {
-        return runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
-            .replace("\\/", "/")
-            .replace("&amp;", "&")
-            .replace("\\u0026", "&")
-    }
+    fun decodeMaybe(value: String): String = runCatching { URLDecoder.decode(value, "UTF-8") }
+        .getOrDefault(value)
+        .replace("\\/", "/")
+        .replace("&amp;", "&")
+        .replace("\\u0026", "&")
 }

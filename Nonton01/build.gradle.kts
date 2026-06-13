@@ -1,10 +1,10 @@
-version = 14
+version = 15
 
 cloudstream {
     language = "id"
-    description = "Nonton01 provider aktif dengan domain IP terbaru, DooPlay AJAX evidence, dan extractor Cinemaz/AbyssPlayer bounded."
+    description = "Nonton01 provider aktif berbasis HAR: main source 01ntn.cc, detail DooPlay 91.208.197.221, playback Cinemaz dan 01Player/Abyss."
     authors = listOf("sad25kag")
     status = 1
     tvTypes = listOf("Movie", "TvSeries", "NSFW")
-    iconUrl = "https://www.google.com/s2/favicons?domain=01nonton.top&sz=256"
+    iconUrl = "https://www.google.com/s2/favicons?domain=01ntn.cc&sz=256"
 }

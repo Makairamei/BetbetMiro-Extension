@@ -37,7 +37,10 @@ class Nonton01Provider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val candidates = Nonton01Seeds.MIRROR_URLS.map { searchUrl(it, query) }
+        val candidates = listOf(
+            searchUrl(Nonton01Seeds.MAIN_URL, query),
+            searchUrl(Nonton01Seeds.SOURCE_URL, query)
+        ).distinct()
         return firstNonEmptyPageResult(candidates)
     }
 
@@ -73,6 +76,6 @@ class Nonton01Provider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        return Nonton01Extractor.loadLinks(name, mainUrl, data, subtitleCallback, callback)
+        return Nonton01Extractor.loadLinks(name, data, subtitleCallback, callback)
     }
 }

@@ -20,60 +20,55 @@ import org.jsoup.nodes.Element
 
 object Nonton01Parser {
     private val cardSelectors = listOf(
-        "article",
-        ".ml-item",
-        ".movie",
-        ".movie-item",
+        "article.item.movies",
+        "article.item.tvshows",
+        "article.item",
+        ".items article",
         ".result-item",
-        ".film",
-        ".post",
+        ".movie-item",
+        ".ml-item",
+        ".post:has(img)",
         ".item:has(img)",
-        ".owl-item:has(img)",
-        "a[href]:has(img)"
+        "a[href*='/movies/']:has(img)",
+        "a[href*='/tvshows/']:has(img)",
+        "a[href*='/movie/']:has(img)",
+        "a[href*='/episode/']:has(img)"
     ).joinToString(",")
 
     private const val IMAGE_SELECTOR =
         "img[src], img[data-src], img[data-lazy-src], img[data-original], img[data-wpfc-original-src], img[srcset]"
 
     fun parseListing(api: MainAPI, document: Document): List<SearchResponse> {
-        val primary = document.select(cardSelectors)
-        val containers: List<Element> = if (primary.isNotEmpty()) {
-            primary.toList()
-        } else {
-            document.select("a[href]:has(img)").toList()
-        }
-
+        val containers = document.select(cardSelectors).ifEmpty { document.select("a[href]:has(img)") }
         return containers
             .mapNotNull { parseCard(api, it) }
             .distinctBy { it.url }
-            .take(48)
+            .take(60)
     }
 
     private fun parseCard(api: MainAPI, element: Element): SearchResponse? {
         val link = when {
-            element.tagName().equals("a", ignoreCase = true) && element.hasAttr("href") -> element
+            element.tagName().equals("a", true) && element.hasAttr("href") -> element
             else -> element.selectFirst("a[href]:has(img)")
-                ?: element.selectFirst("h2 a[href], h3 a[href], .title a[href], a[title][href]")
+                ?: element.selectFirst("h2 a[href], h3 a[href], .title a[href], .data h3 a[href], a[title][href]")
                 ?: return null
         }
-
         val href = absoluteUrl(api.mainUrl, link.attr("href")) ?: return null
         if (!isVideoUrl(href)) return null
 
         val image = link.selectFirst(IMAGE_SELECTOR)
             ?: element.selectFirst(IMAGE_SELECTOR)
             ?: element.parent()?.selectFirst(IMAGE_SELECTOR)
-            ?: return null
-
         val title = cleanTitle(
-            link.attr("title").ifBlank { link.attr("aria-label") }.ifBlank { link.text() }.ifBlank {
-                image.attr("alt").ifBlank { image.attr("title") }
-            }
+            link.attr("title")
+                .ifBlank { link.attr("aria-label") }
+                .ifBlank { link.text() }
+                .ifBlank { element.selectFirst(".data h3, h3, h2, .title")?.text().orEmpty() }
+                .ifBlank { image?.attr("alt").orEmpty() }
+                .ifBlank { image?.attr("title").orEmpty() }
         ).ifBlank { return null }
 
-        val poster = extractPoster(api.mainUrl, image, link) ?: extractPoster(api.mainUrl, image, element)
-        if (!isValidPoster(poster)) return null
-
+        val poster = extractPoster(api.mainUrl, image, element)
         val type = typeFromUrlOrTitle(href, title)
         return api.newMovieSearchResponse(title, href, type) {
             posterUrl = poster
@@ -82,54 +77,31 @@ object Nonton01Parser {
 
     suspend fun parseLoadResponse(api: MainAPI, url: String, document: Document): LoadResponse? {
         val title = extractDetailTitle(document, url) ?: return null
-
-        val contentRoot = document.selectFirst("article, .entry-content, .single, .post, main") ?: document
         val poster = extractDetailPoster(api.mainUrl, title, document)
             ?: extractPoster(
                 api.mainUrl,
-                contentRoot.selectFirst(".poster img, .thumb img, .mvic-thumb img, .wp-post-image, img[src*='uploads'], img[alt], img[title]"),
-                contentRoot
+                document.selectFirst(".poster img, .thumb img, .mvic-thumb img, .wp-post-image, img[src*='uploads'], img[alt], img[title]"),
+                document
             )
             ?: absoluteUrl(api.mainUrl, document.selectFirst("meta[property=og:image]")?.attr("content"))
                 ?.takeIf { isValidPoster(it) }
 
         val plot = cleanText(
-            document.selectFirst(".desc, .description, .entry-content p, .sinopsis, .synopsis")?.text()
+            document.selectFirst(".desc, .description, .entry-content p, .sinopsis, .synopsis, .wp-content p")?.text()
                 ?: document.selectFirst("meta[name=description]")?.attr("content")
         )
 
-        val tags = document.select(
-            "a[href*='/genre/'], " +
-                "a[href*='/country/'], " +
-                "a[href*='/year/'], " +
-                "a[href*='/quality/'], " +
-                "a[href*='/action/'], " +
-                "a[href*='/adventure/'], " +
-                "a[href*='/animation/'], " +
-                "a[href*='/comedy/'], " +
-                "a[href*='/crime/'], " +
-                "a[href*='/drama/'], " +
-                "a[href*='/fantasy/'], " +
-                "a[href*='/horror/'], " +
-                "a[href*='/mystery/'], " +
-                "a[href*='/romance/'], " +
-                "a[href*='/sci-fi/'], " +
-                "a[href*='/thriller/']"
-        )
+        val tags = document.select("a[href*='/genre/'], a[href*='/country/'], a[href*='/year/'], a[href*='/quality/']")
             .map { cleanTitle(it.text()) }
-            .filter { it.length in 2..30 }
-            .filterNot { tag ->
-                tag.equals("Watch", true) ||
-                    tag.equals("Trailer", true) ||
-                    tag.equals("Download", true) ||
-                    tag.equals("Home", true)
-            }
+            .filter { it.length in 2..35 }
+            .filterNot { tag -> tag.equals("Watch", true) || tag.equals("Trailer", true) || tag.equals("Download", true) || tag.equals("Home", true) }
             .distinct()
             .take(16)
 
-        val episodes = parseEpisodes(api, document, url)
         val recommendations = parseRecommendations(api, document, url)
-        val type = if (episodes.size > 1) TvType.TvSeries else typeFromUrlOrTitle(url, title)
+        val episodes = parseEpisodes(api, document, url)
+        val detectedType = typeFromUrlOrTitle(url, title)
+        val type = if (detectedType == TvType.TvSeries || episodes.size > 1) TvType.TvSeries else detectedType
 
         return if (type == TvType.TvSeries) {
             api.newTvSeriesLoadResponse(title, url, type, episodes) {
@@ -151,28 +123,36 @@ object Nonton01Parser {
 
     private fun parseEpisodes(api: MainAPI, document: Document, fallbackUrl: String): List<Episode> {
         val seen = linkedSetOf<String>()
-        val selectors = ".eps a[href], .episode a[href], .episodes a[href], .episodelist a[href], a[href*='episode'], a[href*='season']"
+        val selectors = listOf(
+            "#seasons a[href]",
+            ".se-c a[href]",
+            ".episodios a[href]",
+            ".episodes a[href]",
+            ".episodelist a[href]",
+            ".episode a[href]",
+            ".eps a[href]",
+            "a[href*='/episode/']",
+            "a[href*='/episodes/']",
+            "a[href*='season']"
+        ).joinToString(",")
+
         val episodes = document.select(selectors).mapNotNull { anchor ->
             val href = absoluteUrl(api.mainUrl, anchor.attr("href")) ?: return@mapNotNull null
             if (!isVideoUrl(href)) return@mapNotNull null
             val normalized = href.substringBefore("#")
             if (!seen.add(normalized)) return@mapNotNull null
-
-            val text = cleanTitle(anchor.text())
+            val rawText = cleanTitle(anchor.text())
                 .ifBlank { cleanTitle(anchor.attr("title")) }
-                .ifBlank { "Episode" }
-
+                .ifBlank { titleFromUrl(href) ?: "Episode" }
             api.newEpisode(href) {
-                name = text
+                name = rawText
+                episode = episodeNumber(rawText, href)
+                season = seasonNumber(rawText, href)
             }
         }
 
         return episodes.ifEmpty {
-            listOf(
-                api.newEpisode(fallbackUrl) {
-                    name = "Movie"
-                }
-            )
+            listOf(api.newEpisode(fallbackUrl) { name = if (fallbackUrl.contains("tvshows", true)) "Episode" else "Movie" })
         }
     }
 
@@ -189,62 +169,57 @@ object Nonton01Parser {
             "#related",
             "#recommended"
         ).joinToString(",")
-
-        val relatedResults = document.selectFirst(relatedSelectors)
-            ?.select(cardSelectors)
-            ?.mapNotNull { parseCard(api, it) }
-            .orEmpty()
-
-        return (relatedResults.ifEmpty { parseListing(api, document) })
+        val related = document.selectFirst(relatedSelectors)?.select(cardSelectors)?.mapNotNull { parseCard(api, it) }.orEmpty()
+        return (related.ifEmpty { parseListing(api, document) })
             .filterNot { it.url == currentUrl }
             .distinctBy { it.url }
             .take(12)
     }
 
-
     private fun extractDetailPoster(baseUrl: String, title: String, document: Document): String? {
         val tokens = titleTokens(title)
         val candidates = mutableListOf<Pair<Int, String>>()
-
         document.select(IMAGE_SELECTOR).forEach { image ->
             val sourceText = listOf(
-                image.attr("alt"),
-                image.attr("title"),
-                image.attr("aria-label"),
-                image.attr("src"),
-                image.attr("data-src"),
-                image.attr("data-lazy-src"),
-                image.attr("data-original")
+                image.attr("alt"), image.attr("title"), image.attr("aria-label"),
+                image.attr("src"), image.attr("data-src"), image.attr("data-lazy-src"), image.attr("data-original")
             ).joinToString(" ").lowercase()
-
-            val ancestry = generateSequence(image) { element -> element.parent() }
+            val ancestry = generateSequence(image) { it.parent() }
                 .take(5)
                 .joinToString(" ") { "${it.id()} ${it.className()}" }
                 .lowercase()
-
             imageSourceCandidates(image).forEach { raw ->
                 val poster = absoluteUrl(baseUrl, raw)?.let { upscalePosterUrl(it) } ?: return@forEach
                 if (!isValidPoster(poster)) return@forEach
-
                 val candidateText = "$sourceText ${poster.substringAfterLast('/').substringBefore('?').lowercase()}"
                 val tokenHits = tokens.count { candidateText.contains(it) }
                 var score = tokenHits * 30
-
                 if (tokens.isNotEmpty() && tokenHits >= minOf(2, tokens.size)) score += 80
                 if (ancestry.contains("poster") || ancestry.contains("thumb") || ancestry.contains("mvic") || ancestry.contains("post-thumbnail")) score += 40
-                if (poster.contains("/wp-content/uploads/", ignoreCase = true)) score += 20
-                if (candidateText.contains("nonton01") || candidateText.contains("logo")) score -= 150
-
-                candidates += (score to poster)
+                if (poster.contains("/wp-content/uploads/", true)) score += 20
+                candidates += score to poster
             }
         }
-
-        return candidates
-            .filter { it.first > 0 }
+        return candidates.filter { it.first > 0 }
             .distinctBy { it.second }
             .sortedByDescending { it.first }
             .firstOrNull()
             ?.second
+    }
+
+    fun extractPoster(baseUrl: String, image: Element?, container: Element? = null): String? {
+        val candidates = mutableListOf<String?>()
+        if (image != null) candidates += imageSourceCandidates(image)
+        if (container != null) {
+            candidates += container.selectFirst("noscript img[src]")?.attr("src")
+            candidates += container.selectFirst("img[data-src], img[data-lazy-src], img[data-original], img[src]")?.let { imageSourceCandidates(it).firstOrNull() }
+            val style = container.attr("style").ifBlank { container.selectFirst("[style*=background]")?.attr("style").orEmpty() }
+            candidates += Regex("""url\((['\"]?)(.*?)\1\)""").find(style)?.groupValues?.getOrNull(2)
+            candidates += container.selectFirst("meta[property=og:image]")?.attr("content")
+        }
+        return candidates.asSequence()
+            .mapNotNull { absoluteUrl(baseUrl, it)?.let { poster -> upscalePosterUrl(poster) } }
+            .firstOrNull { isValidPoster(it) }
     }
 
     private fun imageSourceCandidates(image: Element): List<String> {
@@ -253,13 +228,39 @@ object Nonton01Parser {
             image.attr(attr).takeIf { it.isNotBlank() }?.let { sources += it }
         }
         listOf("data-srcset", "srcset").forEach { attr ->
-            image.attr(attr)
-                .split(',')
-                .map { it.trim().substringBefore(' ') }
-                .filter { it.isNotBlank() }
-                .forEach { sources += it }
+            image.attr(attr).split(',').map { it.trim().substringBefore(' ') }.filter { it.isNotBlank() }.forEach { sources += it }
         }
         return sources.distinct()
+    }
+
+    private fun extractDetailTitle(document: Document, url: String): String? {
+        val candidates = listOfNotNull(
+            document.selectFirst("h1.entry-title, h1.post-title, .single-title h1, .entry-header h1, h1")?.text(),
+            document.selectFirst("meta[property=og:title]")?.attr("content"),
+            document.selectFirst("meta[name=twitter:title]")?.attr("content"),
+            document.selectFirst("meta[name=title]")?.attr("content"),
+            document.title(),
+            titleFromUrl(url)
+        )
+        return candidates.asSequence().map { cleanDetailTitle(it) }.firstOrNull { it.length >= 3 }
+    }
+
+    private fun cleanTitle(value: String?): String = cleanText(value)
+        .replace(Regex("(?i)\\b(nonton|streaming|download|subtitle indonesia|sub indo|bluray|webrip|web-dl|hdrip|brrip|dvdrip)\\b"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim(' ', '-', '|', ':')
+
+    private fun cleanDetailTitle(value: String): String = cleanTitle(value)
+        .substringBefore(" - 01NONTON", "")
+        .substringBefore(" | 01NONTON", "")
+        .substringBefore(" - Nonton", "")
+        .ifBlank { cleanTitle(value) }
+
+    private fun titleFromUrl(url: String): String? {
+        val slug = url.trimEnd('/').substringAfterLast('/').substringBefore('?')
+        if (slug.isBlank()) return null
+        return slug.replace('-', ' ').replace('_', ' ').split(' ')
+            .joinToString(" ") { part -> part.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() } }
     }
 
     private fun titleTokens(title: String): List<String> {
@@ -272,100 +273,19 @@ object Nonton01Parser {
             .take(6)
     }
 
-    private fun upscalePosterUrl(url: String): String {
-        return url.replace(Regex("-\\d+x\\d+(?=\\.(?:jpg|jpeg|png|webp)(?:\\?|$))", RegexOption.IGNORE_CASE), "")
+    private fun upscalePosterUrl(url: String): String = url.replace(
+        Regex("-\\d+x\\d+(?=\\.(?:jpg|jpeg|png|webp)(?:\\?|$))", RegexOption.IGNORE_CASE),
+        ""
+    )
+
+    private fun episodeNumber(text: String, url: String): Int? {
+        val raw = "$text $url"
+        return Regex("(?i)(?:episode|eps|ep)[^0-9]{0,4}(\\d{1,4})").find(raw)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: Regex("(?i)[?&]episode=(\\d{1,4})").find(raw)?.groupValues?.getOrNull(1)?.toIntOrNull()
     }
 
-    fun extractPoster(baseUrl: String, image: Element?, container: Element? = null): String? {
-        val candidates = mutableListOf<String?>()
-        if (image != null) {
-            candidates += imageSourceCandidates(image)
-        }
-        if (container != null) {
-            candidates += container.selectFirst("noscript img[src]")?.attr("src")
-            candidates += container.selectFirst("img[data-src], img[data-lazy-src], img[data-original], img[src]")?.let {
-                imageSourceCandidates(it).firstOrNull()
-            }
-            val style = container.attr("style")
-                .ifBlank { container.selectFirst("[style*=background]")?.attr("style").orEmpty() }
-            candidates += Regex("""url\((['\"]?)(.*?)\1\)""").find(style)?.groupValues?.getOrNull(2)
-            candidates += container.selectFirst("meta[property=og:image]")?.attr("content")
-        }
-        return candidates.asSequence()
-            .mapNotNull { absoluteUrl(baseUrl, it)?.let { poster -> upscalePosterUrl(poster) } }
-            .firstOrNull { isValidPoster(it) }
-    }
-
-    private fun extractDetailTitle(document: Document, url: String): String? {
-        val descriptionTitle = document.selectFirst("meta[property=og:description], meta[name=description]")
-            ?.attr("content")
-            ?.let { text ->
-                Regex("""(?i)\bnonton\s+(.+?)\s+(?:streaming|subtitle|sub\b|film\b|movie\b|online\b|gratis\b)""")
-                    .find(text)
-                    ?.groupValues
-                    ?.getOrNull(1)
-            }
-
-        val candidates = listOfNotNull(
-            descriptionTitle,
-            document.selectFirst("meta[property=og:title]")?.attr("content"),
-            document.selectFirst("meta[name=twitter:title]")?.attr("content"),
-            document.selectFirst("meta[name=title]")?.attr("content"),
-            document.title(),
-            document.selectFirst("h1.entry-title, h1.post-title, .single-title h1, .entry-header h1")?.text(),
-            document.selectFirst("h1")?.text(),
-            titleFromUrl(url)
-        )
-
-        return candidates
-            .asSequence()
-            .map { cleanDetailTitle(it) }
-            .firstOrNull { title ->
-                title.length >= 3 &&
-                    !title.equals("Trailer", ignoreCase = true) &&
-                    !title.equals("Download", ignoreCase = true) &&
-                    !title.equals("Watch", ignoreCase = true) &&
-                    !title.equals("Movie", ignoreCase = true)
-            }
-    }
-
-    private fun titleFromUrl(url: String): String {
-        val slug = url.trimEnd('/')
-            .substringAfterLast('/')
-            .substringBefore('?')
-            .substringBefore('#')
-        return slug
-            .replace('-', ' ')
-            .replace('_', ' ')
-            .split(' ')
-            .filter { it.isNotBlank() }
-            .joinToString(" ") { part ->
-                if (part.all { ch -> ch.isDigit() }) part
-                else part.lowercase().replaceFirstChar { ch -> ch.uppercase() }
-            }
-    }
-
-    private fun cleanDetailTitle(value: String?): String {
-        return cleanTitle(value)
-            .replace(Regex("(?i)^nonton\\s+"), "")
-            .replace(Regex("(?i)\\s+streaming\\s+movies?.*$"), "")
-            .replace(Regex("(?i)\\s+streaming\\s+film.*$"), "")
-            .replace(Regex("(?i)\\s+film\\s+terbaru.*$"), "")
-            .replace(Regex("(?i)\\s+online\\s+dan\\s+gratis.*$"), "")
-            .replace(Regex("(?i)\\s+terlengkap\\s+subtitle.*$"), "")
-            .replace(Regex("(?i)\\s+01nonton.*$"), "")
-            .replace(Regex("(?i)\\s+-\\s+trailer$"), "")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-    }
-
-    private fun cleanTitle(value: String?): String {
-        return cleanText(value)
-            .replace(Regex("(?i)^permalink\\s+to:\\s*"), "")
-            .replace(Regex("(?i)^permalink:\\s*"), "")
-            .replace(Regex("(?i)\\s+-\\s+nonton01$"), "")
-            .replace(Regex("(?i)\\s+subtitle\\s+indonesia$"), " Sub")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+    private fun seasonNumber(text: String, url: String): Int? {
+        val raw = "$text $url"
+        return Regex("(?i)(?:season|seas|s)[^0-9]{0,4}(\\d{1,3})").find(raw)?.groupValues?.getOrNull(1)?.toIntOrNull()
     }
 }
