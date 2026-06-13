@@ -131,7 +131,7 @@ class NontonDrakor : MainAPI() {
         }
     }
 
-    private fun Document.toEpisodeMovieLoadResponse(pageUrl: String): LoadResponse {
+    private suspend fun Document.toEpisodeMovieLoadResponse(pageUrl: String): LoadResponse {
         val title = extractDetailTitle(pageUrl)?.cleanEpisodeTitle(null) ?: pageUrl.slugTitle().cleanEpisodeTitle(null)
         val poster = extractPoster(pageUrl)
         val plot = extractPlot()
