@@ -336,7 +336,7 @@ object Nonton01Extractor {
         return digest.joinToString("") { byte -> "%02x".format(byte) }
     }
 
-    private fun emitDirect(
+    private suspend fun emitDirect(
         providerName: String,
         label: String,
         url: String,
@@ -403,7 +403,7 @@ object Nonton01Extractor {
         return Regex("""(?i)(\d{3,4})p?""").find(value)?.groupValues?.getOrNull(1)?.toIntOrNull()
     }
 
-    private fun collectSubtitles(pageUrl: String, document: Document, subtitleCallback: (SubtitleFile) -> Unit) {
+    private suspend fun collectSubtitles(pageUrl: String, document: Document, subtitleCallback: (SubtitleFile) -> Unit) {
         val urls = document.select("track[src], a[href$=.srt], a[href$=.vtt], a[href*='subtitle']")
             .mapNotNull { absoluteUrl(pageUrl, it.attr("src").ifBlank { it.attr("href") }) }
         urls.forEach { subtitleUrl ->
@@ -416,7 +416,7 @@ object Nonton01Extractor {
         }
     }
 
-    private fun collectSubtitlesFromText(pageUrl: String, text: String, subtitleCallback: (SubtitleFile) -> Unit) {
+    private suspend fun collectSubtitlesFromText(pageUrl: String, text: String, subtitleCallback: (SubtitleFile) -> Unit) {
         Regex("""https?://[^'"<>\s]+\.(?:srt|vtt)(?:\?[^'"<>\s]*)?""", RegexOption.IGNORE_CASE)
             .findAll(decodeMaybe(text))
             .map { it.value }
