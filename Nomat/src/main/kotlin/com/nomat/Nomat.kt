@@ -28,9 +28,7 @@ class Nomat : MainAPI() {
 
     override val mainPage = mainPageOf(
         "slug/film-terbaru" to "Film Terbaru",
-        "slug/film-terfavorit" to "Film Terfavorit",
         "slug/film-box-office" to "Box Office",
-        "slug/semua-film" to "Semua Film",
 
         "category/genre/action" to "Action",
         "category/genre/horror" to "Horror",
