@@ -108,7 +108,10 @@ class NontonDrakor : MainAPI() {
         }
 
         return if (type == TvType.Movie || episodes.isEmpty()) {
-            newMovieLoadResponse(title, pageUrl, TvType.Movie, extractMoviePlayData(pageUrl) ?: pageUrl.toPlaybackData(pageUrl)) {
+            // Movie detail pages must stay as the playback entrypoint so loadLinks can scan
+            // every source-backed server tab (?player=2, ?player=3, etc.) instead of getting
+            // trapped on the first active iframe.
+            newMovieLoadResponse(title, pageUrl, TvType.Movie, pageUrl.toPlaybackData(pageUrl)) {
                 posterUrl = poster
                 backgroundPosterUrl = poster
                 plot?.let { this.plot = it }
@@ -209,6 +212,14 @@ class NontonDrakor : MainAPI() {
             delivered += resolveWithExtractor(playerUrl, refererUrl)
             val playerText = runCatching { app.get(playerUrl, headers = headers, referer = refererUrl).text }.getOrNull().orEmpty()
             if (playerText.isNotBlank()) {
+                if (lower.contains("strcloud.in")) {
+                    playerText.extractStrcloudVideoCandidates().forEach { candidate ->
+                        val streamUrl = runCatching {
+                            app.get(candidate, headers = candidate.playbackHeaders(playerUrl), referer = playerUrl).url
+                        }.getOrDefault(candidate).cleanMediaUrl()
+                        emitDirect(streamUrl, "Strcloud", "https://strcloud.in/")
+                    }
+                }
                 playerText.extractMediaUrls().forEach { emitDirect(it, playerUrl.hostLabel(), playerUrl) }
                 playerText.extractSubtitleUrls().forEach { subtitleCallback(SubtitleFile(it.subtitleLabel(), it)) }
             }
@@ -523,6 +534,73 @@ class NontonDrakor : MainAPI() {
         return results.distinct()
     }
 
+    private fun String.extractStrcloudVideoCandidates(): List<String> {
+        val clean = replace("\\/", "/").replace("&amp;", "&")
+        val dynamicCandidates = mutableListOf<String>()
+        val staticCandidates = mutableListOf<String>()
+
+        Regex("""(?is)['"]([^'"]*strcloud[^'"]*)['"]\s*\+\s*(?:''\s*\+\s*)?\(['"]([^'"]*get_video\?[^'"]+)['"]\)((?:\.substring\(\d+\))*)""").findAll(clean).forEach { match ->
+            val prefix = match.groupValues[1]
+            val payload = applySubstringChain(match.groupValues[2], match.groupValues[3])
+            dynamicCandidates.add((prefix + payload).normalizeStrcloudVideoUrl())
+        }
+        Regex("""(?i)get_video\?([A-Za-z0-9_=&%.-]+)[^+]{0,120}\+\s*(?:''\s*\+\s*)?['"]([^'"]+)['"]((?:\.substring\(\d+\))+)""").findAll(clean).forEach { match ->
+            val queryPrefix = match.groupValues[1]
+            val payload = applySubstringChain(match.groupValues[2], match.groupValues[3])
+            dynamicCandidates.add("https://strcloud.in/get_video?$queryPrefix$payload".normalizeStrcloudVideoUrl())
+        }
+        Regex("""(?i)['"]([^'"]*get_video\?[^'"]+)['"]\s*\)\.substring\((\d+)\)(?:\.substring\((\d+)\))?""").findAll(clean).forEach { match ->
+            var payload = match.groupValues[1]
+            for (rawStart in listOf(match.groupValues[2], match.groupValues.getOrNull(3).orEmpty())) {
+                val start = rawStart.toIntOrNull() ?: continue
+                payload = if (start <= payload.length) payload.substring(start) else ""
+            }
+            dynamicCandidates.add(payload.normalizeStrcloudVideoUrl())
+        }
+
+        Regex("""(?i)(?:https?:)?//strcloud\.in/get_video\?[^'"<>\s]+""").findAll(clean).forEach { match ->
+            staticCandidates.add(match.value.normalizeStrcloudVideoUrl())
+        }
+        Regex("""(?i)/strcloud\.in/get_video\?[^'"<>\s]+""").findAll(clean).forEach { match ->
+            staticCandidates.add(match.value.normalizeStrcloudVideoUrl())
+        }
+        Regex("""(?i)(?<![A-Za-z0-9_/])get_video\?[^'"<>\s]+""").findAll(clean).forEach { match ->
+            staticCandidates.add(match.value.normalizeStrcloudVideoUrl())
+        }
+
+        return (dynamicCandidates + staticCandidates)
+            .filter { it.contains("/get_video?", true) && it.isStrcloudGetVideoUrl() }
+            .distinct()
+    }
+
+    private fun String.normalizeStrcloudVideoUrl(): String {
+        val raw = trim().trim(' ', '\'', '"').replace("\\/", "/").replace("&amp;", "&")
+        val fixed = when {
+            raw.startsWith("https://", true) || raw.startsWith("http://", true) -> raw
+            raw.startsWith("//") -> "https:$raw"
+            raw.startsWith("/strcloud.in/", true) -> "https://strcloud.in/" + raw.substringAfter("/strcloud.in/")
+            raw.startsWith("strcloud.in/", true) -> "https://$raw"
+            raw.startsWith("/get_video", true) -> "https://strcloud.in$raw"
+            raw.startsWith("get_video", true) -> "https://strcloud.in/$raw"
+            raw.startsWith("in/get_video", true) -> "https://strcloud.$raw"
+            else -> raw
+        }
+        return fixed.cleanMediaUrl()
+    }
+
+    private fun String.isStrcloudGetVideoUrl(): Boolean {
+        return runCatching { URI(this).host?.removePrefix("www.")?.equals("strcloud.in", true) == true }.getOrDefault(false)
+    }
+
+    private fun applySubstringChain(raw: String, chain: String): String {
+        var output = raw
+        Regex("""\.substring\((\d+)\)""").findAll(chain).forEach { match ->
+            val start = match.groupValues[1].toIntOrNull() ?: 0
+            output = if (start <= output.length) output.substring(start) else ""
+        }
+        return output
+    }
+
     private fun String.extractMediaUrls(): List<String> {
         return MEDIA_URL_REGEX.findAll(replace("\\/", "/").replace("&amp;", "&"))
             .map { it.value.cleanMediaUrl() }
@@ -622,8 +700,19 @@ class NontonDrakor : MainAPI() {
             lower.contains("/creator/") || lower.contains("/quality/") || lower.contains("/year/") || lower.contains("/page/")) return false
         val host = runCatching { URI(this).host?.removePrefix("www.") }.getOrNull().orEmpty()
         val sourceHost = runCatching { URI(pageUrl).host?.removePrefix("www.") }.getOrNull().orEmpty()
-        if (host.isNotBlank() && host != sourceHost) return true
+        if (host.isNotBlank() && host != sourceHost) return isEvidencePlayerHost()
         return lower.contains("/eps/") || lower.contains("/episode/") || lower.contains("/player") || lower.contains("/embed") || lower.contains("/watch") || lower.contains("?player")
+    }
+
+    private fun String.isEvidencePlayerHost(): Boolean {
+        val host = runCatching { URI(this).host?.removePrefix("www.")?.lowercase() }.getOrNull().orEmpty()
+        return host.endsWith("justplay.cam") ||
+            host.endsWith("nzn3.org") ||
+            host.endsWith("vidmoly.biz") ||
+            host.endsWith("strcloud.in") ||
+            host.endsWith("tapecontent.net") ||
+            host.endsWith("vmeas.cloud") ||
+            host.contains("sprintcdn")
     }
 
     private fun String.isEvidenceMediaUrl(): Boolean {
