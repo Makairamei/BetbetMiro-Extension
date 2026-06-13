@@ -1,9 +1,9 @@
-version = 6
+version = 7
 
 cloudstream {
     language = "id"
     authors = listOf("sad25kag")
-    description = "NoDrakorID Stable Candidate for richemmerson.com with cleaned categories, duplicate-card filtering, and source-backed sf21/minochinos playback handling."
+    description = "NoDrakorID Stable Candidate for richemmerson.com with direct HAR-backed sf21/minochinos playback bridges, active iframe host routing, and guarded HLS fallback emission."
 
     status = 1
 

@@ -2,12 +2,12 @@ package com.nodrakorid
 
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.USER_AGENT
-import com.lagradost.cloudstream3.mapper
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.extractors.DoodLaExtractor
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
-import com.lagradost.cloudstream3.extractors.VidStack
 import com.lagradost.cloudstream3.extractors.VidHidePro
+import com.lagradost.cloudstream3.extractors.VidStack
+import com.lagradost.cloudstream3.mapper
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
@@ -60,9 +60,9 @@ internal object NoDrakorIDExtractor {
 
     private val playerContainers = listOf(
         "#player", "#player2", "#video", ".player", ".player-area", ".playex", ".movieplay", ".video-content",
-        ".responsive-embed", ".embed-responsive", ".pembed", ".dooplay_player", ".dooplay_player_content",
+        ".responsive-embed", ".embed-responsive", ".gmr-embed-responsive", ".pembed", ".dooplay_player", ".dooplay_player_content",
         ".dooplay_player_option", "#playeroptionsul", ".server", ".servers", ".server-item", ".player-option",
-        ".player-option-item", ".muvipro-player-tabs", ".gmr-embed-responsive", ".tab-content", ".tab-pane",
+        ".player-option-item", ".muvipro-player-tabs", ".gmr-server-wrap", ".gmr-pagi-player", ".tab-content", ".tab-pane",
         ".download", ".dllinks", "#download", ".entry-content", "article"
     ).joinToString(",")
 
@@ -300,6 +300,10 @@ internal object NoDrakorIDExtractor {
             return emitDirect(fixedUrl, referer, label, callback)
         }
 
+        directExtractorFor(fixedUrl)?.let { extractor ->
+            if (safeRunExtractor(extractor, fixedUrl, referer, subtitleCallback, callback)) return true
+        }
+
         if (fixedUrl.contains("abyssplayer.com", true) || fixedUrl.contains("abyss.to", true)) {
             if (resolveAbyssPlayer(fixedUrl, referer, callback)) return true
         }
@@ -326,6 +330,39 @@ internal object NoDrakorIDExtractor {
         return found
     }
 
+    private fun directExtractorFor(url: String): ExtractorApi? {
+        val host = NoDrakorIDUtils.hostOf(url)
+        return when {
+            host.contains("sf21.vidplayer.live") || host.contains("vidplayer.live") -> NoDrakorIDSf21VidPlayer()
+            host.contains("minochinos.com") -> NoDrakorIDMinochinos()
+            host.contains("dintezuvio.com") -> NoDrakorIDDintezuvio()
+            host.contains("boosterx.stream") -> NoDrakorIDBoosterx()
+            host.contains("chillx.top") -> NoDrakorIDChillx()
+            host.contains("jav-vids.xyz") -> NoDrakorIDJavVids()
+            host.contains("upload18.org") -> NoDrakorIDUpload18()
+            else -> null
+        }
+    }
+
+    private suspend fun safeRunExtractor(
+        extractor: ExtractorApi,
+        url: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        var emitted = false
+        withTimeoutOrNull(LOAD_EXTRACTOR_TIMEOUT_MS) {
+            runCatching {
+                extractor.getUrl(url, referer, subtitleCallback) { link ->
+                    emitted = true
+                    callback(link)
+                }
+            }.getOrNull()
+        }
+        return emitted
+    }
+
     private suspend fun emitDirect(
         url: String,
         referer: String,
@@ -335,12 +372,32 @@ internal object NoDrakorIDExtractor {
         val clean = NoDrakorIDUtils.decodeKnownRedirect(url)
         if (!clean.startsWith("http", true)) return false
         return if (NoDrakorIDUtils.isHls(clean)) {
-            M3u8Helper.generateM3u8(
-                label.ifBlank { "NoDrakorID HLS" },
-                clean,
-                referer = referer,
-                headers = NoDrakorIDUtils.videoHeaders(referer)
-            ).forEach(callback)
+            var emitted = false
+            runCatching {
+                M3u8Helper.generateM3u8(
+                    label.ifBlank { "NoDrakorID HLS" },
+                    clean,
+                    referer = referer,
+                    headers = NoDrakorIDUtils.videoHeaders(referer)
+                ).forEach { link ->
+                    emitted = true
+                    callback(link)
+                }
+            }
+            if (!emitted) {
+                callback(
+                    newExtractorLink(
+                        source = label.ifBlank { "NoDrakorID HLS" },
+                        name = label.ifBlank { "NoDrakorID HLS" },
+                        url = clean,
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = referer
+                        this.quality = getQualityFromName(clean).takeIf { it != Qualities.Unknown.value } ?: Qualities.Unknown.value
+                        this.headers = NoDrakorIDUtils.videoHeaders(referer)
+                    }
+                )
+            }
             true
         } else {
             callback(
@@ -394,17 +451,17 @@ internal object NoDrakorIDExtractor {
             val host = source.path("url").asText("").trimEnd('/')
             val path = source.path("path").asText("").trimStart('/')
             if (!status || host.isBlank() || path.isBlank()) return@forEach
-            val label = source.path("label").asText("AbyssPlayer")
+            val sourceLabel = source.path("label").asText("AbyssPlayer")
             val videoUrl = "$host/$path"
             callback(
                 newExtractorLink(
                     source = "AbyssPlayer",
-                    name = "AbyssPlayer $label",
+                    name = "AbyssPlayer $sourceLabel",
                     url = videoUrl,
                     type = ExtractorLinkType.VIDEO
                 ) {
                     this.referer = pageUrl
-                    this.quality = getQualityFromName(label).takeIf { it != Qualities.Unknown.value } ?: getQualityFromName(videoUrl)
+                    this.quality = getQualityFromName(sourceLabel).takeIf { it != Qualities.Unknown.value } ?: getQualityFromName(videoUrl)
                     this.headers = mapOf(
                         "Referer" to "https://abyssplayer.com/",
                         "Origin" to "https://abyssplayer.com",
@@ -556,11 +613,13 @@ internal object NoDrakorIDExtractor {
         val lower = url.lowercase()
         return when {
             NoDrakorIDUtils.looksDirectVideo(lower) -> 0
-            lower.contains("googlevideo") -> 1
-            lower.contains("filepress") -> 2
-            lower.contains("abyssplayer") || lower.contains("boosterx") || lower.contains("chillx") || lower.contains("jav-vids") -> 2
-            lower.contains("jeniusplay") || lower.contains("majorplay") || lower.contains("streamwish") || lower.contains("filemoon") || lower.contains("upload18") -> 3
-            NoDrakorIDUtils.isKnownPlayableHost(lower) -> 4
+            lower.contains("sf21.vidplayer.live") -> 1
+            lower.contains("minochinos.com") || lower.contains("dintezuvio.com") -> 2
+            lower.contains("googlevideo") -> 2
+            lower.contains("filepress") -> 3
+            lower.contains("abyssplayer") || lower.contains("boosterx") || lower.contains("chillx") || lower.contains("jav-vids") -> 3
+            lower.contains("jeniusplay") || lower.contains("majorplay") || lower.contains("streamwish") || lower.contains("filemoon") || lower.contains("upload18") -> 4
+            NoDrakorIDUtils.isKnownPlayableHost(lower) -> 5
             NoDrakorIDUtils.isShortenerUrl(lower) -> 8
             NoDrakorIDUtils.isNoDrakorUrl(lower) -> 9
             else -> 6
@@ -592,7 +651,18 @@ open class NoDrakorIDHostExtractor : ExtractorApi() {
         for (candidate in urls) {
             if (NoDrakorIDUtils.looksDirectVideo(candidate)) {
                 if (NoDrakorIDUtils.isHls(candidate)) {
-                    M3u8Helper.generateM3u8(name, candidate, referer = pageUrl, headers = NoDrakorIDUtils.videoHeaders(pageUrl)).forEach(callback)
+                    var emitted = false
+                    runCatching {
+                        M3u8Helper.generateM3u8(name, candidate, referer = pageUrl, headers = NoDrakorIDUtils.videoHeaders(pageUrl)).forEach { link ->
+                            emitted = true
+                            callback(link)
+                        }
+                    }
+                    if (!emitted) callback(newExtractorLink(name, name, candidate, ExtractorLinkType.VIDEO) {
+                        this.referer = pageUrl
+                        this.quality = getQualityFromName(candidate)
+                        this.headers = NoDrakorIDUtils.videoHeaders(pageUrl)
+                    })
                 } else {
                     callback(newExtractorLink(name, name, candidate, ExtractorLinkType.VIDEO) {
                         this.referer = pageUrl
@@ -687,7 +757,6 @@ class NoDrakorIDMeplayer : VidStack() {
     override var mainUrl = "https://meplayer.xyz"
 }
 
-
 open class NoDrakorIDChillx : ExtractorApi() {
     override var name = "Chillx"
     override var mainUrl = "https://chillx.top"
@@ -707,7 +776,18 @@ open class NoDrakorIDChillx : ExtractorApi() {
             ?: NoDrakorIDUtils.extractUrlsFromText(pageUrl, decoded).firstOrNull { NoDrakorIDUtils.looksDirectVideo(it) }
             ?: return
         if (NoDrakorIDUtils.isHls(stream)) {
-            M3u8Helper.generateM3u8(name, stream, referer = mainUrl, headers = NoDrakorIDUtils.videoHeaders(mainUrl)).forEach(callback)
+            var emitted = false
+            runCatching {
+                M3u8Helper.generateM3u8(name, stream, referer = mainUrl, headers = NoDrakorIDUtils.videoHeaders(mainUrl)).forEach { link ->
+                    emitted = true
+                    callback(link)
+                }
+            }
+            if (!emitted) callback(newExtractorLink(name, name, stream, ExtractorLinkType.VIDEO) {
+                this.referer = mainUrl
+                this.quality = getQualityFromName(stream).takeIf { it != Qualities.Unknown.value } ?: Qualities.P1080.value
+                this.headers = NoDrakorIDUtils.videoHeaders(mainUrl)
+            })
         } else {
             callback(newExtractorLink(name, name, stream, ExtractorLinkType.VIDEO) {
                 this.referer = mainUrl

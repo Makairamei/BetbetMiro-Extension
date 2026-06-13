@@ -38,9 +38,7 @@ internal object NoDrakorIDParser {
     fun parseHomeCards(api: MainAPI, doc: Document): List<SearchResponse> {
         val cards = parseCards(api, doc).take(40)
         if (cards.isNotEmpty()) return cards
-
-        return dedupeCards(doc.select("a[href]").mapNotNull { anchor -> parseCard(api, anchor) })
-            .take(40)
+        return dedupeCards(doc.select("a[href]").mapNotNull { anchor -> parseCard(api, anchor) }).take(40)
     }
 
     fun parseCards(api: MainAPI, doc: Document, query: String? = null): List<SearchResponse> {

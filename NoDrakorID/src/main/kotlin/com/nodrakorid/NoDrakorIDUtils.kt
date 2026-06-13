@@ -20,8 +20,7 @@ internal object NoDrakorIDUtils {
         val cleanPath = if (path.isBlank()) "/" else path
         val base = absoluteUrl(NoDrakorIDSepeda.MAIN_URL, cleanPath) ?: NoDrakorIDSepeda.MAIN_URL
         if (page <= 1) return base
-        val trimmed = base.trimEnd('/')
-        return "$trimmed/page/$page/"
+        return "${base.trimEnd('/')}/page/$page/"
     }
 
     fun absoluteUrl(base: String, raw: String?): String? {
@@ -193,6 +192,7 @@ internal object NoDrakorIDUtils {
     fun isKnownPlayableHost(url: String): Boolean {
         val host = hostOf(url)
         return listOf(
+            "sf21", "vidplayer", "minochinos", "dintezuvio",
             "jeniusplay", "majorplay", "m3u8play", "e2eplay", "streamwish", "filemoon", "dood", "doodstream", "streamtape", "mp4upload",
             "hglink", "ghbrisk", "dhcplay", "streamcasthub", "dm21", "meplayer", "gdplayer", "filepress", "blogger.com", "googleusercontent",
             "googlevideo", "video.google", "lulu", "lulustream", "vidhide", "vidguard", "voe", "mixdrop", "upstream", "filelions", "vidsrc", "embedwish", "player4u",
@@ -203,6 +203,7 @@ internal object NoDrakorIDUtils {
     fun hasSupportedPlayerSignal(html: String): Boolean {
         val lower = html.lowercase()
         return looksDirectVideo(lower) || listOf(
+            "sf21.vidplayer.live", "minochinos.com", "dintezuvio.com",
             "abyssplayer.com", "abyss.to", "sssrr.org", "boosterx.stream", "chillx.top", "jav-vids.xyz", "upload18.org",
             "streamwish", "filemoon", "dood", "streamtape", "mp4upload", "hglink", "ghbrisk", "dhcplay", "streamcasthub",
             "dm21embed", "meplayer", "gdplayer", "filepress", "googlevideo", "blogger.com", "vidhide", "vidguard", "filelions",
@@ -223,8 +224,6 @@ internal object NoDrakorIDUtils {
         val host = hostOf(url)
         return listOf("semawur", "safelinku", "ouo", "shrink", "short", "linkvertise", "droplink", "terabox").any { host.contains(it) }
     }
-
-    fun isHtmlLandingUrl(url: String): Boolean = !looksDirectVideo(url) && (isKnownPlayableHost(url) || isShortenerUrl(url) || url.startsWith("http", true))
 
     fun extractUrlsFromText(base: String, text: String): List<String> {
         val normalized = decodeUrlRepeated(text).replace("\\/", "/")

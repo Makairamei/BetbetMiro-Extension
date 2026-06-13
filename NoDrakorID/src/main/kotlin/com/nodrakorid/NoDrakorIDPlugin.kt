@@ -33,6 +33,7 @@ class NoDrakorIDPlugin : Plugin() {
         registerExtractorAPI(NoDrakorIDAWSStream())
         registerExtractorAPI(NoDrakorIDSf21VidPlayer())
         registerExtractorAPI(NoDrakorIDMinochinos())
+        registerExtractorAPI(NoDrakorIDDintezuvio())
         registerExtractorAPI(StreamTape())
         registerExtractorAPI(Mp4Upload())
     }

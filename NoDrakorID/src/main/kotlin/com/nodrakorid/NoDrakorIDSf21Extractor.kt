@@ -78,12 +78,6 @@ class NoDrakorIDSf21VidPlayer : ExtractorApi() {
         }
     }
 
-    /**
-     * HAR evidence shows sf21 plays its own /hls/.../master.m3u8 URL.
-     * Internal API names such as Tiktok/Google/Cloudflare are not exposed as CloudStream source labels.
-     * Non-sf21 fallback fields are intentionally not emitted while the source-backed sf21 HLS exists,
-     * to avoid turning CDN/internal route names into user-facing playback sources.
-     */
     private fun sf21PrimaryCandidates(root: JsonNode): List<String> {
         val config = parseStreamingConfig(root.path("streamingConfig"))
         val primary = root.path("hlsVideoTiktok").asText("").takeIf { it.isNotBlank() && !isDisabled(config, "Tiktok") }
@@ -138,11 +132,16 @@ class NoDrakorIDSf21VidPlayer : ExtractorApi() {
             "Referer" to "$mainUrl/",
             "User-Agent" to USER_AGENT
         )
+        var emitted = false
         if (NoDrakorIDUtils.isHls(url) || url.contains("cf-master", true)) {
             runCatching {
-                M3u8Helper.generateM3u8(displayName, url, referer = "$mainUrl/", headers = headers).forEach(callback)
+                M3u8Helper.generateM3u8(displayName, url, referer = "$mainUrl/", headers = headers).forEach { link ->
+                    emitted = true
+                    callback(link)
+                }
             }
-        } else {
+        }
+        if (!emitted) {
             runCatching {
                 callback(
                     newExtractorLink(
@@ -184,7 +183,7 @@ class NoDrakorIDSf21VidPlayer : ExtractorApi() {
     }
 }
 
-class NoDrakorIDMinochinos : ExtractorApi() {
+open class NoDrakorIDMinochinos : ExtractorApi() {
     override var name = "Minochinos"
     override var mainUrl = "https://minochinos.com"
     override var requiresReferer = true
@@ -196,6 +195,7 @@ class NoDrakorIDMinochinos : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val pageUrl = normalizeEmbedUrl(NoDrakorIDUtils.decodeKnownRedirect(url)) ?: return
+        val origin = NoDrakorIDUtils.originOf(pageUrl) ?: mainUrl
         val html = runCatching {
             app.get(
                 pageUrl,
@@ -215,19 +215,19 @@ class NoDrakorIDMinochinos : ExtractorApi() {
         val emitted = linkedSetOf<String>()
 
         jwPlayerSources(scan, links).forEach { rawUrl ->
-            val videoUrl = absoluteToOrigin(mainUrl, rawUrl) ?: return@forEach
-            if (!isMinochinosHls(videoUrl) || !emitted.add(normalizeMediaKey(videoUrl))) return@forEach
-            emitMinochinosHls(videoUrl, pageUrl, callback)
+            val videoUrl = absoluteToOrigin(origin, rawUrl) ?: return@forEach
+            if (!isXFileHls(videoUrl, origin) || !emitted.add(normalizeMediaKey(videoUrl))) return@forEach
+            emitXFileHls(videoUrl, pageUrl, callback)
         }
     }
 
     private fun normalizeEmbedUrl(url: String): String? {
         if (url.contains("/embed/", true)) return url.substringBefore('?').substringBefore('#')
         Regex("""[?&]file_code=([^&#]+)""", RegexOption.IGNORE_CASE).find(url)?.groupValues?.getOrNull(1)?.let { code ->
-            return "$mainUrl/embed/$code"
+            return "${mainUrl.trimEnd('/')}/embed/$code"
         }
         val slug = url.trimEnd('/').substringAfterLast('/').substringBefore('?').substringBefore('#')
-        return slug.takeIf { it.length > 4 && !it.contains('.') }?.let { "$mainUrl/embed/$it" }
+        return slug.takeIf { it.length > 4 && !it.contains('.') }?.let { "${mainUrl.trimEnd('/')}/embed/$it" }
     }
 
     private fun parseLinksObject(text: String): Map<String, String> {
@@ -240,11 +240,6 @@ class NoDrakorIDMinochinos : ExtractorApi() {
             .associate { it.groupValues[1] to it.groupValues[2] }
     }
 
-    /**
-     * Minochinos is Packed JS + JW Player. The valid video is the JW Player sources[].file
-     * expression, normally links.hls4 (/stream/.../master.m3u8). Ads, direct premium layers,
-     * slides/thumbnails, and random script URLs are ignored.
-     */
     private fun jwPlayerSources(text: String, links: Map<String, String>): List<String> {
         val output = linkedSetOf<String>()
         Regex("""(?s)sources\s*:\s*\[\s*\{[^}]*?file\s*:\s*([^,}\]]+)""", RegexOption.IGNORE_CASE)
@@ -255,9 +250,12 @@ class NoDrakorIDMinochinos : ExtractorApi() {
         Regex("""(?s)jwplayer\([^)]*\)\.setup\s*\(.*?file\s*:\s*["']([^"']*master\.m3u8[^"']*)["']""", RegexOption.IGNORE_CASE)
             .findAll(text)
             .forEach { output += it.groupValues[1] }
+        NoDrakorIDUtils.extractUrlsFromText(mainUrl, text)
+            .filter { it.contains("master.m3u8", true) || it.contains(".m3u8", true) }
+            .forEach { output += it }
 
         if (output.isEmpty()) {
-            listOf("hls4", "hls2").mapNotNull { links[it] }.forEach { output += it }
+            listOf("hls4", "hls3", "hls2", "hls").mapNotNull { links[it] }.forEach { output += it }
         }
         return output.toList()
     }
@@ -280,21 +278,35 @@ class NoDrakorIDMinochinos : ExtractorApi() {
         return output.toList()
     }
 
-    private fun isMinochinosHls(url: String): Boolean {
+    private fun isXFileHls(url: String, origin: String): Boolean {
         val lower = url.lowercase()
         if (isAdUrl(lower)) return false
-        if (!lower.contains("master.m3u8")) return false
+        if (!lower.contains(".m3u8")) return false
         val host = NoDrakorIDUtils.hostOf(url)
-        return host.contains("minochinos.com") || lower.contains("/stream/")
+        val originHost = NoDrakorIDUtils.hostOf(origin)
+        return host == originHost || host.contains(originHost) || lower.contains("/stream/")
     }
 
-    private suspend fun emitMinochinosHls(url: String, pageUrl: String, callback: (ExtractorLink) -> Unit) {
+    private suspend fun emitXFileHls(url: String, pageUrl: String, callback: (ExtractorLink) -> Unit) {
         val headers = mapOf(
             "Referer" to pageUrl,
             "User-Agent" to USER_AGENT
         )
+        var emitted = false
         runCatching {
-            M3u8Helper.generateM3u8("$name HLS", url, referer = pageUrl, headers = headers).forEach(callback)
+            M3u8Helper.generateM3u8("$name HLS", url, referer = pageUrl, headers = headers).forEach { link ->
+                emitted = true
+                callback(link)
+            }
+        }
+        if (!emitted) {
+            runCatching {
+                callback(newExtractorLink(name, "$name HLS", url, ExtractorLinkType.VIDEO) {
+                    this.referer = pageUrl
+                    this.quality = getQualityFromName(url).takeIf { it != Qualities.Unknown.value } ?: Qualities.Unknown.value
+                    this.headers = headers
+                })
+            }
         }
     }
 
@@ -306,6 +318,11 @@ class NoDrakorIDMinochinos : ExtractorApi() {
             "cardboardcrispyrover", "shopee", "earnvids", "slides", "thumbnail", "pixibay"
         ).any { lower.contains(it) }
     }
+}
+
+class NoDrakorIDDintezuvio : NoDrakorIDMinochinos() {
+    override var name = "Dintezuvio"
+    override var mainUrl = "https://dintezuvio.com"
 }
 
 private fun absoluteToOrigin(origin: String, raw: String?): String? {
