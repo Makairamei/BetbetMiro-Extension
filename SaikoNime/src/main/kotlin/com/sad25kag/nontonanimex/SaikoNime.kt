@@ -21,106 +21,156 @@ class SaikoNime : MainAPI() {
     private val browserHeaders = mapOf(
         "User-Agent" to USER_AGENT,
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.7,en;q=0.5",
+        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.6",
         "Referer" to "$mainUrl/",
     )
 
     override val mainPage = mainPageOf(
-        "browse?sort=updated&status=Ongoing" to "Baru Diupdate",
-        "browse?sort=popular" to "Trending Anime",
-        "browse?status=Completed" to "Selesai Tayang",
-        "browse?type=Movie" to "Top Movies",
-        "genre/action" to "Action",
-        "genre/adventure" to "Adventure",
-        "genre/aksi" to "Aksi",
-        "genre/donghua" to "Donghua",
-        "genre/fantasi" to "Fantasi",
-        "genre/komedi" to "Komedi",
-        "genre/romansa" to "Romansa",
-        "genre/shounen" to "Shounen",
-        "genre/isekai" to "Isekai",
+        "home:latest" to "Baru Diupdate",
+        "home:popular" to "Trending Anime",
+        "home:completed" to "Selesai Tayang",
+        "home:movies" to "Top Movies",
+        "genre:action:Action" to "Action",
+        "genre:adventure:Adventure" to "Adventure",
+        "genre:aksi:Aksi" to "Aksi",
+        "genre:donghua:Donghua" to "Donghua",
+        "genre:fantasi:Fantasi" to "Fantasi",
+        "genre:komedi:Komedi" to "Komedi",
+        "genre:romansa:Romansa" to "Romansa",
+        "genre:shounen:Shounen" to "Shounen",
+        "genre:isekai:Isekai" to "Isekai",
+    )
+
+    private data class SaikoVideo(
+        val title: String,
+        val slug: String,
+        val description: String? = null,
+        val thumbnail: String? = null,
+        val banner: String? = null,
+        val category: String? = null,
+        val status: String? = null,
+        val animeType: String? = null,
+        val releaseDate: String? = null,
+        val duration: String? = null,
+        val episodeCount: Int? = null,
+        val sources: List<SaikoSource> = emptyList(),
+        val raw: String = "",
+    )
+
+    private data class SaikoEpisode(
+        val number: Int,
+        val title: String,
+        val url: String,
+        val thumbnail: String? = null,
+    )
+
+    private data class SaikoSource(
+        val name: String,
+        val url: String,
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = buildPageUrl(request.data, page)
-        val document = app.get(url, headers = browserHeaders).document
-        val results = parseSaikoCards(document).distinctBy { it.url.normalizedKey() }
-        val hasNext = document.selectFirst("link[rel=next], a[rel=next], .pagination a.next[href], a.next[href]") != null || results.isNotEmpty()
-        return newHomePageResponse(request.name, results, hasNext)
+        if (page > 1) return newHomePageResponse(request.name, emptyList(), false)
+
+        val home = fetchHomeRsc()
+        val selected = when {
+            request.data == "home:latest" -> parseVideoArray(home, "latest")
+            request.data == "home:popular" -> parseVideoArray(home, "popular")
+            request.data == "home:completed" -> parseSectionVideos(home, "Just Finished")
+                .ifEmpty { parseVideoArray(home, "topRated") }
+                .filter { it.status.equals("Completed", true) || it.episodeCount == 0 || it.raw.contains("\"status\":\"Completed\"", true) }
+            request.data == "home:movies" -> parseSectionVideos(home, "Top Movies")
+                .ifEmpty { parseAllVideos(home).filter { it.animeType.equals("Movie", true) || it.episodeCount == 0 } }
+            request.data.startsWith("genre:") -> {
+                val parts = request.data.split(":")
+                val slug = parts.getOrNull(1).orEmpty()
+                val label = parts.getOrNull(2).orEmpty()
+                val fromGenrePage = runCatching { parseAllVideos(fetchRsc("$mainUrl/genre/$slug", "$mainUrl/")) }.getOrDefault(emptyList())
+                fromGenrePage.ifEmpty { parseAllVideos(home).filter { it.matchesGenre(slug, label) } }
+            }
+            else -> parseAllVideos(home)
+        }
+
+        val results = selected
+            .distinctBy { it.slug.normalizedKey() }
+            .map { it.toSearchResponse() }
+
+        return newHomePageResponse(request.name, results, false)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val encoded = URLEncoder.encode(query, "UTF-8")
-        val routes = listOf(
-            "$mainUrl/browse?keyword=$encoded",
-            "$mainUrl/search?keyword=$encoded",
-            "$mainUrl/search?q=$encoded",
-            "$mainUrl/?s=$encoded",
-        )
+        val normalizedQuery = query.cleanText()
+        if (normalizedQuery.isBlank()) return emptyList()
 
-        return routes.flatMap { url ->
-            runCatching {
-                val document = app.get(url, headers = browserHeaders).document
-                parseSaikoCards(document)
-            }.getOrDefault(emptyList())
-        }.distinctBy { it.url.normalizedKey() }
+        val encoded = URLEncoder.encode(normalizedQuery, "UTF-8")
+        val browseResults = runCatching {
+            parseAllVideos(fetchRsc("$mainUrl/browse?keyword=$encoded", "$mainUrl/"))
+        }.getOrDefault(emptyList())
+
+        val fallbackResults = parseAllVideos(fetchHomeRsc()).filter { video ->
+            video.title.contains(normalizedQuery, true) ||
+                video.description?.contains(normalizedQuery, true) == true ||
+                video.category?.contains(normalizedQuery, true) == true ||
+                video.raw.contains(normalizedQuery, true)
+        }
+
+        return (browseResults + fallbackResults)
+            .distinctBy { it.slug.normalizedKey() }
+            .map { it.toSearchResponse() }
     }
 
     override suspend fun load(url: String): LoadResponse? {
         val fixedUrl = url.toAbsoluteUrl() ?: url
-        val document = app.get(fixedUrl, headers = browserHeaders).document
-        val title = cleanTitle(
-            document.selectFirst("h1, .title h1, .anime-title, .post-title")?.text()
-                ?: document.selectFirst("meta[property=og:title]")?.attr("content")
-                ?: document.title()
-        ) ?: return null
+        val rsc = fetchRsc(fixedUrl, "$mainUrl/")
+        val slug = fixedUrl.extractAnimeSlug()
+        val video = parsePrimaryVideo(rsc, slug)
+            ?: parseAllVideos(fetchHomeRsc()).firstOrNull { it.slug == slug }
+            ?: return null
 
-        val poster = document.selectFirst("meta[property=og:image]")?.attr("content")?.toAbsoluteUrl()
-            ?: document.selectFirst(".poster img, .cover img, .thumb img, img[alt*='${title.take(12)}']")?.imageUrl()
-            ?: document.selectFirst("img")?.imageUrl()
+        val episodes = parseEpisodes(rsc, video.slug)
+            .distinctBy { it.number }
+            .sortedBy { it.number }
 
-        val plot = document.select(".synopsis, .description, .desc, .entry-content, article p")
-            .map { it.text().cleanText() }
-            .filter { value -> value.isNotBlank() && !value.contains("WATCH NOW", true) && !value.contains("INFO", true) }
-            .distinct()
-            .take(3)
-            .joinToString("\n\n")
-            .takeIf { it.isNotBlank() }
-            ?: document.selectFirst("meta[name=description]")?.attr("content")?.cleanText()
+        val recommendations = parseAllVideos(rsc)
+            .filterNot { it.slug == video.slug }
+            .distinctBy { it.slug.normalizedKey() }
+            .take(16)
+            .map { it.toSearchResponse() }
 
-        val tags = document.select("a[href*='/genre/']")
-            .map { it.text().cleanText() }
-            .filter { it.isNotBlank() }
-            .distinct()
-
-        val year = document.text().let { text ->
-            Regex("""(?:Released|Tahun|Year)\s*:?\s*(\d{4})""", RegexOption.IGNORE_CASE).find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                ?: Regex("""\b(20\d{2}|19\d{2})\b""").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        val poster = video.thumbnail ?: video.banner
+        val tvType = when {
+            video.animeType.equals("Movie", true) -> TvType.AnimeMovie
+            video.episodeCount == 0 && video.sources.isNotEmpty() -> TvType.AnimeMovie
+            fixedUrl.contains("/episode/", true) -> TvType.Anime
+            else -> TvType.Anime
         }
 
-        val episodes = parseEpisodes(document).distinctBy { it.data.normalizedKey() }
-        val recommendations = parseSaikoCards(document)
-            .filterNot { it.url.normalizedKey() == fixedUrl.normalizedKey() }
-            .take(16)
-
-        val tvType = if (fixedUrl.contains("/episode/", true) && episodes.isEmpty()) TvType.AnimeMovie else TvType.Anime
-        return if (episodes.isNotEmpty() && !fixedUrl.contains("/episode/", true)) {
-            newTvSeriesLoadResponse(title, fixedUrl, TvType.Anime, episodes.reversed()) {
+        return if (episodes.isNotEmpty() && !fixedUrl.contains("/episode/", true) && !video.animeType.equals("Movie", true)) {
+            newTvSeriesLoadResponse(video.title, fixedUrl, TvType.Anime, episodes.map { episode ->
+                newEpisode(episode.url) {
+                    this.name = episode.title
+                    this.episode = episode.number
+                    this.posterUrl = episode.thumbnail ?: poster
+                }
+            }) {
                 this.posterUrl = poster
-                this.plot = plot
-                this.year = year
-                this.tags = tags
+                this.plot = video.description
+                this.tags = video.category?.split(",")?.map { it.cleanText() }?.filter { it.isNotBlank() }
                 this.recommendations = recommendations
-                this.showStatus = detectStatus(document)
+                this.showStatus = video.status.toShowStatus()
+                this.year = video.releaseDate?.extractYear()
             }
         } else {
-            val dataUrl = if (fixedUrl.contains("/episode/", true)) fixedUrl else episodes.firstOrNull()?.data ?: fixedUrl
-            newMovieLoadResponse(title, fixedUrl, tvType, dataUrl) {
+            val title = if (fixedUrl.contains("/episode/", true)) {
+                rsc.readString("videoTitle") ?: video.title
+            } else video.title
+
+            newMovieLoadResponse(title, fixedUrl, tvType, fixedUrl) {
                 this.posterUrl = poster
-                this.plot = plot
-                this.year = year
-                this.tags = tags
+                this.plot = video.description
+                this.tags = video.category?.split(",")?.map { it.cleanText() }?.filter { it.isNotBlank() }
                 this.recommendations = recommendations
+                this.year = video.releaseDate?.extractYear()
             }
         }
     }
@@ -131,8 +181,8 @@ class SaikoNime : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val pageUrl = data.toAbsoluteUrl() ?: data
-        val document = app.get(pageUrl, headers = browserHeaders).document
+        val pageUrl = data.substringBefore("|SAIKO|").toAbsoluteUrl() ?: data.substringBefore("|SAIKO|")
+        val rsc = fetchRsc(pageUrl, "$mainUrl/")
         val emitted = linkedSetOf<String>()
 
         suspend fun emitDirect(rawUrl: String?, label: String? = null, referer: String = pageUrl): Boolean {
@@ -153,94 +203,341 @@ class SaikoNime : MainAPI() {
             return true
         }
 
-        val candidates = collectPlayerCandidates(document, pageUrl)
-        for (candidate in candidates.take(40)) {
-            val playerUrl = candidate.decodeEmbedText().toAbsoluteUrl(pageUrl) ?: continue
-            if (emitDirect(playerUrl, hostLabel(playerUrl), pageUrl)) continue
+        val countedCallback: (ExtractorLink) -> Unit = { link ->
+            if (emitted.add(link.url.substringBefore("#"))) callback.invoke(link)
+        }
 
-            val countedCallback: (ExtractorLink) -> Unit = { link ->
-                if (emitted.add(link.url.substringBefore("#"))) callback.invoke(link)
-            }
+        val sourceCandidates = parsePlaybackSources(rsc)
+            .ifEmpty { collectPlayerCandidates(Jsoup.parse(rsc), pageUrl).map { SaikoSource(hostLabel(it), it) } }
+            .distinctBy { it.url.substringBefore("#").normalizedKey() }
 
-            runCatching { loadExtractor(playerUrl, pageUrl, subtitleCallback, countedCallback) }
+        for (source in sourceCandidates.take(40)) {
+            val sourceUrl = source.url.decodeEmbedText().toAbsoluteUrl(pageUrl) ?: continue
+            if (emitDirect(sourceUrl, source.name, pageUrl)) continue
+
+            runCatching { loadExtractor(sourceUrl, pageUrl, subtitleCallback, countedCallback) }
             if (emitted.isNotEmpty()) continue
 
             val playerHtml = runCatching {
-                app.get(playerUrl, headers = browserHeaders + mapOf("Referer" to pageUrl), referer = pageUrl).text
-            }.getOrNull() ?: continue
+                app.get(sourceUrl, headers = browserHeaders + mapOf("Referer" to pageUrl), referer = pageUrl).text
+            }.getOrNull().orEmpty()
+
+            if (playerHtml.isBlank()) continue
+
             val unpacked = runCatching { getAndUnpack(playerHtml) }.getOrNull().orEmpty()
-            val nested = collectUrlsFromText(playerHtml + "\n" + unpacked, playerUrl)
-            for (nestedUrl in nested.take(20)) {
-                if (emitDirect(nestedUrl, hostLabel(playerUrl), playerUrl)) continue
-                val fixedNested = nestedUrl.toAbsoluteUrl(playerUrl) ?: continue
-                runCatching { loadExtractor(fixedNested, playerUrl, subtitleCallback, countedCallback) }
+            val nested = collectUrlsFromText(playerHtml + "\n" + unpacked, sourceUrl)
+            for (nestedUrl in nested.take(30)) {
+                if (emitDirect(nestedUrl, source.name, sourceUrl)) continue
+                val fixedNested = nestedUrl.toAbsoluteUrl(sourceUrl) ?: continue
+                runCatching { loadExtractor(fixedNested, sourceUrl, subtitleCallback, countedCallback) }
             }
         }
+
         return emitted.isNotEmpty()
     }
 
-    private fun buildPageUrl(path: String, page: Int): String {
-        val cleanPath = path.trim().trimStart('/')
-        val base = if (cleanPath.startsWith("http", true)) cleanPath else "$mainUrl/$cleanPath"
-        return when {
-            page <= 1 -> base
-            base.contains("?") -> "$base&page=$page"
-            else -> "$base?page=$page"
+    private suspend fun fetchHomeRsc(): String = fetchRsc(mainUrl, "$mainUrl/")
+
+    private suspend fun fetchRsc(url: String, referer: String): String {
+        val fixedUrl = url.toAbsoluteUrl() ?: url
+        val rscUrl = fixedUrl.withRscQuery()
+        val rscText = runCatching {
+            app.get(rscUrl, headers = rscHeaders(fixedUrl, referer), referer = referer).text
+        }.getOrDefault("")
+
+        if (rscText.length > 500 && (rscText.contains("\"video\":{") || rscText.contains("\"latest\":[") || rscText.contains("\"sources\":[") || rscText.contains("\"episodes\":["))) {
+            return rscText
+        }
+
+        return runCatching {
+            app.get(fixedUrl, headers = browserHeaders + mapOf("Referer" to referer), referer = referer).text
+        }.getOrDefault(rscText)
+    }
+
+    private fun rscHeaders(targetUrl: String, referer: String): Map<String, String> {
+        return browserHeaders + mapOf(
+            "Accept" to "*/*",
+            "RSC" to "1",
+            "Referer" to referer,
+            "Sec-Fetch-Site" to "same-origin",
+            "Sec-Fetch-Mode" to "cors",
+            "Sec-Fetch-Dest" to "empty",
+            "Next-Router-State-Tree" to buildRouterState(targetUrl),
+        )
+    }
+
+    private fun buildRouterState(url: String): String {
+        val uri = runCatching { URI(url) }.getOrNull()
+        val path = uri?.path?.trim('/').orEmpty()
+        val state = when {
+            path.isBlank() -> """["",{"children":["(main)",{"children":["__PAGE__",{},null,"refetch"]},null,null]},null,null]"""
+            path.startsWith("anime/") && path.contains("/episode/") -> {
+                val slug = path.substringAfter("anime/").substringBefore("/episode/")
+                val number = path.substringAfter("/episode/").substringBefore('/').ifBlank { "1" }
+                """["",{"children":["(main)",{"children":["anime",{"children":[["slug","$slug","d"],{"children":["episode",{"children":[["episodeNum","$number","d"],{"children":["__PAGE__",{},null,"refetch"]},null,null]},null,null]},null,null]},null,null]},null,null]},null,null]"""
+            }
+            path.startsWith("anime/") -> {
+                val slug = path.substringAfter("anime/").substringBefore('/')
+                """["",{"children":["(main)",{"children":["anime",{"children":[["slug","$slug","d"],{"children":["__PAGE__",{},null,"refetch"]},null,null]},null,null]},null,null]},null,null]"""
+            }
+            path.startsWith("genre/") -> {
+                val slug = path.substringAfter("genre/").substringBefore('/')
+                """["",{"children":["(main)",{"children":["genre",{"children":[["slug","$slug","d"],{"children":["__PAGE__",{},null,"refetch"]},null,null]},null,null]},null,null]},null,null]"""
+            }
+            path.startsWith("browse") -> """["",{"children":["(main)",{"children":["browse",{"children":["__PAGE__",{},null,"refetch"]},null,null]},null,null]},null,null]"""
+            else -> """["",{"children":["(main)",{"children":["__PAGE__",{},null,"refetch"]},null,null]},null,null]"""
+        }
+        return URLEncoder.encode(state, "UTF-8")
+    }
+
+    private fun parsePrimaryVideo(text: String, expectedSlug: String?): SaikoVideo? {
+        val fromComponent = extractAllObjectsAfterKey(text, "video")
+            .mapNotNull { parseVideoObject(it) }
+            .firstOrNull { expectedSlug == null || it.slug == expectedSlug }
+        if (fromComponent != null) return fromComponent
+
+        return parseAllVideos(text).firstOrNull { expectedSlug == null || it.slug == expectedSlug }
+            ?: parseAllVideos(text).firstOrNull()
+    }
+
+    private fun parseAllVideos(text: String): List<SaikoVideo> {
+        val videos = mutableListOf<SaikoVideo>()
+        listOf("latest", "popular", "topRated", "videos").forEach { key ->
+            extractAllArraysAfterKey(text, key).forEach { array -> videos.addAll(parseVideoObjects(array)) }
+        }
+        extractAllObjectsAfterKey(text, "video").forEach { obj -> parseVideoObject(obj)?.let { videos.add(it) } }
+        return videos.distinctBy { it.slug.normalizedKey() }
+    }
+
+    private fun parseVideoArray(text: String, key: String): List<SaikoVideo> {
+        val array = extractArrayAfterKey(text, key)?.first ?: return emptyList()
+        return parseVideoObjects(array)
+    }
+
+    private fun parseSectionVideos(text: String, sectionTitle: String): List<SaikoVideo> {
+        val arrays = extractAllArraysAfterKeyWithEnd(text, "videos")
+        for ((array, end) in arrays) {
+            val tail = text.substring(end, minOf(text.length, end + 500))
+            if (tail.contains("\"title\":\"$sectionTitle\"", true)) return parseVideoObjects(array)
+        }
+        return emptyList()
+    }
+
+    private fun parseVideoObjects(array: String): List<SaikoVideo> {
+        return extractObjects(array).mapNotNull { parseVideoObject(it) }
+    }
+
+    private fun parseVideoObject(obj: String): SaikoVideo? {
+        val title = obj.readString("title") ?: return null
+        val slug = obj.readString("slug") ?: return null
+        val sources = extractArrayAfterKey(obj, "sources")?.let { parseSourcesFromArray(it.first) }.orEmpty()
+        return SaikoVideo(
+            title = cleanTitle(title) ?: title,
+            slug = slug,
+            description = obj.readString("description")?.takeIf { it.isNotBlank() },
+            thumbnail = obj.readString("thumbnailUrl")?.toAbsoluteUrl(),
+            banner = obj.readString("bannerUrl")?.toAbsoluteUrl(),
+            category = obj.readString("category")?.takeIf { it.isNotBlank() },
+            status = obj.readString("status")?.takeIf { it.isNotBlank() },
+            animeType = obj.readString("animeType")?.takeIf { it.isNotBlank() },
+            releaseDate = obj.readString("releaseDate")?.takeIf { it.isNotBlank() },
+            duration = obj.readString("duration")?.takeIf { it.isNotBlank() },
+            episodeCount = obj.readInt("episodeCount"),
+            sources = sources.ifEmpty {
+                obj.readString("videoUrl")?.takeIf { it.isNotBlank() }?.let { listOf(SaikoSource("Direct", it)) }.orEmpty()
+            },
+            raw = obj,
+        )
+    }
+
+    private fun parseEpisodes(text: String, animeSlug: String): List<SaikoEpisode> {
+        return extractAllArraysAfterKey(text, "episodes")
+            .flatMap { array ->
+                extractObjects(array).mapNotNull { obj ->
+                    val number = obj.readInt("number") ?: obj.readString("slug")?.toEpisodeNumber() ?: return@mapNotNull null
+                    val rawTitle = obj.readString("title") ?: "Episode $number"
+                    SaikoEpisode(
+                        number = number,
+                        title = cleanTitle(rawTitle) ?: rawTitle,
+                        url = "$mainUrl/anime/$animeSlug/episode/$number",
+                        thumbnail = obj.readString("thumbnailUrl")?.toAbsoluteUrl(),
+                    )
+                }
+            }
+            .distinctBy { it.number }
+    }
+
+    private fun parsePlaybackSources(text: String): List<SaikoSource> {
+        val currentPlayerIndex = text.indexOf("\"videoId\":")
+        if (currentPlayerIndex >= 0) {
+            val sources = extractArrayAfterKey(text, "sources", currentPlayerIndex)?.first?.let { parseSourcesFromArray(it) }.orEmpty()
+            if (sources.isNotEmpty()) return sources
+        }
+
+        val videoObject = extractObjectAfterKey(text, "video")
+        if (videoObject != null) {
+            val sources = extractArrayAfterKey(videoObject, "sources")?.first?.let { parseSourcesFromArray(it) }.orEmpty()
+            if (sources.isNotEmpty()) return sources
+            videoObject.readString("videoUrl")?.takeIf { it.isNotBlank() }?.let { return listOf(SaikoSource("Direct", it)) }
+        }
+
+        return extractAllArraysAfterKey(text, "sources")
+            .asSequence()
+            .map { parseSourcesFromArray(it) }
+            .firstOrNull { it.isNotEmpty() }
+            .orEmpty()
+    }
+
+    private fun parseSourcesFromArray(array: String): List<SaikoSource> {
+        return extractObjects(array).mapNotNull { obj ->
+            val rawUrl = obj.readString("url") ?: return@mapNotNull null
+            val url = rawUrl.decodeEmbedText().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val sourceName = obj.readString("name") ?: hostLabel(url)
+            SaikoSource(sourceName, url)
         }
     }
 
-    private fun parseSaikoCards(document: Document): List<SearchResponse> {
-        val roots = mutableListOf<Element>()
-        val selectors = listOf(
-            "article", ".anime-card", ".movie-card", ".grid > div", ".list > div", ".swiper-slide", ".card", ".item",
-            "a[href*='/anime/']"
-        )
-        selectors.forEach { selector -> document.select(selector).forEach { roots.add(it) } }
-
-        return roots.asSequence()
-            .mapNotNull { it.toSaikoCard() }
-            .distinctBy { it.url.normalizedKey() }
-            .toList()
-    }
-
-    private fun Element.toSaikoCard(): SearchResponse? {
-        val anchor = when {
-            tagName().equals("a", true) -> this
-            else -> selectFirst("a[href*='/anime/']:not([href*='/episode/']), a[href*='/anime/'][href*='/episode/'], h2 a[href], h3 a[href], h4 a[href], a[href]")
-        } ?: return null
-        val rawHref = anchor.attr("href").toAbsoluteUrl() ?: return null
-        if (!rawHref.contains("/anime/", true) || rawHref.contains("#")) return null
-        val href = rawHref.toInfoUrl()
-        if (!href.contains(mainUrl, true)) return null
-
-        val rawTitle = anchor.attr("title").cleanText().takeIf { it.length > 2 }
-            ?: anchor.selectFirst("img[alt]")?.attr("alt")?.cleanText()?.takeIf { it.length > 2 }
-            ?: selectFirst("h1, h2, h3, h4, .title, .name, .tt")?.text()?.cleanText()?.takeIf { it.length > 2 }
-            ?: anchor.text().cleanText().takeIf { it.length > 2 }
-            ?: return null
-        val title = cleanTitle(rawTitle) ?: rawTitle
-        if (title.equals("WATCH NOW", true) || title.equals("INFO", true)) return null
-
-        val poster = selectFirst("img")?.imageUrl() ?: anchor.selectFirst("img")?.imageUrl()
-        return newAnimeSearchResponse(title, href, TvType.Anime) {
-            this.posterUrl = poster
+    private fun SaikoVideo.toSearchResponse(): SearchResponse {
+        val tvType = if (animeType.equals("Movie", true) || episodeCount == 0 && sources.isNotEmpty()) TvType.AnimeMovie else TvType.Anime
+        return newAnimeSearchResponse(title, "$mainUrl/anime/$slug", tvType) {
+            this.posterUrl = thumbnail ?: banner
             this.posterHeaders = mapOf("Referer" to "$mainUrl/")
         }
     }
 
-    private fun parseEpisodes(document: Document) = document.select("a[href*='/episode/']")
-        .mapNotNull { anchor ->
-            val href = anchor.attr("href").toAbsoluteUrl() ?: return@mapNotNull null
-            val rawTitle = anchor.attr("title").cleanText().takeIf { it.isNotBlank() }
-                ?: anchor.text().cleanText().takeIf { it.isNotBlank() }
-                ?: href.substringAfterLast("/episode/").trim('/').let { "Episode $it" }
-            val epNumber = rawTitle.toEpisodeNumber() ?: href.toEpisodeNumber()
-            newEpisode(href) {
-                this.name = cleanTitle(rawTitle) ?: rawTitle
-                this.episode = epNumber
-                this.posterUrl = anchor.selectFirst("img")?.imageUrl()
+    private fun SaikoVideo.matchesGenre(slug: String, label: String): Boolean {
+        val normalizedSlug = slug.normalizeSlug()
+        val normalizedLabel = label.normalizeSlug()
+        val normalizedCategory = category.orEmpty().normalizeSlug()
+        return normalizedCategory.split(',', ' ').any { it == normalizedSlug || it == normalizedLabel } ||
+            normalizedCategory.contains(normalizedSlug) ||
+            normalizedCategory.contains(normalizedLabel) ||
+            raw.contains("\"slug\":\"$slug\"", true) ||
+            raw.contains("\"name\":\"$label\"", true)
+    }
+
+    private fun extractAllArraysAfterKey(text: String, key: String): List<String> = extractAllArraysAfterKeyWithEnd(text, key).map { it.first }
+
+    private fun extractAllArraysAfterKeyWithEnd(text: String, key: String): List<Pair<String, Int>> {
+        val arrays = mutableListOf<Pair<String, Int>>()
+        var searchFrom = 0
+        while (searchFrom < text.length) {
+            val pair = extractArrayAfterKey(text, key, searchFrom) ?: break
+            arrays.add(pair)
+            searchFrom = pair.second + 1
+        }
+        return arrays
+    }
+
+    private fun extractArrayAfterKey(text: String, key: String, startIndex: Int = 0): Pair<String, Int>? {
+        val match = Regex("\"${Regex.escape(key)}\"\\s*:\\s*\\[").find(text, startIndex) ?: return null
+        val start = text.indexOf('[', match.range.first)
+        val end = findBalancedEnd(text, start, '[', ']') ?: return null
+        return text.substring(start, end + 1) to end
+    }
+
+    private fun extractAllObjectsAfterKey(text: String, key: String): List<String> {
+        val objects = mutableListOf<String>()
+        var searchFrom = 0
+        while (searchFrom < text.length) {
+            val obj = extractObjectAfterKey(text, key, searchFrom) ?: break
+            objects.add(obj.first)
+            searchFrom = obj.second + 1
+        }
+        return objects
+    }
+
+    private fun extractObjectAfterKey(text: String, key: String, startIndex: Int = 0): Pair<String, Int>? {
+        val match = Regex("\"${Regex.escape(key)}\"\\s*:\\s*\\{").find(text, startIndex) ?: return null
+        val start = text.indexOf('{', match.range.first)
+        val end = findBalancedEnd(text, start, '{', '}') ?: return null
+        return text.substring(start, end + 1) to end
+    }
+
+    private fun extractObjectAfterKey(text: String, key: String): String? = extractObjectAfterKey(text, key, 0)?.first
+
+    private fun extractObjects(array: String): List<String> {
+        val objects = mutableListOf<String>()
+        var index = 0
+        while (index < array.length) {
+            val start = array.indexOf('{', index)
+            if (start < 0) break
+            val end = findBalancedEnd(array, start, '{', '}') ?: break
+            objects.add(array.substring(start, end + 1))
+            index = end + 1
+        }
+        return objects
+    }
+
+    private fun findBalancedEnd(text: String, start: Int, open: Char, close: Char): Int? {
+        if (start !in text.indices || text[start] != open) return null
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (i in start until text.length) {
+            val char = text[i]
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    char == '\\' -> escaped = true
+                    char == '"' -> inString = false
+                }
+            } else {
+                when (char) {
+                    '"' -> inString = true
+                    open -> depth++
+                    close -> {
+                        depth--
+                        if (depth == 0) return i
+                    }
+                }
             }
         }
+        return null
+    }
+
+    private fun String.readString(key: String): String? {
+        val pattern = Regex("\"${Regex.escape(key)}\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"")
+        return pattern.find(this)?.groupValues?.getOrNull(1)?.jsonUnescape()?.decodeEmbedText()?.cleanText()?.takeIf { it.isNotBlank() && it != "null" }
+    }
+
+    private fun String.readInt(key: String): Int? {
+        val pattern = Regex("\"${Regex.escape(key)}\"\\s*:\\s*(\\d+)")
+        return pattern.find(this)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    }
+
+    private fun String.jsonUnescape(): String {
+        val out = StringBuilder(length)
+        var i = 0
+        while (i < length) {
+            val c = this[i]
+            if (c == '\\' && i + 1 < length) {
+                when (val n = this[i + 1]) {
+                    '\\' -> out.append('\\')
+                    '"' -> out.append('"')
+                    '/' -> out.append('/')
+                    'b' -> out.append('\b')
+                    'f' -> out.append('\u000C')
+                    'n' -> out.append('\n')
+                    'r' -> out.append('\r')
+                    't' -> out.append('\t')
+                    'u' -> {
+                        val hex = substring(i + 2, minOf(i + 6, length))
+                        if (hex.length == 4) {
+                            hex.toIntOrNull(16)?.let { out.append(it.toChar()) }
+                            i += 4
+                        } else out.append(n)
+                    }
+                    else -> out.append(n)
+                }
+                i += 2
+            } else {
+                out.append(c)
+                i++
+            }
+        }
+        return out.toString()
+    }
 
     private fun collectPlayerCandidates(document: Document, referer: String): LinkedHashSet<String> {
         val candidates = linkedSetOf<String>()
@@ -263,17 +560,17 @@ class SaikoNime : MainAPI() {
     private fun collectUrlsFromText(text: String, base: String): List<String> {
         val normalized = text.decodeEmbedText()
         val urls = linkedSetOf<String>()
-        Regex("""<(?:iframe|embed|source|video)[^>]+(?:src|data-src)=['\"]([^'\"]+)['\"]""", RegexOption.IGNORE_CASE)
+        Regex("""<(?:iframe|embed|source|video)[^>]+(?:src|data-src)=['"]([^'"]+)['"]""", RegexOption.IGNORE_CASE)
             .findAll(normalized)
             .forEach { urls.add(it.groupValues[1]) }
-        Regex("""(?:src|file|url|source|embed|iframe|data-url|data-src|data-file|data-player|data-stream)\s*[:=]\s*['\"]([^'\"]+)['\"]""", RegexOption.IGNORE_CASE)
+        Regex("""(?:src|file|url|source|embed|iframe|data-url|data-src|data-file|data-player|data-stream)\s*[:=]\s*['"]([^'"]+)['"]""", RegexOption.IGNORE_CASE)
             .findAll(normalized)
             .forEach { urls.add(it.groupValues[1]) }
-        Regex("""atob\(['\"]([^'\"]+)['\"]\)""", RegexOption.IGNORE_CASE)
+        Regex("""atob\(['"]([^'"]+)['"]\)""", RegexOption.IGNORE_CASE)
             .findAll(normalized)
             .mapNotNull { decodePossibleBase64(it.groupValues[1]) }
             .forEach { decoded -> collectUrlsFromText(decoded, base).forEach { urls.add(it) } }
-        Regex("""https?://[^'\"<>()\s]+""", RegexOption.IGNORE_CASE)
+        Regex("""https?://[^'"<>()\s]+""", RegexOption.IGNORE_CASE)
             .findAll(normalized)
             .map { it.value.trimEnd(',', ';') }
             .forEach { urls.add(it) }
@@ -290,31 +587,10 @@ class SaikoNime : MainAPI() {
             }.getOrNull()
     }
 
-    private fun detectStatus(document: Document): ShowStatus? {
-        val text = document.text().lowercase(Locale.ROOT)
-        return when {
-            text.contains("completed") || text.contains("selesai") -> ShowStatus.Completed
-            text.contains("ongoing") || text.contains("tayang") -> ShowStatus.Ongoing
-            else -> null
-        }
-    }
-
-    private fun Element.imageUrl(): String? {
-        val raw = attr("data-src").takeIf { it.isNotBlank() }
-            ?: attr("data-lazy-src").takeIf { it.isNotBlank() }
-            ?: attr("data-original").takeIf { it.isNotBlank() }
-            ?: attr("src").takeIf { it.isNotBlank() }
-        return raw?.toAbsoluteUrl()
-    }
-
-    private fun cleanTitle(raw: String?): String? {
-        return raw?.htmlUnescape()?.cleanText()
-            ?.replace(Regex("""(?i)\s*[-–|]\s*Saikonime.*$"""), "")
-            ?.replace(Regex("""(?i)\s*Subtitle\s+Indonesia.*$"""), "")
-            ?.takeIf { it.isNotBlank() }
-    }
-
-    private fun String.toInfoUrl(): String = replace(Regex("""/episode/[^/?#]+.*$""", RegexOption.IGNORE_CASE), "").trimEnd('/')
+    private fun cleanTitle(raw: String?): String? = raw?.htmlUnescape()?.cleanText()
+        ?.replace(Regex("""(?i)\s*[-–|]\s*Saikonime.*$"""), "")
+        ?.replace(Regex("""(?i)\s*Subtitle\s+Indonesia.*$"""), "")
+        ?.takeIf { it.isNotBlank() }
 
     private fun String.cleanText(): String = htmlUnescape()
         .replace("\u00a0", " ")
@@ -335,16 +611,40 @@ class SaikoNime : MainAPI() {
         .trim()
 
     private fun String.toAbsoluteUrl(base: String = mainUrl): String? {
-        val clean = trim().trim('"', '\'', ' ', '\n', '\r', '\t')
+        val clean = decodeEmbedText().trim().trim('"', '\'', ' ', '\n', '\r', '\t')
         if (clean.isBlank() || clean.startsWith("javascript", true) || clean.startsWith("#")) return null
         return runCatching { URI(base).resolve(clean).toString() }.getOrNull()
     }
 
+    private fun String.withRscQuery(): String {
+        val clean = substringBefore("#")
+        return if (clean.contains("?")) "$clean&_rsc=cs" else "$clean?_rsc=cs"
+    }
+
     private fun String.normalizedKey(): String = substringBefore("#").substringBefore("?").trimEnd('/').lowercase(Locale.ROOT)
 
-    private fun String.toEpisodeNumber(): Int? = Regex("""(?i)(?:episode|eps?|ep)\s*(\d+)""").find(this)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    private fun String.normalizeSlug(): String = lowercase(Locale.ROOT)
+        .replace("†", "")
+        .replace(Regex("""[^a-z0-9]+"""), "-")
+        .trim('-')
+
+    private fun String.extractAnimeSlug(): String? = Regex("""/anime/([^/?#]+)""", RegexOption.IGNORE_CASE)
+        .find(this)?.groupValues?.getOrNull(1)
+
+    private fun String.toEpisodeNumber(): Int? = Regex("""(?i)(?:episode|eps?|ep)\s*-?\s*(\d+)""").find(this)?.groupValues?.getOrNull(1)?.toIntOrNull()
         ?: Regex("""/episode/(\d+)""", RegexOption.IGNORE_CASE).find(this)?.groupValues?.getOrNull(1)?.toIntOrNull()
         ?: Regex("""\b(\d{1,4})\b""").find(this)?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+    private fun String.extractYear(): Int? = Regex("""\b(20\d{2}|19\d{2})\b""").find(this)?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+    private fun String?.toShowStatus(): ShowStatus? {
+        val value = this?.lowercase(Locale.ROOT).orEmpty()
+        return when {
+            value.contains("completed") || value.contains("selesai") -> ShowStatus.Completed
+            value.contains("ongoing") || value.contains("tayang") -> ShowStatus.Ongoing
+            else -> null
+        }
+    }
 
     private fun String.isDirectMediaLike(): Boolean {
         val value = lowercase(Locale.ROOT)
@@ -355,7 +655,9 @@ class SaikoNime : MainAPI() {
         val value = lowercase(Locale.ROOT)
         if (isDirectMediaLike()) return true
         return listOf(
-            "iframe", "embed", "player", "stream", "vidhide", "filemoon", "streamwish", "streamruby", "dood", "mp4upload", "blogger", "googlevideo", "ok.ru", "dailymotion", "rumble", "mega.nz", "krakenfiles", "acefile"
+            "iframe", "embed", "player", "stream", "vidhide", "vidhidepro", "filemoon", "streamwish", "streamruby", "dood",
+            "mp4upload", "blogger", "googlevideo", "ok.ru", "okcdn", "dailymotion", "dmcdn", "mega.nz", "krakenfiles", "acefile",
+            "short.icu", "short.ink", "callistanise", "playhydrax", "hydrax", "gdriveplayer", "bestx.stream"
         ).any { value.contains(it) }
     }
 
