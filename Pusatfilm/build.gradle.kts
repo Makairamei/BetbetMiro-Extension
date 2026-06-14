@@ -1,4 +1,4 @@
-version = 5
+version = 6
 
 cloudstream {
     description = "PusatFilm - Streaming Movie and TV Series"
