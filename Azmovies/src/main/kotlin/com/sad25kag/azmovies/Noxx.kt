@@ -38,23 +38,19 @@ class Noxx : MainAPI() {
             "" to "Serial Terbaru",
             "s=rating" to "Rating Tertinggi",
             "s=alphabetical" to "A-Z",
-            "g=Action" to "Aksi",
-            "g=Adventure" to "Petualangan",
-            "g=Animation" to "Animasi",
-            "g=Comedy" to "Komedi",
-            "g=Crime" to "Kriminal",
-            "g=Documentary" to "Dokumenter",
-            "g=Drama" to "Drama",
-            "g=Family" to "Keluarga",
-            "g=Kids" to "Anak-anak",
-            "g=Mystery" to "Misteri",
-            "g=News" to "Berita",
-            "g=Reality" to "Reality",
-            "g=Sci-Fi%20%26%20Fantasy" to "Sci-Fi & Fantasi",
-            "g=Soap" to "Soap",
-            "g=Talk" to "Talkshow",
-            "g=War%20%26%20Politics" to "Perang & Politik",
-            "g=Western" to "Western",
+            "genres=Action%20%26%20Adventure" to "Action & Adventure",
+            "genres=Animation" to "Animation",
+            "genres=Comedy" to "Comedy",
+            "genres=Crime" to "Crime",
+            "genres=Documentary" to "Documentary",
+            "genres=Drama" to "Drama",
+            "genres=Family" to "Family",
+            "genres=Kids" to "Kids",
+            "genres=Mystery" to "Mystery",
+            "genres=Reality" to "Reality",
+            "genres=Sci-Fi%20%26%20Fantasy" to "Sci-Fi & Fantasy",
+            "genres=War%20%26%20Politics" to "War & Politics",
+            "genres=Western" to "Western",
         )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -294,18 +290,18 @@ class Noxx : MainAPI() {
 
         val verifiedResponse =
             app.post(
-            "$mainUrl/verified",
-            data = mapOf("token" to token),
-            cookies = cookies,
-            headers =
-                mapOf(
-                    "Origin" to mainUrl,
-                    "Referer" to url,
-                    "User-Agent" to USER_AGENT,
-                    "Accept" to "application/json,text/plain,*/*",
-                    "X-Requested-With" to "XMLHttpRequest",
-                ),
-        )
+                "$mainUrl/verified",
+                data = mapOf("token" to token),
+                cookies = cookies,
+                headers =
+                    mapOf(
+                        "Origin" to mainUrl,
+                        "Referer" to url,
+                        "User-Agent" to USER_AGENT,
+                        "Accept" to "application/json,text/plain,*/*",
+                        "X-Requested-With" to "XMLHttpRequest",
+                    ),
+            )
         val verifiedCookies = if (verifiedResponse.cookies.isNotEmpty()) verifiedResponse.cookies else cookies
 
         return app.get(url, headers = headers, cookies = verifiedCookies, timeout = 30L)
