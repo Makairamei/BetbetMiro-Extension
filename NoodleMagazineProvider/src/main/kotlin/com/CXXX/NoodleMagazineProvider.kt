@@ -20,6 +20,7 @@ class NoodleMagazineProvider : MainAPI() { // all providers must be an instance 
 
     override val mainPage = mainPageOf(
         "latest" to "Latest",
+        "Bokep%20Indonesia" to "Indonesia",
         "onlyfans" to "Onlyfans",
         "latina" to "Latina",
         "blonde" to "Blonde",
