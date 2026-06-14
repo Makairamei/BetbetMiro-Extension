@@ -34,7 +34,7 @@ class PasarBokepProvider : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = PasarBokepUtils.pagedUrl(request.data, page, mainUrl)
         val document = app.get(url, headers = PasarBokepUtils.headers, referer = mainUrl).document
-        val list = PasarBokepParser.parseCards(document, this)
+        val list = PasarBokepParser.parseCards(document, this, scoped = request.data.contains("/category/"))
         return newHomePageResponse(request.name, list, hasNext = document.hasNextPage())
     }
 

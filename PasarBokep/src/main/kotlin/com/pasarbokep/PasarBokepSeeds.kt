@@ -7,13 +7,11 @@ object PasarBokepSeeds {
      * so they are intentionally excluded from Cloudstream video rows to avoid dead playback.
      */
     val mainPage = listOf(
-        PasarBokepCategory("Video Terbaru", "/"),
         PasarBokepCategory("Bokep Indo", "/category/bokep-indo/"),
         PasarBokepCategory("Bokep Korea", "/category/bokep-korea/"),
         PasarBokepCategory("Bokep Barat", "/category/bokep-barat/"),
         PasarBokepCategory("Bokep Jilbab", "/category/bokep-jilbab/"),
         PasarBokepCategory("Bokep Jepang", "/category/bokep-jepang/"),
-        PasarBokepCategory("Jepang Uncensored", "/category/bokep-jepang-uncensored/"),
     )
 
     val blockedPathHints = listOf(
