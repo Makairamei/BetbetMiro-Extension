@@ -284,6 +284,7 @@ object ReynimeParser {
                 )
             }
             .distinctBy { it.id }
+            .toList()
     }
 
     private fun parseSeriesFromDocument(document: Document, baseUrl: String, mainUrl: String): List<ReynimeSeries> {
