@@ -1,6 +1,7 @@
 package com.pencurimovie
 
 import com.lagradost.api.Log
+import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
@@ -49,10 +50,59 @@ class PencurimovieProvider : MainAPI() {
         )
     }
 
-    private fun Element.toSearchResult(): SearchResponse {
-        val title = this.select("a").attr("oldtitle").substringBefore("(")
+    private fun String?.cleanPosterAttr(): String? {
+        val value = this?.trim().orEmpty()
+        if (value.isBlank() || value.equals("null", true)) return null
+        if (value.startsWith("data:", true) || value.startsWith("javascript:", true)) return null
+        val lower = value.lowercase()
+        if (lower.contains("placeholder") || lower.contains("no-image") || lower.contains("no_poster")) return null
+        return value
+    }
+
+    private fun firstPoster(vararg values: String?): String? {
+        return values.firstNotNullOfOrNull { it.cleanPosterAttr() }
+    }
+
+    private fun stylePoster(value: String?): String? {
+        val style = value.cleanPosterAttr() ?: return null
+        return Regex("""url\([\"']?([^\"')]+)[\"']?\)""")
+            .find(style)
+            ?.groupValues
+            ?.getOrNull(1)
+            .cleanPosterAttr()
+    }
+
+    private fun Element.imagePosterAttr(): String? {
+        val image = if (tagName().equals("img", true)) this else selectFirst("img")
+        return firstPoster(
+            attr("data-original"),
+            attr("data-src"),
+            attr("data-lazy-src"),
+            attr("data-wpfc-original-src"),
+            attr("data-bg"),
+            attr("data-background"),
+            attr("src"),
+            image?.attr("data-original"),
+            image?.attr("data-src"),
+            image?.attr("data-lazy-src"),
+            image?.attr("data-wpfc-original-src"),
+            image?.attr("data-bg"),
+            image?.attr("data-background"),
+            image?.attr("src"),
+            image?.attr("srcset")?.split(",")?.firstOrNull()?.trim()?.substringBefore(" ")
+        ) ?: stylePoster(attr("style")) ?: stylePoster(image?.attr("style"))
+    }
+
+    private fun Element.toSearchResult(): SearchResponse? {
+        val title = this.select("a").attr("oldtitle").substringBefore("(").trim().ifBlank {
+            this.selectFirst("a")?.attr("title")?.substringBefore("(")?.trim().orEmpty()
+        }.ifBlank {
+            this.selectFirst("img")?.attr("alt")?.substringBefore("(")?.trim().orEmpty()
+        }.ifBlank {
+            this.selectFirst("a")?.text()?.substringBefore("(")?.trim().orEmpty()
+        }
         val href = fixUrl(this.select("a").attr("href"))
-        val posterUrl = fixUrlNull(this.select("a img").attr("data-original").toString())
+        val posterUrl = fixUrlNull(this.imagePosterAttr())
         val quality = getQualityFromString(this.select("span.mli-quality").text())
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
@@ -67,11 +117,27 @@ class PencurimovieProvider : MainAPI() {
         return results
     }
 
+    private fun Document.detailPoster(): String? {
+        return firstPoster(
+            select("meta[property=og:image]").attr("content"),
+            select("meta[name=twitter:image]").attr("content"),
+            select("meta[itemprop=image]").attr("content"),
+            selectFirst("div.mvic-thumb")?.imagePosterAttr(),
+            selectFirst("div.thumb")?.imagePosterAttr(),
+            selectFirst("div.poster")?.imagePosterAttr(),
+            selectFirst("div.movie-poster")?.imagePosterAttr(),
+            selectFirst("div.cover")?.imagePosterAttr(),
+            selectFirst("img[itemprop=image]")?.imagePosterAttr(),
+            selectFirst("img.wp-post-image")?.imagePosterAttr(),
+            selectFirst("img.attachment-post-thumbnail")?.imagePosterAttr()
+        )?.let { fixUrlNull(it) }
+    }
+
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, timeout = 50L).document
         val title =
             document.selectFirst("div.mvic-desc h3")?.text()?.trim().toString().substringBefore("(")
-        val poster = document.select("meta[property=og:image]").attr("content").toString()
+        val poster = document.detailPoster()
         val description = document.selectFirst("div.desc p.f-desc")?.text()?.trim()
         val tvtag = if (url.contains("series")) TvType.TvSeries else TvType.Movie
         val trailer = document.select("meta[itemprop=embedUrl]").attr("content") ?: ""
@@ -153,4 +219,3 @@ class PencurimovieProvider : MainAPI() {
         return true
     }
 }
-
