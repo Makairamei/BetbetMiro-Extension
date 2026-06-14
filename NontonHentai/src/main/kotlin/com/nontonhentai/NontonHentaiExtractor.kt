@@ -25,7 +25,7 @@ object NontonHentaiExtractor {
     private const val MAX_SERVER_HOPS = 8
 
     private val keyValueMediaRegex = Regex(
-        """(?i)[\"']?(?:file|src|source|hls|playlist|video|videoUrl|hlsUrl)[\"']?\s*[=:]\s*['\"]([^'\"]+)['\"]"""
+        """(?i)[\"']?(?:file|src|source|hls|playlist|video|videoUrl|hlsUrl|stream)[\"']?\s*[=:]\s*['\"]([^'\"]+)['\"]"""
     )
     private val keyValueServerRegex = Regex(
         """(?i)[\"']?(?:src|embed|embed_url|iframe|player)[\"']?\s*[=:]\s*['\"]([^'\"]+)['\"]"""
@@ -36,6 +36,12 @@ object NontonHentaiExtractor {
     )
     private val bareMediaRegex = Regex(
         """(?i)(?:https?:)?//[^\s'\"<>\\]+?(?:\.m3u8|\.mp4|googlevideo\.com/[^\s'\"<>\\]+|videoplayback[^\s'\"<>\\]*)(?:\?[^\s'\"<>\\]*)?"""
+    )
+    private val knownStreamRegex = Regex(
+        """(?i)(?:https?:)?//[^\s'\"<>\\]+?(?:ryuudrive\.my\.id/stream\.php|hepidrive\.online/stream\.php|/stream\.php)[^\s'\"<>\\]*"""
+    )
+    private val knownDownloadRegex = Regex(
+        """(?i)(?:https?:)?//[^\s'\"<>\\]+?(?:hepidrive\.online/download/|hepidrive\.online/(?:file|d)/|ryuudrive\.my\.id/(?:download|stream)\.php)[^\s'\"<>\\]*"""
     )
     private val encodedHttpRegex = Regex("""https?%3A%2F%2F[^\s'\"<>]+""", RegexOption.IGNORE_CASE)
     private val packedPageRegex = Regex("""(?s)var\s+p\s*=\s*[\"']([^\"']+)[\"']""")
@@ -93,6 +99,13 @@ object NontonHentaiExtractor {
             if (resolveServer(providerName, server, seenPages, seenLinks, subtitleCallback, emitLink, 0)) return true
         }
 
+        // Current source exposes downloadable playback mirrors as regular anchors:
+        // episode page -> hepidrive.online/download/{uuid} -> ryuudrive.my.id/stream.php?...file=*.mp4.
+        // Treat only known playback/download hosts as resolvable servers, not arbitrary page links.
+        for (server in extractDownloadServers(normalizedPage, document)) {
+            if (resolveServer(providerName, server, seenPages, seenLinks, subtitleCallback, emitLink, 0)) return true
+        }
+
         document.select(".eplister li a[href], .episodelist li a[href], .episode-list a[href], a[href*='-episode-']")
             .mapNotNull { absoluteUrl(normalizedPage, it.attr("href")) }
             .firstOrNull { isEpisodeUrl(it) && it != normalizedPage }
@@ -120,7 +133,7 @@ object NontonHentaiExtractor {
         val normalizedServer = absoluteUrl(server.referer, server.url) ?: return false
         if (isPseudoUrl(normalizedServer)) return false
 
-        if (isDirectMedia(normalizedServer) || isLikelyHlsCandidate(normalizedServer)) {
+        if (isDirectMedia(normalizedServer) || isKnownStreamMediaUrl(normalizedServer) || isLikelyHlsCandidate(normalizedServer)) {
             return emitMedia(providerName, server.name, normalizedServer, server.referer, seenLinks, callback)
         }
 
@@ -155,15 +168,16 @@ object NontonHentaiExtractor {
             }
         }
 
-        // Only after no direct media is found, follow a small set of real player/embed servers.
+        // Only after no direct media is found, follow a small set of real player/embed/download servers.
         for (unpackedText in unpackPlayerTexts(embedText)) {
             val embedDocument = Jsoup.parse(unpackedText, normalizedServer)
             val nestedServers = (extractServers(normalizedServer, embedDocument) +
+                extractDownloadServers(normalizedServer, embedDocument) +
                 extractServersFromText(normalizedServer, server.name, unpackedText))
                 .filterNot { it.url == normalizedServer || isPseudoUrl(it.url) }
                 .filter { isResolvablePlayerUrl(it.url) }
                 .distinctBy { it.url }
-                .take(4)
+                .take(6)
 
             for (nested in nestedServers) {
                 if (resolveServer(providerName, nested, seenPages, seenLinks, subtitleCallback, callback, depth + 1)) return true
@@ -191,7 +205,7 @@ object NontonHentaiExtractor {
                 generateM3u8(
                     source = providerName,
                     streamUrl = url,
-                    referer = "",
+                    referer = referer,
                     headers = mediaHeaders
                 )
             }.getOrDefault(emptyList())
@@ -211,7 +225,7 @@ object NontonHentaiExtractor {
                         url,
                         ExtractorLinkType.M3U8
                     ) {
-                        this.referer = ""
+                        this.referer = referer
                         this.quality = qualityFromText(url).let { if (it == Qualities.Unknown.value) Qualities.Unknown.value else it }
                         this.headers = mediaHeaders
                     }
@@ -220,7 +234,7 @@ object NontonHentaiExtractor {
             }
         }
 
-        if (url.contains(".mp4", true) || url.contains("googlevideo", true) || url.contains("videoplayback", true)) {
+        if (url.contains(".mp4", true) || url.contains("googlevideo", true) || url.contains("videoplayback", true) || isKnownStreamMediaUrl(url)) {
             if (seenLinks.add(url)) {
                 callback(
                     newExtractorLink(
@@ -246,7 +260,8 @@ object NontonHentaiExtractor {
         return mapOf(
             "User-Agent" to NontonHentaiUtils.USER_AGENT,
             "Accept" to "*/*",
-            "Origin" to origin
+            "Origin" to origin,
+            "Referer" to referer
         ).filterValues { it.isNotBlank() }
     }
 
@@ -336,6 +351,18 @@ object NontonHentaiExtractor {
         return servers.distinctBy { it.url }.take(8)
     }
 
+    private fun extractDownloadServers(pageUrl: String, document: Document): List<NontonHentaiServer> {
+        val servers = linkedSetOf<NontonHentaiServer>()
+        document.select("a[href]").forEachIndexed { index, anchor ->
+            val url = absoluteUrl(pageUrl, anchor.attr("href")) ?: return@forEachIndexed
+            if (isPseudoUrl(url) || !isKnownDownloadOrStreamUrl(url)) return@forEachIndexed
+            val quality = anchor.text().ifBlank { anchor.parent()?.text().orEmpty() }
+            val name = cleanText(quality).ifBlank { "Download ${index + 1}" }
+            servers.add(NontonHentaiServer(name, url, pageUrl))
+        }
+        return servers.distinctBy { it.url }.take(8)
+    }
+
     private fun extractServersFromText(pageUrl: String, fallbackName: String, text: String): List<NontonHentaiServer> {
         val servers = linkedSetOf<NontonHentaiServer>()
         val raw = normalizedHtml(text)
@@ -352,6 +379,11 @@ object NontonHentaiExtractor {
             if (!isPseudoUrl(url) && !isDirectMedia(url) && isResolvablePlayerUrl(url)) {
                 servers.add(NontonHentaiServer("$fallbackName ${index + 1}", url, pageUrl))
             }
+        }
+
+        knownDownloadRegex.findAll(raw).forEachIndexed { index, match ->
+            val url = absoluteUrl(pageUrl, match.value) ?: return@forEachIndexed
+            if (!isPseudoUrl(url) && isResolvablePlayerUrl(url)) servers.add(NontonHentaiServer("Download ${index + 1}", url, pageUrl))
         }
 
         encodedHttpRegex.findAll(raw).forEachIndexed { index, match ->
@@ -371,9 +403,17 @@ object NontonHentaiExtractor {
             if (!isPseudoUrl(url)) media.add(NontonHentaiMedia("Source ${index + 1}", url, referer))
         }
 
+        document.select("a[href]").forEachIndexed { index, anchor ->
+            val url = absoluteUrl(pageUrl, anchor.attr("href")) ?: return@forEachIndexed
+            if (!isPseudoUrl(url) && (isDirectMedia(url) || isKnownStreamMediaUrl(url))) {
+                val name = cleanText(anchor.text()).ifBlank { "Media ${index + 1}" }
+                media.add(NontonHentaiMedia(name, url, referer))
+            }
+        }
+
         media.addAll(extractMediaFromText(pageUrl, referer, raw))
         return media
-            .filter { isDirectMedia(it.url) || isLikelyHlsCandidate(it.url) }
+            .filter { isDirectMedia(it.url) || isKnownStreamMediaUrl(it.url) || isLikelyHlsCandidate(it.url) }
             .distinctBy { it.url }
     }
 
@@ -396,6 +436,11 @@ object NontonHentaiExtractor {
         bareMediaRegex.findAll(raw).forEachIndexed { index, match ->
             val url = absoluteUrl(pageUrl, match.value) ?: return@forEachIndexed
             if (!isPseudoUrl(url)) media.add(NontonHentaiMedia("Direct ${index + 1}", url, referer))
+        }
+
+        knownStreamRegex.findAll(raw).forEachIndexed { index, match ->
+            val url = absoluteUrl(pageUrl, match.value) ?: return@forEachIndexed
+            if (!isPseudoUrl(url)) media.add(NontonHentaiMedia("Stream ${index + 1}", url, referer))
         }
 
         encodedHttpRegex.findAll(raw).forEachIndexed { index, match ->
@@ -457,14 +502,28 @@ object NontonHentaiExtractor {
     private fun isResolvablePlayerUrl(url: String): Boolean {
         val lower = url.lowercase()
         if (isPseudoUrl(lower)) return false
-        if (isDirectMedia(lower) || isLikelyHlsCandidate(lower)) return true
+        if (isDirectMedia(lower) || isKnownStreamMediaUrl(lower) || isLikelyHlsCandidate(lower)) return true
         return lower.contains("hentaicop.com/play.php") ||
             lower.contains("/play.php") ||
             lower.contains("nontonhentai.net/play.php") ||
+            lower.contains("hepidrive.online/download/") ||
+            lower.contains("hepidrive.online/stream.php") ||
+            lower.contains("ryuudrive.my.id/stream.php") ||
             lower.contains("hepidrive") ||
             lower.contains("/embed") ||
             lower.contains("/player") ||
             lower.contains("iframe")
+    }
+
+    private fun isKnownDownloadOrStreamUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        if (isPseudoUrl(lower)) return false
+        return lower.contains("hepidrive.online/download/") ||
+            lower.contains("hepidrive.online/file/") ||
+            lower.contains("hepidrive.online/d/") ||
+            lower.contains("hepidrive.online/stream.php") ||
+            lower.contains("ryuudrive.my.id/stream.php") ||
+            lower.contains("ryuudrive.my.id/download")
     }
 
     private fun isDirectMedia(url: String): Boolean {
@@ -473,10 +532,19 @@ object NontonHentaiExtractor {
         return lower.contains(".m3u8") || lower.contains(".mp4") || lower.contains("googlevideo.com") || lower.contains("videoplayback")
     }
 
+    private fun isKnownStreamMediaUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        if (isPseudoUrl(lower)) return false
+        return lower.contains("ryuudrive.my.id/stream.php") ||
+            lower.contains("hepidrive.online/stream.php") ||
+            (lower.contains("/stream.php") && (lower.contains("file=") || lower.contains("download=1")))
+    }
+
     private fun isLikelyHlsCandidate(url: String): Boolean {
         val lower = url.lowercase()
         if (isPseudoUrl(lower)) return false
         if (lower.contains(".mp4") || lower.contains("googlevideo") || lower.contains("videoplayback")) return false
+        if (isKnownStreamMediaUrl(lower)) return false
         return lower.contains("m3u8") || lower.contains("playlist") || lower.contains("hls") || lower.contains("master")
     }
 }

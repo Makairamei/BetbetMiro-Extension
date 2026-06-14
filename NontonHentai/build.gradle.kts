@@ -1,8 +1,8 @@
-version = 2
+version = 3
 
 cloudstream {
     language = "id"
-    description = "NontonHentai provider release candidate dengan homepage, detail, episode, dan resolver HLS/MP4 evidence-based."
+    description = "NontonHentai provider release candidate dengan homepage, detail, episode, dan resolver HLS/MP4 evidence-based. Playback resolver diperkuat untuk LocalStream/Hepidrive/Ryuudrive flow aktif."
     authors = listOf("sad25kag")
     status = 1
     tvTypes = listOf("NSFW")
