@@ -546,7 +546,7 @@ class Vidlix : MainAPI() {
                     "Sec-Fetch-Mode" to "no-cors",
                     "Sec-Fetch-Dest" to "script",
                     "Sec-CH-UA-Mobile" to "?1",
-                    "Sec-CH-UA-Platform" to ""Android""
+                    "Sec-CH-UA-Platform" to "\"Android\""
                 ),
                 referer = referer
             ).text
