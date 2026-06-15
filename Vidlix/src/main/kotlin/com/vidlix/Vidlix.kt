@@ -151,13 +151,14 @@ class Vidlix : MainAPI() {
         val jsProxyUrl = document.selectFirst("script[src*='js_proxy.php']")?.attr("src")?.let { absoluteUrl(it) }
         val proxyDocument = jsProxyUrl?.let { fetchProxyDocument(it, url) }
         val videoCandidates = proxyDocument?.let { extractProxyCandidates(it) }.orEmpty()
-        val isSeries = isSeriesPage(document) || videoCandidates.size > 1
+        val isSeries = isSeriesPage(document)
 
         return if (isSeries) {
             val episodes = videoCandidates.mapIndexed { index, candidate ->
+                val episodeNumber = candidate.episode ?: candidate.name?.extractEpisodeNumber() ?: (index + 1)
                 newEpisode(withVidlixReferer(candidate.url, url)) {
-                    this.name = candidate.name ?: "Episode ${index + 1}"
-                    this.episode = index + 1
+                    this.name = candidate.name ?: "Episode $episodeNumber"
+                    this.episode = episodeNumber
                     this.posterUrl = candidate.posterUrl ?: poster
                 }
             }.ifEmpty {
@@ -603,28 +604,74 @@ class Vidlix : MainAPI() {
 
     private fun extractVidlixPlayerCandidates(sourceHtml: String): List<VideoCandidate> {
         val candidates = mutableListOf<VideoCandidate>()
-        Regex("""VidlixPlayer\s*\(\s*\[(.*?)]""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-            .findAll(sourceHtml)
-            .forEach { playerMatch ->
-                val arrayBody = playerMatch.groupValues.getOrNull(1).orEmpty()
-                Regex("""\{(.*?)}""", setOf(RegexOption.DOT_MATCHES_ALL))
-                    .findAll(arrayBody)
-                    .forEachIndexed { index, objectMatch ->
-                        val objectBody = objectMatch.groupValues.getOrNull(1).orEmpty()
-                        val mediaUrl = jsObjectValue(objectBody, "src", "file", "url", "source")
-                            ?.takeIf { it.isPlayableCandidate() }
-                            ?.let { normalizeMediaUrl(it) }
-                            ?: return@forEachIndexed
-                        candidates.add(
-                            VideoCandidate(
-                                url = mediaUrl,
-                                name = jsObjectValue(objectBody, "name", "title") ?: "Episode ${index + 1}",
-                                posterUrl = jsObjectValue(objectBody, "poster", "thumb")?.let { absoluteUrl(it) }
-                            )
-                        )
-                    }
+        var searchIndex = 0
+        while (searchIndex < sourceHtml.length) {
+            val callIndex = sourceHtml.indexOf("VidlixPlayer", searchIndex, ignoreCase = true)
+            if (callIndex < 0) break
+            searchIndex = callIndex + "VidlixPlayer".length
+
+            val openParen = sourceHtml.indexOf('(', searchIndex).takeIf { it >= 0 } ?: continue
+            val arrayStart = sourceHtml.indexOf('[', openParen).takeIf { it >= 0 } ?: continue
+            val arrayEnd = findMatchingDelimiter(sourceHtml, arrayStart, '[', ']') ?: continue
+            val arrayBody = sourceHtml.substring(arrayStart + 1, arrayEnd)
+            searchIndex = arrayEnd + 1
+
+            splitJsObjects(arrayBody).forEachIndexed { index, objectBody ->
+                val mediaUrl = jsObjectValue(objectBody, "src", "file", "url", "source")
+                    ?.takeIf { it.isPlayableCandidate() }
+                    ?.let { normalizeMediaUrl(it) }
+                    ?: return@forEachIndexed
+                val episodeName = jsObjectValue(objectBody, "name", "title") ?: "Episode ${index + 1}"
+                candidates.add(
+                    VideoCandidate(
+                        url = mediaUrl,
+                        name = episodeName,
+                        posterUrl = jsObjectValue(objectBody, "poster", "thumb")?.let { absoluteUrl(it) },
+                        episode = episodeName.extractEpisodeNumber() ?: (index + 1)
+                    )
+                )
             }
-        return candidates
+        }
+        return candidates.distinctBy { it.url.substringBefore("#") }
+    }
+
+    private fun splitJsObjects(source: String): List<String> {
+        val objects = mutableListOf<String>()
+        var index = 0
+        while (index < source.length) {
+            val start = source.indexOf('{', index)
+            if (start < 0) break
+            val end = findMatchingDelimiter(source, start, '{', '}') ?: break
+            objects.add(source.substring(start + 1, end))
+            index = end + 1
+        }
+        return objects
+    }
+
+    private fun findMatchingDelimiter(source: String, start: Int, open: Char, close: Char): Int? {
+        var quote: Char? = null
+        var escaped = false
+        var depth = 0
+        for (index in start until source.length) {
+            val char = source[index]
+            if (quote != null) {
+                when {
+                    escaped -> escaped = false
+                    char == '\\' -> escaped = true
+                    char == quote -> quote = null
+                }
+                continue
+            }
+            when (char) {
+                '\'', '"', '`' -> quote = char
+                open -> depth++
+                close -> {
+                    depth--
+                    if (depth == 0) return index
+                }
+            }
+        }
+        return null
     }
 
     private fun jsObjectValue(source: String, vararg keys: String): String? {
@@ -701,8 +748,24 @@ class Vidlix : MainAPI() {
 
     private fun isSeriesPage(document: Document): Boolean {
         val bodyClass = document.body()?.className().orEmpty()
-        return bodyClass.contains("category-series", true) ||
-            document.select(".breadcrumb-list a[href*='/category/series'], a[href*='/category/series']").isNotEmpty() ||
+        if (bodyClass.contains("category-series", true)) return true
+        if (bodyClass.contains("category-film", true)) return false
+
+        val sectionUrl = document
+            .selectFirst("meta[name=article:section_url], meta[property=article:section_url]")
+            ?.attr("content")
+            .orEmpty()
+        if (sectionUrl.contains("/category/series", true)) return true
+        if (sectionUrl.contains("/category/film", true)) return false
+
+        val section = document
+            .selectFirst("meta[property=article:section], meta[name=article:section]")
+            ?.attr("content")
+            .orEmpty()
+        if (section.equals("Series", true)) return true
+        if (section.equals("Film", true)) return false
+
+        return document.select(".breadcrumb-list a[href*='/category/series'], .breadcrumb a[href*='/category/series']").isNotEmpty() ||
             detailValue(document, "Total")?.contains("Episode", true) == true
     }
 
@@ -865,6 +928,12 @@ class Vidlix : MainAPI() {
         return Regex("(19|20)\\d{2}").find(this)?.value?.toIntOrNull()
     }
 
+    private fun String.extractEpisodeNumber(): Int? {
+        return Regex("""(?i)\b(?:ep|episode)\s*([0-9]+)\b""").find(this)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: Regex("""^\s*([0-9]+)\s*[:.\-)]""").find(this)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: Regex("""/([0-9]{2,4})[._-]""").find(this)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    }
+
     private fun String.durationToMinutes(): Int? {
         val hours = Regex("(\\d+)\\s*jam", RegexOption.IGNORE_CASE).find(this)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
         val minutes = Regex("(\\d+)\\s*menit", RegexOption.IGNORE_CASE).find(this)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
@@ -906,7 +975,8 @@ class Vidlix : MainAPI() {
     private data class VideoCandidate(
         val url: String,
         val name: String?,
-        val posterUrl: String?
+        val posterUrl: String?,
+        val episode: Int? = null
     )
 
     private data class VidlixCandidateData(
