@@ -11,7 +11,6 @@ import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.fixUrlNull
 import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.newHomePageResponse
@@ -290,7 +289,7 @@ class BetbetLiveTvProvider : MainAPI() {
         }
 
         val posterUrl: String? by lazy {
-            fixUrlNull(tvgLogo).takeUnless { it.isNullOrBlank() } ?: faviconFromStream()
+            tvgLogo.toSafePosterUrl() ?: faviconFromStream()
         }
 
         val quality: Int by lazy {
@@ -442,6 +441,16 @@ private fun String.cleanChannelName(): String {
         .replace(Regex("""\([^)]*p\)""", RegexOption.IGNORE_CASE), "")
         .replace(Regex("""\s+"""), " ")
         .trim()
+}
+
+private fun String.toSafePosterUrl(): String? {
+    val clean = trim()
+    if (clean.isBlank()) return null
+    return when {
+        clean.startsWith("//") -> "https:$clean"
+        clean.startsWith("http://", ignoreCase = true) || clean.startsWith("https://", ignoreCase = true) -> clean
+        else -> null
+    }
 }
 
 private fun String.extractBracketLabels(): String {
