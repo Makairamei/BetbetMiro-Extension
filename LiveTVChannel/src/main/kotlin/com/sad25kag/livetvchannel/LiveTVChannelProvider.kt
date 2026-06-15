@@ -245,25 +245,25 @@ class LiveTVChannelProvider : MainAPI() {
         var emitted = 0
         val seen = linkedSetOf<String>()
 
-        document.select("video[src], source[src]").forEach { element ->
+        for (element in document.select("video[src], source[src]")) {
             val mediaUrl = element.attr("src").toAbsoluteUrl(pageUrl)
             if (mediaUrl.isLikelyPlayable() && seen.add(mediaUrl)) {
                 emitted += emitDirect(mediaUrl, pageUrl, callback)
             }
         }
 
-        MEDIA_URL_REGEX.findAll(html).forEach { match ->
+        for (match in MEDIA_URL_REGEX.findAll(html)) {
             val mediaUrl = match.value.decodeEscapedSlashes().toAbsoluteUrl(pageUrl)
             if (mediaUrl.isLikelyPlayable() && seen.add(mediaUrl)) {
                 emitted += emitDirect(mediaUrl, pageUrl, callback)
             }
         }
 
-        ATOb_REGEX.findAll(html).forEach { match ->
+        for (match in ATOb_REGEX.findAll(html)) {
             val decoded = runCatching {
                 java.util.Base64.getDecoder().decode(match.groupValues[1]).decodeToString()
             }.getOrNull()?.decodeEscapedSlashes().orEmpty()
-            MEDIA_URL_REGEX.findAll(decoded).forEach { mediaMatch ->
+            for (mediaMatch in MEDIA_URL_REGEX.findAll(decoded)) {
                 val mediaUrl = mediaMatch.value.decodeEscapedSlashes().toAbsoluteUrl(pageUrl)
                 if (mediaUrl.isLikelyPlayable() && seen.add(mediaUrl)) {
                     emitted += emitDirect(mediaUrl, pageUrl, callback)
@@ -271,28 +271,16 @@ class LiveTVChannelProvider : MainAPI() {
             }
         }
 
-        document.select("iframe[src], embed[src]").forEach { frame ->
+        for (frame in document.select("iframe[src], embed[src]")) {
             val frameUrl = frame.attr("src").toAbsoluteUrl(pageUrl)
-            if (frameUrl.isBlank() || frameUrl.startsWith("javascript:", ignoreCase = true)) return@forEach
+            if (frameUrl.isBlank() || frameUrl.startsWith("javascript:", ignoreCase = true)) continue
 
             if (sameHost(frameUrl, mainUrl)) {
                 emitted += resolvePlayableLinks(frameUrl, pageUrl, depth + 1, subtitleCallback, callback)
             } else {
                 loadExtractor(frameUrl, pageUrl, subtitleCallback) { link ->
                     emitted += 1
-                    callback.invoke(
-                        newExtractorLink(
-                            source = link.source,
-                            name = link.name,
-                            url = link.url,
-                            type = link.type
-                        ) {
-                            this.referer = link.referer.ifBlank { pageUrl }
-                            this.quality = link.quality
-                            this.headers = link.headers.ifEmpty { siteHeaders(frameUrl, pageUrl) }
-                            this.extractorData = link.extractorData
-                        }
-                    )
+                    callback.invoke(link)
                 }
             }
         }
@@ -300,7 +288,7 @@ class LiveTVChannelProvider : MainAPI() {
         return emitted
     }
 
-    private fun emitDirect(
+    private suspend fun emitDirect(
         mediaUrl: String,
         referer: String,
         callback: (ExtractorLink) -> Unit
