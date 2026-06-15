@@ -9,18 +9,16 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.Locale
-import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
 class Terbit21Provider : MainAPI() {
-    override var mainUrl = "https://tv.movieon21.mov"
+    override var mainUrl = "https://162.244.95.227"
     override var name = "Terbit21"
     override val hasMainPage = true
     override val hasQuickSearch = true
@@ -205,161 +203,179 @@ class Terbit21Provider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val base = getBaseUrl(data).takeIf { it.isNotBlank() } ?: activeBaseUrl
+        val base = getBaseUrl(data).takeIf { it.isNotBlank() } ?: activeBaseUrl.ifBlank { mainUrl }
         val startUrl = data.fixUrlMaybe(base) ?: data
         val visited = linkedSetOf<String>()
+        val emitted = linkedSetOf<String>()
         val queue = ArrayDeque<Pair<String, String>>()
         queue.add(startUrl to "$base/")
         var delivered = false
         var rounds = 0
 
-        while (queue.isNotEmpty() && rounds < 30) {
+        suspend fun emitOnce(mediaUrl: String, referer: String): Boolean {
+            val fixed = mediaUrl.fixUrlMaybe(referer)?.decodeHtml() ?: return false
+            val key = fixed.substringBefore("#")
+            if (!emitted.add(key)) return false
+            return when {
+                fixed.isDirectM3u8() -> emitM3u8(fixed, referer, callback, fixed.harOriginForMedia())
+                fixed.isDirectVideo() -> emitDirectVideo(fixed, referer, callback)
+                else -> false
+            }
+        }
+
+        while (queue.isNotEmpty() && rounds < 24) {
             rounds++
             val (currentUrl, referer) = queue.removeFirst()
-            val fixedUrl = currentUrl.fixUrlMaybe(referer) ?: continue
+            val fixedUrl = currentUrl.fixUrlMaybe(referer)?.decodeHtml() ?: continue
             val key = fixedUrl.substringBefore("#")
             if (!visited.add(key)) continue
+            if (!fixedUrl.isHarPlaybackUrl() && !fixedUrl.startsWith(mainUrl, true)) continue
 
             when {
-                fixedUrl.isDirectM3u8() -> {
-                    if (emitM3u8(fixedUrl, referer, callback)) delivered = true
+                fixedUrl.isDirectM3u8() || fixedUrl.isDirectVideo() -> {
+                    if (emitOnce(fixedUrl, referer)) delivered = true
                     continue
-                }
-                fixedUrl.isDirectVideo() -> {
-                    if (emitDirectVideo(fixedUrl, referer, callback)) delivered = true
-                    continue
-                }
-                fixedUrl.contains(T21_HOST, true) && fixedUrl.contains("play-ads.php", true) -> {
-                    val slug = queryValue(fixedUrl, "movie") ?: movieSlugFromUrl(startUrl)
-                    if (slug != null && resolveT21Provider(slug, fixedUrl, subtitleCallback, callback)) delivered = true
                 }
                 fixedUrl.contains(SF21_HOST, ignoreCase = true) -> {
-                    if (resolveSf21(fixedUrl, referer, callback)) delivered = true
+                    if (resolveSf21Har(fixedUrl, referer, callback)) delivered = true
                 }
-                else -> {
-                    val success = runCatching {
-                        loadExtractor(fixedUrl, referer, subtitleCallback, callback)
-                    }.getOrDefault(false)
-                    if (success) delivered = true
+                fixedUrl.contains(GDRIVE_HOST, ignoreCase = true) -> {
+                    if (resolveGdriveHar(fixedUrl, referer, callback)) delivered = true
                 }
             }
 
             val response = runCatching {
-                app.get(fixedUrl, headers = headersFor(getBaseUrl(fixedUrl)) + mapOf("Referer" to referer), referer = referer, timeout = 30L)
+                app.get(
+                    fixedUrl,
+                    headers = headersFor(getBaseUrl(fixedUrl)) + fixedUrl.harRequestHeaders(referer),
+                    referer = referer,
+                    timeout = 30L,
+                )
             }.getOrNull() ?: continue
 
             val document = response.document
             val html = response.text.ifBlank { document.html() }.decodeHtml()
             collectSubtitles(document, fixedUrl, subtitleCallback)
             document.collectPlayerUrls(fixedUrl, html).forEach { next ->
-                if (!next.isNoiseUrl()) queue.add(next to fixedUrl)
+                if (!next.isNoiseUrl() && next.isHarPlaybackUrl()) queue.add(next to fixedUrl)
             }
+            HAR_MEDIA_REGEX.findAll(html)
+                .map { it.value.cleanUrl().decodeHtml() }
+                .filter { it.isHarPlaybackUrl() || it.isDirectMedia() }
+                .forEach { next -> queue.add(next to fixedUrl) }
         }
 
         return delivered
     }
 
-    private suspend fun resolveSf21(
+    private suspend fun resolveSf21Har(
         playerUrl: String,
         sourceReferer: String,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
+        val videoId = playerUrl.sf21VideoId() ?: return false
+        val sourceHost = runCatching { URI(sourceReferer).host }.getOrNull()?.takeIf { it.isNotBlank() } ?: SOURCE_HOST
+        val pageUrl = "$SF21_ORIGIN/#$videoId"
+        var emitted = false
+
         val resolver = WebViewResolver(
-            SF21_M3U8_REGEX,
+            HAR_MEDIA_REGEX,
             userAgent = MOBILE_USER_AGENT,
             useOkhttp = true,
         )
 
         val captured = runCatching {
             app.get(
-                playerUrl,
-                headers = mapOf(
-                    "User-Agent" to MOBILE_USER_AGENT,
-                    "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                    "Referer" to sourceReferer,
-                ),
+                pageUrl,
+                headers = sf21Headers(sourceReferer),
                 interceptor = resolver,
                 timeout = 45L,
-            ).url
+            ).url.decodeHtml()
         }.getOrNull()
 
-        val m3u8 = captured?.takeIf { it.contains(".m3u8", ignoreCase = true) } ?: return false
-        return emitM3u8(m3u8, "$SF21_ORIGIN/", callback, SF21_ORIGIN)
-    }
+        captured
+            ?.takeIf { it.isHarPlaybackUrl() || it.isDirectMedia() }
+            ?.let { media ->
+                emitted = when {
+                    media.isDirectM3u8() -> emitM3u8(media, SF21_ORIGIN, callback, media.harOriginForMedia())
+                    media.isDirectVideo() -> emitDirectVideo(media, SF21_ORIGIN, callback)
+                    else -> false
+                }
+            }
 
-    private suspend fun resolveT21Provider(
-        slug: String,
-        providerUrl: String,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit,
-    ): Boolean {
-        val iframe = queryValue(providerUrl, "iframe").orEmpty().lowercase(Locale.ROOT)
-        return when {
-            iframe.contains("hydra") -> resolveT21Hydra(slug, providerUrl, subtitleCallback, callback)
-            else -> resolveT21Utama(slug, providerUrl, callback)
-        }
-    }
-
-    private suspend fun resolveT21Utama(
-        slug: String,
-        providerUrl: String,
-        callback: (ExtractorLink) -> Unit,
-    ): Boolean {
-        val p2pUrl = "$T21_ORIGIN/p2p.php?movie=$slug"
-        val response = runCatching {
-            app.post(
-                "$T21_ORIGIN/540.php?movie=$slug",
-                data = mapOf("r" to providerUrl, "d" to T21_HOST),
-                headers = headersFor(T21_ORIGIN) + mapOf(
-                    "Accept" to "*/*",
-                    "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
-                    "X-Requested-With" to "XMLHttpRequest",
-                    "Origin" to T21_ORIGIN,
-                    "Referer" to p2pUrl,
-                ),
-                referer = p2pUrl,
+        // HAR evidence shows SF21 calls these API endpoints before playback:
+        // /api/v1/info?id=<id> and /api/v1/video?id=<id>&w=421&h=935&r=<source-host>.
+        // The responses are encrypted application/octet-stream, so they are fetched only to
+        // reproduce the browser flow/cookies and are not emitted as fake video links.
+        runCatching {
+            app.get(
+                "$SF21_ORIGIN/api/v1/info?id=$videoId",
+                headers = sf21ApiHeaders(),
+                referer = "$SF21_ORIGIN/",
                 timeout = 30L,
-            ).text
-        }.getOrNull() ?: return false
-
-        var emitted = false
-        FILE_JSON_REGEX.findAll(response.decodeHtml()).forEach { match ->
-            val file = match.groupValues.getOrNull(1)?.decodeHtml()?.fixUrlMaybe(T21_ORIGIN) ?: return@forEach
-            if (file.isDirectM3u8() && emitM3u8(file, "$T21_ORIGIN/", callback, T21_ORIGIN)) emitted = true
+            )
         }
+        runCatching {
+            app.get(
+                "$SF21_ORIGIN/api/v1/video?id=$videoId&w=421&h=935&r=$sourceHost",
+                headers = sf21ApiHeaders(),
+                referer = "$SF21_ORIGIN/",
+                timeout = 30L,
+            )
+        }
+
         return emitted
     }
 
-    private suspend fun resolveT21Hydra(
-        slug: String,
-        providerUrl: String,
-        subtitleCallback: (SubtitleFile) -> Unit,
+    private suspend fun resolveGdriveHar(
+        playerUrl: String,
+        sourceReferer: String,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val urls = linkedSetOf<String>()
-        listOf(providerUrl, "$T21_ORIGIN/g-hydrax.php?movie=$slug").forEach { page ->
-            runCatching {
-                app.get(page, headers = headersFor(T21_ORIGIN) + mapOf("Referer" to providerUrl), referer = providerUrl, timeout = 30L).text
-            }.getOrNull()?.let { html ->
-                HYDRAX_URL_REGEX.findAll(html.decodeHtml())
-                    .map { it.value.fixUrlMaybe(T21_ORIGIN) }
-                    .filterNotNull()
-                    .forEach(urls::add)
-            }
+        var emitted = false
+
+        val direct = playerUrl.takeIf { it.contains("hlsplaylist.php", true) && it.contains(".m3u8", true) }
+        if (direct != null) {
+            return emitM3u8(direct, GDRIVE_ORIGIN, callback, GDRIVE_ORIGIN)
         }
 
-        var found = false
-        urls.forEach { hydraUrl ->
-            runCatching {
-                loadExtractor(hydraUrl, "$T21_ORIGIN/", subtitleCallback) { link ->
-                    if (!link.url.isNoiseUrl()) {
-                        found = true
-                        callback(link)
-                    }
-                }
+        val page = runCatching {
+            app.get(
+                playerUrl,
+                headers = gdriveHeaders(sourceReferer),
+                referer = sourceReferer,
+                timeout = 30L,
+            )
+        }.getOrNull()
+
+        val html = page?.text?.decodeHtml().orEmpty()
+        GDRIVE_M3U8_REGEX.findAll(html)
+            .map { it.value.cleanUrl().decodeHtml().fixUrlMaybe(GDRIVE_ORIGIN) }
+            .filterNotNull()
+            .distinct()
+            .forEach { m3u8 ->
+                if (emitM3u8(m3u8, GDRIVE_ORIGIN, callback, GDRIVE_ORIGIN)) emitted = true
             }
-        }
-        return found
+        if (emitted) return true
+
+        val resolver = WebViewResolver(
+            GDRIVE_M3U8_REGEX,
+            userAgent = MOBILE_USER_AGENT,
+            useOkhttp = true,
+        )
+        val captured = runCatching {
+            app.get(
+                playerUrl,
+                headers = gdriveHeaders(sourceReferer),
+                interceptor = resolver,
+                timeout = 45L,
+            ).url.decodeHtml()
+        }.getOrNull()
+
+        return captured
+            ?.takeIf { it.contains("hlsplaylist.php", true) && it.contains(".m3u8", true) }
+            ?.let { emitM3u8(it, GDRIVE_ORIGIN, callback, GDRIVE_ORIGIN) }
+            ?: false
     }
 
     private fun Document.parseCards(base: String): List<SearchResponse> {
@@ -669,9 +685,63 @@ class Terbit21Provider : MainAPI() {
         return lower.contains("/eps/") || lower.contains("/episode/") || lower.contains("episode=") || EPISODE_NUMBER_REGEX.containsMatchIn(lower)
     }
 
-    private fun String.isPlayerLike(): Boolean {
+    private fun String.isPlayerLike(): Boolean = isHarPlaybackUrl()
+
+    private fun String.isHarPlaybackUrl(): Boolean {
         val lower = lowercase(Locale.ROOT)
-        return lower.contains(SF21_HOST) || lower.contains(T21_HOST) || lower.contains("play-ads.php") || lower.contains("p2p.php") || lower.contains("g-hydrax.php") || lower.contains("playhydrax") || lower.contains("hydrax") || lower.contains("vidplayer") || lower.contains("embed") || lower.contains("player") || lower.contains("stream") || lower.contains("download") || lower.contains("safelink")
+        return lower.contains(SF21_HOST) ||
+            lower.contains(GDRIVE_HOST) ||
+            lower.contains(STREAM121_HOST) ||
+            lower.startsWith(SOURCE_ORIGIN.lowercase(Locale.ROOT))
+    }
+
+    private fun String.isHarSegmentUrl(): Boolean = lowercase(Locale.ROOT).contains("$STREAM121_HOST/video/data/")
+
+    private fun String.harOriginForMedia(): String {
+        val lower = lowercase(Locale.ROOT)
+        return when {
+            lower.contains(STREAM121_HOST) -> GDRIVE_ORIGIN
+            lower.contains(GDRIVE_HOST) -> GDRIVE_ORIGIN
+            lower.contains(SF21_HOST) -> SF21_ORIGIN
+            else -> getBaseUrl(this)
+        }
+    }
+
+    private fun String.harRequestHeaders(referer: String): Map<String, String> {
+        val lower = lowercase(Locale.ROOT)
+        return when {
+            lower.contains(SF21_HOST) -> sf21Headers(referer)
+            lower.contains(GDRIVE_HOST) -> gdriveHeaders(referer)
+            lower.contains(STREAM121_HOST) -> mapOf(
+                "Accept" to "*/*",
+                "Origin" to GDRIVE_ORIGIN,
+                "User-Agent" to MOBILE_USER_AGENT,
+            )
+            else -> mapOf("Referer" to referer, "User-Agent" to MOBILE_USER_AGENT)
+        }
+    }
+
+    private fun sf21Headers(referer: String): Map<String, String> = mapOf(
+        "User-Agent" to MOBILE_USER_AGENT,
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Referer" to referer,
+    )
+
+    private fun sf21ApiHeaders(): Map<String, String> = mapOf(
+        "User-Agent" to MOBILE_USER_AGENT,
+        "Accept" to "*/*",
+        "Referer" to "$SF21_ORIGIN/",
+    )
+
+    private fun gdriveHeaders(referer: String): Map<String, String> = mapOf(
+        "User-Agent" to MOBILE_USER_AGENT,
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Referer" to referer,
+    )
+
+    private fun String.sf21VideoId(): String? {
+        queryValue(this, "id")?.takeIf { it.isNotBlank() }?.let { return it }
+        return substringAfter('#', "").substringBefore('?').substringBefore('&').takeIf { it.isNotBlank() }
     }
 
     private fun String.isDirectMedia(): Boolean = isDirectM3u8() || isDirectVideo()
@@ -694,12 +764,6 @@ class Terbit21Provider : MainAPI() {
         }
     }
 
-    private fun movieSlugFromUrl(url: String): String? {
-        queryValue(url, "movie")?.let { return it }
-        val path = runCatching { URI(url).path.orEmpty().trim('/') }.getOrDefault("")
-        return path.substringAfterLast('/').takeIf { it.isNotBlank() && !it.endsWith(".php", true) }
-    }
-
     private fun queryValue(url: String, key: String): String? = runCatching {
         URI(url).rawQuery.orEmpty().split('&').firstNotNullOfOrNull { part ->
             val name = part.substringBefore('=')
@@ -714,30 +778,27 @@ class Terbit21Provider : MainAPI() {
     }
 
     companion object {
+        private const val SOURCE_HOST = "162.244.95.227"
+        private const val SOURCE_ORIGIN = "https://162.244.95.227"
         private const val SF21_HOST = "sf21.vidplayer.live"
         private const val SF21_ORIGIN = "https://sf21.vidplayer.live"
-        private const val T21_HOST = "t21.press"
-        private const val T21_ORIGIN = "https://t21.press"
+        private const val GDRIVE_HOST = "gdriveplayer.io"
+        private const val GDRIVE_ORIGIN = "https://gdriveplayer.io"
+        private const val STREAM121_HOST = "lowhls10.stream121.space"
         private const val MOBILE_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36"
 
         private val SOURCE_CANDIDATES = listOf(
-            "https://tv.movieon21.mov",
-            "https://162.244.95.227",
-            "https://terbit21.cyou",
-            "https://terbit21.pm",
-            "https://terbit21.sbs",
-            "https://terbit21.skin",
+            SOURCE_ORIGIN,
         )
 
         private const val CARD_SELECTOR =
             "article.item, article, .post, .item, .movie, .film, .ml-item, .result-item, .poster, .box, .content-thumbnail"
 
-        private val SF21_M3U8_REGEX =
-            Regex("""https://sf21\.vidplayer\.live/hls/[^'"<>\s]+\.m3u8[^'"<>\s]*""", RegexOption.IGNORE_CASE)
-        private val HYDRAX_URL_REGEX =
-            Regex("""https?://(?:www\.)?playhydrax\.com/?\?v=[^\s'"<>\\]+""", RegexOption.IGNORE_CASE)
-        private val FILE_JSON_REGEX = Regex("""(?i)"file"\s*:\s*"([^"]+)""", RegexOption.IGNORE_CASE)
+        private val GDRIVE_M3U8_REGEX =
+            Regex("""https?://gdriveplayer\.io/hlsplaylist\.php\?[^'"<>\s]+\.m3u8[^'"<>\s]*""", RegexOption.IGNORE_CASE)
+        private val HAR_MEDIA_REGEX =
+            Regex("""https?://(?:gdriveplayer\.io/hlsplaylist\.php\?[^'"<>\s]+\.m3u8[^'"<>\s]*|lowhls10\.stream121\.space/video/data/[^'"<>\s]+|[^'"<>\s]+\.(?:m3u8|mp4)(?:\?[^'"<>\s]*)?)""", RegexOption.IGNORE_CASE)
         private val URL_REGEX = Regex("""https?:\/\/[^\s'"<>\\]+""", RegexOption.IGNORE_CASE)
         private val YEAR_REGEX = Regex("""(?:19|20)\d{2}""")
         private val DURATION_REGEX = Regex("""(?i)(\d{1,3})\s*(?:min|menit|minutes|m)\b""")
