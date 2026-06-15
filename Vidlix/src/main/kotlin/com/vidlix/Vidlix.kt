@@ -241,10 +241,11 @@ class Vidlix : MainAPI() {
                 val proxyDocument = fetchProxyDocument(requestUrl, requestReferer) ?: return false
                 var found = false
                 extractProxyCandidates(proxyDocument).forEach { candidate ->
-                    if (resolveCandidate(withVidlixReferer(candidate.url, requestUrl), requestUrl, visited, subtitleCallback, callback)) found = true
+                    if (resolveCandidate(withVidlixReferer(candidate.url, requestReferer), requestReferer, visited, subtitleCallback, callback)) found = true
                 }
                 found
             }
+            isVidlixMedia(requestUrl) -> resolveVidlixMedia(requestUrl, requestReferer, callback)
             requestUrl.contains("abyssplayer.com", true) || requestUrl.contains("abyss.to", true) -> {
                 resolveAbyssPlayer(requestUrl, requestReferer, callback) || runGenericExtractor(requestUrl, requestReferer, subtitleCallback, callback)
             }
@@ -269,6 +270,46 @@ class Vidlix : MainAPI() {
         return found
     }
 
+    private suspend fun resolveVidlixMedia(
+        url: String,
+        referer: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val mediaId = Regex("""/media/([A-Za-z0-9]+)""").find(url)?.groupValues?.getOrNull(1) ?: return false
+        val token = fetchMediaToken(mediaId, referer) ?: url.substringAfter("token=", "").substringBefore("&").takeIf { it.isNotBlank() }
+        val playableUrl = if (token != null) "$mainUrl/media/$mediaId?token=$token" else url
+        callback.invoke(
+            newExtractorLink(
+                source = name,
+                name = "$name Direct",
+                url = playableUrl,
+                type = ExtractorLinkType.VIDEO
+            ) {
+                this.referer = referer
+                this.quality = Qualities.Unknown.value
+                this.headers = vidlixMediaHeaders(referer)
+            }
+        )
+        return true
+    }
+
+    private suspend fun fetchMediaToken(mediaId: String, referer: String): String? {
+        return runCatching {
+            val json = app.get(
+                "$mainUrl/api/token/$mediaId",
+                headers = siteHeaders + mapOf(
+                    "Accept" to "application/json, text/plain, */*",
+                    "X-Requested-With" to "XMLHttpRequest",
+                    "Sec-Fetch-Site" to "same-origin",
+                    "Sec-Fetch-Mode" to "cors",
+                    "Sec-Fetch-Dest" to "empty"
+                ),
+                referer = referer
+            ).text
+            JSONObject(json).optString("token").takeIf { it.isNotBlank() }
+        }.getOrNull()
+    }
+
     private suspend fun emitDirect(
         url: String,
         referer: String,
@@ -280,7 +321,7 @@ class Vidlix : MainAPI() {
                     source = name,
                     streamUrl = url,
                     referer = referer,
-                    headers = playbackHeaders("https://abyssplayer.com/")
+                    headers = playbackHeaders(referer)
                 )
                 links.forEach(callback)
                 links.isNotEmpty()
@@ -288,9 +329,9 @@ class Vidlix : MainAPI() {
             else -> {
                 callback.invoke(
                     newExtractorLink(name, "$name Direct", url, type = ExtractorLinkType.VIDEO) {
-                        this.referer = "https://abyssplayer.com/"
+                        this.referer = referer
                         this.quality = getQualityFromName(url).takeIf { it != Qualities.Unknown.value } ?: Qualities.Unknown.value
-                        this.headers = playbackHeaders("https://abyssplayer.com/")
+                        this.headers = playbackHeaders(referer)
                     }
                 )
                 true
@@ -494,6 +535,8 @@ class Vidlix : MainAPI() {
             )
         }
 
+        extractVidlixPlayerCandidates(sourceHtml).forEach { candidates.add(it) }
+
         val mediaAttrs = listOf(
             "src", "href", "video", "data-src", "data-video", "data-url",
             "data-embed", "data-iframe", "data-file", "data-link", "data-player",
@@ -509,7 +552,8 @@ class Vidlix : MainAPI() {
         }
 
         listOf(
-            Regex("""https?://(?:[^'"<>\s\/]+\.)?(?:abyssplayer\.com|abyss\.to|jeniusplay|majorplay|playmogo|streamwish|filemoon|dood|vidhide|voe|mixdrop|streamtape|mp4upload)[^'"<>\s\\]*""", RegexOption.IGNORE_CASE),
+            Regex("""https?://vidlix\.net/media/[A-Za-z0-9]+(?:\?[^'"<>\s\\]*)?""", RegexOption.IGNORE_CASE),
+            Regex("""https?://(?:[^'"<>\s/]+\.)?(?:abyssplayer\.com|abyss\.to|jeniusplay|majorplay|playmogo|streamwish|filemoon|dood|vidhide|voe|mixdrop|streamtape|mp4upload)[^'"<>\s\\]*""", RegexOption.IGNORE_CASE),
             Regex("""https?://[^'"<>\s\\]+?\.(?:m3u8|mp4|webm|mkv)(?:\?[^'"<>\s\\]*)?""", RegexOption.IGNORE_CASE),
             Regex("""(?:video|file|source|src|url|iframe|embed)\s*[:=]\s*['"]([^'"]+)['"]""", RegexOption.IGNORE_CASE)
         ).forEach { regex ->
@@ -522,6 +566,44 @@ class Vidlix : MainAPI() {
         }
 
         return candidates.distinctBy { it.url.substringBefore("#") }
+    }
+
+    private fun extractVidlixPlayerCandidates(sourceHtml: String): List<VideoCandidate> {
+        val candidates = mutableListOf<VideoCandidate>()
+        Regex("""VidlixPlayer\s*\(\s*\[(.*?)]""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+            .findAll(sourceHtml)
+            .forEach { playerMatch ->
+                val arrayBody = playerMatch.groupValues.getOrNull(1).orEmpty()
+                Regex("""\{(.*?)}""", setOf(RegexOption.DOT_MATCHES_ALL))
+                    .findAll(arrayBody)
+                    .forEachIndexed { index, objectMatch ->
+                        val objectBody = objectMatch.groupValues.getOrNull(1).orEmpty()
+                        val mediaUrl = jsObjectValue(objectBody, "src", "file", "url", "source")
+                            ?.takeIf { it.isPlayableCandidate() }
+                            ?.let { normalizeMediaUrl(it) }
+                            ?: return@forEachIndexed
+                        candidates.add(
+                            VideoCandidate(
+                                url = mediaUrl,
+                                name = jsObjectValue(objectBody, "name", "title") ?: "Episode ${index + 1}",
+                                posterUrl = jsObjectValue(objectBody, "poster", "thumb")?.let { absoluteUrl(it) }
+                            )
+                        )
+                    }
+            }
+        return candidates
+    }
+
+    private fun jsObjectValue(source: String, vararg keys: String): String? {
+        keys.forEach { key ->
+            Regex("""["']?${Regex.escape(key)}["']?\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .find(source)?.groupValues?.getOrNull(1)
+                ?.htmlUnescape()
+                ?.unescapeJs()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { return it }
+        }
+        return null
     }
 
     private fun extractImageUrl(element: Element): String? {
@@ -551,7 +633,7 @@ class Vidlix : MainAPI() {
 
     private fun String.isPlayableCandidate(): Boolean {
         val value = trim().htmlUnescape().unescapeJs().replace("\\/", "/").lowercase()
-        if (isDirectMedia(value)) return true
+        if (isDirectMedia(value) || isVidlixMedia(value)) return true
 
         val knownHosts = listOf(
             "abyssplayer", "abyss.to", "jeniusplay", "majorplay", "playmogo", "streamwish",
@@ -746,10 +828,23 @@ class Vidlix : MainAPI() {
         return clean.endsWith(".m3u8") || clean.endsWith(".mp4") || clean.endsWith(".webm") || clean.endsWith(".mkv")
     }
 
+    private fun isVidlixMedia(url: String): Boolean {
+        return Regex("""https?://(?:www\.)?vidlix\.net/media/[A-Za-z0-9]+""", RegexOption.IGNORE_CASE).containsMatchIn(url)
+    }
+
     private fun playbackHeaders(referer: String): Map<String, String> {
         return mapOf(
             "Referer" to referer,
-            "Origin" to (runCatching { URI(referer).let { "${it.scheme}://${it.host}" } }.getOrNull() ?: "https://abyssplayer.com"),
+            "Origin" to (runCatching { URI(referer).let { "${it.scheme}://${it.host}" } }.getOrNull() ?: mainUrl),
+            "User-Agent" to USER_AGENT,
+            "Accept" to "*/*"
+        )
+    }
+
+    private fun vidlixMediaHeaders(referer: String): Map<String, String> {
+        return mapOf(
+            "Referer" to referer,
+            "Origin" to mainUrl,
             "User-Agent" to USER_AGENT,
             "Accept" to "*/*"
         )
