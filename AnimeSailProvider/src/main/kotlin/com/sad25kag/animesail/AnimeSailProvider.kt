@@ -37,7 +37,14 @@ class AnimeSailProvider : MainAPI() {
     override val hasQuickSearch = true
     override var lang = "id"
     override val hasDownloadSupport = true
-    private val turnstileInterceptor = TurnstileInterceptor()
+    // DEBUG ONLY: cookie-warmed homepage test from Boss HAR.
+    // Do not commit, publish, or share this build because it contains session cookies.
+    private val debugHarCookieHeader = "_as_ipin_tz=Asia/Jakarta; _as_ipin_lc=id; _as_ipin_ct=ID; _as_turnstile=c900bd78de007c90ed36f5f830c2d8ac322ee9efe5d6f2c69ee39cdcefc335b9"
+    private val debugHarUserAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36"
+    private val debugHarAcceptLanguage = "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
+    private val debugHarAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+    private val turnstileInterceptor = TurnstileInterceptor(debugCookieHeader = debugHarCookieHeader)
+
 
     override val supportedTypes = setOf(
         TvType.Anime,
@@ -66,10 +73,12 @@ class AnimeSailProvider : MainAPI() {
             url,
             interceptor = turnstileInterceptor,
             headers = mapOf(
-                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "User-Agent" to USER_AGENT
+                "Accept" to debugHarAccept,
+                "Accept-Language" to debugHarAcceptLanguage,
+                "User-Agent" to debugHarUserAgent,
+                "Cookie" to debugHarCookieHeader
             ),
-            referer = ref
+            referer = ref ?: "$mainUrl/"
         )
     }
 
@@ -613,6 +622,7 @@ class AnimeSailProvider : MainAPI() {
 }
 
 class TurnstileInterceptor(
+    private val debugCookieHeader: String? = null,
     private val challengeCookies: List<String> = listOf(
         "cf_clearance",
         "_as_turnstile",
@@ -644,7 +654,26 @@ class TurnstileInterceptor(
 
     private fun getCookieHeader(url: String, domainUrl: String): String {
         val manager = CookieManager.getInstance()
-        return manager.getCookie(url) ?: manager.getCookie(domainUrl) ?: ""
+        val managerCookie = manager.getCookie(url) ?: manager.getCookie(domainUrl) ?: ""
+        return mergeCookieHeaders(managerCookie, debugCookieHeader.orEmpty())
+    }
+
+    private fun mergeCookieHeaders(vararg rawHeaders: String): String {
+        val cookies = linkedMapOf<String, String>()
+
+        rawHeaders.forEach { raw ->
+            raw.split(";").forEach { part ->
+                val clean = part.trim()
+                if (!clean.contains("=")) return@forEach
+                val name = clean.substringBefore("=").trim()
+                val value = clean.substringAfter("=").trim()
+                if (name.isNotBlank() && value.isNotBlank()) {
+                    cookies[name] = "$name=$value"
+                }
+            }
+        }
+
+        return cookies.values.joinToString("; ")
     }
 
     private fun hasCookie(raw: String, name: String): Boolean {
