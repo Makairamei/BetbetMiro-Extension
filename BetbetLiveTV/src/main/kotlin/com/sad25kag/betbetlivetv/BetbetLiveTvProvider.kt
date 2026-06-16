@@ -176,26 +176,53 @@ class BetbetLiveTvProvider : MainAPI() {
             .onFailure { logError(it) }
             .getOrDefault(emptyMap())
 
-        val text = app.get(
-            "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/${country.code}.m3u",
-            headers = mapOf(
-                "Accept" to "application/vnd.apple.mpegurl,text/plain,*/*",
-                "User-Agent" to USER_AGENT
-            ),
-            timeout = 30L
-        ).text
+        val parsed = playlistUrls(country).firstNotNullOfOrNull { playlistUrl ->
+            runCatching {
+                val text = app.get(
+                    playlistUrl,
+                    headers = mapOf(
+                        "Accept" to "application/vnd.apple.mpegurl,text/plain,*/*",
+                        "User-Agent" to USER_AGENT
+                    ),
+                    timeout = 30L
+                ).text
 
-        val parsed = parseM3u(text, country, logoMap)
-            .filter { it.safeStreams().isNotEmpty() }
+                parseM3u(text, country, logoMap)
+                    .filter { it.safeStreams().isNotEmpty() }
+                    .takeIf { it.isNotEmpty() }
+            }.onFailure { logError(it) }.getOrNull()
+        }
+            .orEmpty()
             .sortedWith(compareBy({ it.groupTitle.ifBlank { "~" } }, { it.name }))
 
         cache[country.code] = parsed
         return parsed
     }
 
+    private fun playlistUrls(country: Country): List<String> {
+        return listOf(
+            // Official IPTV-org generated country playlist. This usually carries enriched tvg-logo metadata.
+            "https://iptv-org.github.io/iptv/countries/${country.code}.m3u",
+            // Source playlist fallback. This often has stream headers but may not carry tvg-logo.
+            "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/${country.code}.m3u"
+        )
+    }
+
     private suspend fun loadLogoMap(): Map<String, String> {
         if (logoCache.isNotEmpty()) return logoCache
 
+        loadChannelApiLogos()
+        loadLogosApiLogos()
+        CURATED_LOGOS.forEach { (id, logo) ->
+            logo.toSafePosterUrl()?.let { safeLogo ->
+                logoCache.putIfAbsent(id, safeLogo)
+            }
+        }
+
+        return logoCache
+    }
+
+    private suspend fun loadChannelApiLogos() {
         val text = app.get(
             "https://iptv-org.github.io/api/channels.json",
             headers = mapOf(
@@ -209,13 +236,47 @@ class BetbetLiveTvProvider : MainAPI() {
         for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
             val id = item.optString("id").trim()
-            val logo = item.optString("logo").trim().toSafePosterUrl()
-            if (id.isNotBlank() && !logo.isNullOrBlank()) {
-                logoCache[id] = logo
-            }
+            val logo = item.firstSafeUrl("logo", "logo_url", "image", "icon")
+            putLogoAliases(id, logo)
         }
+    }
 
-        return logoCache
+    private suspend fun loadLogosApiLogos() {
+        val text = runCatching {
+            app.get(
+                "https://iptv-org.github.io/api/logos.json",
+                headers = mapOf(
+                    "Accept" to "application/json,text/plain,*/*",
+                    "User-Agent" to USER_AGENT
+                ),
+                timeout = 30L
+            ).text
+        }.getOrNull() ?: return
+
+        val array = JSONArray(text)
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val id = item.firstNonBlank("channel", "channel_id", "tvg_id", "id")
+            val logo = item.firstSafeUrl("url", "logo", "logo_url", "image", "src")
+            putLogoAliases(id, logo)
+        }
+    }
+
+    private fun putLogoAliases(rawId: String, rawLogo: String?) {
+        val logo = rawLogo?.toSafePosterUrl() ?: return
+        val id = rawId.trim()
+        if (id.isBlank()) return
+
+        listOf(
+            id,
+            id.baseTvgId(),
+            id.substringBefore(".").trim(),
+            id.baseTvgId().substringBefore(".").trim()
+        )
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .forEach { alias -> logoCache.putIfAbsent(alias, logo) }
     }
 
     private fun parseM3u(
@@ -254,8 +315,13 @@ class BetbetLiveTvProvider : MainAPI() {
                     val baseTvgId = tvgId.baseTvgId()
                     val rawName = currentName.orEmpty().ifBlank { tvgId }
                     val cleanName = rawName.cleanChannelName()
-                    val logo = currentAttrs["tvg-logo"].orEmpty().toSafePosterUrl()
-                        ?: logoMap[baseTvgId]
+                    val logo = resolveLogo(
+                        explicitLogo = currentAttrs["tvg-logo"].orEmpty(),
+                        tvgId = tvgId,
+                        cleanName = cleanName,
+                        rawName = rawName,
+                        logoMap = logoMap
+                    )
 
                     if (cleanName.isNotBlank()) {
                         entries += ParsedEntry(
@@ -306,6 +372,35 @@ class BetbetLiveTvProvider : MainAPI() {
             }
             .filter { it.streams.isNotEmpty() }
             .distinctBy { it.stableId }
+    }
+
+    private fun resolveLogo(
+        explicitLogo: String,
+        tvgId: String,
+        cleanName: String,
+        rawName: String,
+        logoMap: Map<String, String>
+    ): String? {
+        explicitLogo.toSafePosterUrl()?.let { return it }
+
+        val candidates = buildList {
+            add(tvgId)
+            add(tvgId.baseTvgId())
+            add(tvgId.substringBefore(".").trim())
+            add(tvgId.baseTvgId().substringBefore(".").trim())
+            add(cleanName.logoKey())
+            add(rawName.cleanChannelName().logoKey())
+        }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        for (candidate in candidates) {
+            logoMap[candidate]?.toSafePosterUrl()?.let { return it }
+            CURATED_LOGOS[candidate]?.toSafePosterUrl()?.let { return it }
+        }
+
+        return null
     }
 
     private fun parseAttributes(line: String): Map<String, String> {
@@ -559,6 +654,66 @@ class BetbetLiveTvProvider : MainAPI() {
             "/live/mookie", "m3u_plus", "type=m3u", "output=ts", "output=m3u8"
         )
 
+        private val CURATED_LOGOS = buildMap {
+            fun putLogo(url: String, vararg aliases: String) {
+                aliases.forEach { alias ->
+                    val cleanAlias = alias.trim()
+                    if (cleanAlias.isNotBlank()) {
+                        putIfAbsent(cleanAlias, url)
+                        putIfAbsent(cleanAlias.logoKey(), url)
+                    }
+                }
+            }
+
+            // Curated official-domain logo fallbacks. These are only used when IPTV-org metadata has no logo.
+            // They intentionally use channel/owner official domains, not CDN stream host favicons.
+            putLogo("https://logo.clearbit.com/antvklik.com", "ANTV.id", "ANTV", "ANTV HD")
+            putLogo("https://logo.clearbit.com/aliman.id", "AlImanTV.id", "Al-Iman TV", "Al Iman TV")
+            putLogo("https://logo.clearbit.com/tvri.go.id", "TVRI.id", "TVRI", "TVRI Sport", "TVRISport.id", "TVRIWorld.id", "TVRI World")
+            putLogo("https://logo.clearbit.com/metroTVnews.com", "MetroTV.id", "Metro TV")
+            putLogo("https://logo.clearbit.com/trans7.co.id", "Trans7.id", "Trans7")
+            putLogo("https://logo.clearbit.com/transtv.co.id", "TransTV.id", "Trans TV")
+            putLogo("https://logo.clearbit.com/cnbcindonesia.com", "CNBCIndonesia.id", "CNBC Indonesia")
+            putLogo("https://logo.clearbit.com/daaitv.co.id", "DAAITV.id", "DAAI TV")
+            putLogo("https://logo.clearbit.com/beritasatu.com", "BeritaSatu.id", "BeritaSatu", "BTV.id", "BTV")
+            putLogo("https://logo.clearbit.com/tvonenews.com", "tvOne.id", "tvOne", "TV One")
+            putLogo("https://logo.clearbit.com/kompas.tv", "KompasTV.id", "Kompas TV")
+            putLogo("https://logo.clearbit.com/rtv.co.id", "RajawaliTV.id", "Rajawali TV", "RTV")
+            putLogo("https://logo.clearbit.com/rctiplus.com", "RCTI.id", "RCTI", "MNCTV.id", "MNCTV", "iNews.id", "iNews")
+            putLogo("https://logo.clearbit.com/indosiar.com", "Indosiar.id", "Indosiar")
+            putLogo("https://logo.clearbit.com/sctv.co.id", "SCTV.id", "SCTV")
+            putLogo("https://logo.clearbit.com/netmedia.co.id", "NET.id", "NET TV")
+            putLogo("https://logo.clearbit.com/rodjatv.com", "RodjaTV.id", "Rodja TV")
+            putLogo("https://logo.clearbit.com/nusantaratv.com", "NusantaraTV.id", "Nusantara TV")
+            putLogo("https://logo.clearbit.com/tvmu.tv", "TVMu.id", "TV Mu")
+
+            putLogo("https://logo.clearbit.com/8tv.com.my", "8TV.my", "8 TV", "8TV")
+            putLogo("https://logo.clearbit.com/tv3.com.my", "TV3.my", "TV3")
+            putLogo("https://logo.clearbit.com/ntv7.com.my", "NTV7.my", "NTV7")
+            putLogo("https://logo.clearbit.com/tonton.com.my", "TV9.my", "TV9")
+            putLogo("https://logo.clearbit.com/astroawani.com", "AstroAwani.my", "Astro Awani")
+            putLogo("https://logo.clearbit.com/bernama.com", "BernamaTV.my", "Bernama TV")
+
+            putLogo("https://logo.clearbit.com/mediacorp.sg", "Channel8.sg", "Channel 8", "ChannelU.sg", "Channel U", "CNA.sg", "CNA")
+            putLogo("https://logo.clearbit.com/meWatch.sg", "Channel5.sg", "Channel 5")
+
+            putLogo("https://logo.clearbit.com/abs-cbn.com", "ANC.ph", "ANC", "KapamilyaChannel.ph", "Kapamilya Channel")
+            putLogo("https://logo.clearbit.com/gmanetwork.com", "GMA.ph", "GMA", "GTV.ph", "GTV")
+            putLogo("https://logo.clearbit.com/ptvnews.ph", "PTV.ph", "PTV")
+
+            putLogo("https://logo.clearbit.com/nhk.or.jp", "NHKWorldJapan.jp", "NHK World Japan", "NHK.jp", "NHK")
+            putLogo("https://logo.clearbit.com/arirang.com", "ArirangTV.kr", "Arirang TV")
+            putLogo("https://logo.clearbit.com/kbs.co.kr", "KBSWorld.kr", "KBS World", "KBS.kr", "KBS")
+            putLogo("https://logo.clearbit.com/mbc.co.kr", "MBC.kr", "MBC")
+            putLogo("https://logo.clearbit.com/sbs.co.kr", "SBS.kr", "SBS")
+
+            putLogo("https://logo.clearbit.com/pbs.org", "PBS.us", "PBS")
+            putLogo("https://logo.clearbit.com/cbsnews.com", "CBSNews.us", "CBS News")
+            putLogo("https://logo.clearbit.com/nbcnews.com", "NBCNews.us", "NBC News")
+            putLogo("https://logo.clearbit.com/abcnews.go.com", "ABCNews.us", "ABC News")
+            putLogo("https://logo.clearbit.com/bloomberg.com", "BloombergTV.us", "Bloomberg TV", "Bloomberg")
+        }
+
         private val CREDENTIAL_URL_REGEX = Regex("""https?://[^/\s]+:[^/\s]+@""", RegexOption.IGNORE_CASE)
     }
 }
@@ -613,6 +768,27 @@ private fun String.encodeUrl(): String {
 
 private fun String.decodeUrl(): String {
     return runCatching { URLDecoder.decode(this, "UTF-8") }.getOrDefault(this)
+}
+
+private fun JSONObject.firstNonBlank(vararg keys: String): String {
+    return keys.firstNotNullOfOrNull { key ->
+        optString(key).trim().takeIf { it.isNotBlank() }
+    }.orEmpty()
+}
+
+private fun JSONObject.firstSafeUrl(vararg keys: String): String? {
+    return keys.firstNotNullOfOrNull { key ->
+        optString(key).trim().toSafePosterUrl()
+    }
+}
+
+private fun String.logoKey(): String {
+    return cleanChannelName()
+        .lowercase(Locale.ROOT)
+        .replace("&", "and")
+        .replace(Regex("""[^a-z0-9]+"""), " ")
+        .replace(Regex("""\s+"""), " ")
+        .trim()
 }
 
 private fun String.originOrNull(): String? {
