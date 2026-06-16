@@ -74,36 +74,42 @@ class AnimeSailProvider : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "$mainUrl/rilisan-anime-terbaru/page/" to "Ongoing Anime",
-        "$mainUrl/rilisan-donghua-terbaru/page/" to "Ongoing Donghua",
-        "$mainUrl/movie-terbaru/page/" to "Movie Terbaru",
-        "$mainUrl/daftar-anime/page/" to "Daftar Anime",
+        "$mainUrl/rilisan-anime-terbaru/" to "Ongoing Anime",
+        "$mainUrl/rilisan-donghua-terbaru/" to "Ongoing Donghua",
+        "$mainUrl/movie-terbaru/" to "Movie Terbaru",
+        "$mainUrl/daftar-anime/" to "Daftar Anime",
 
-        "$mainUrl/genres/action/page/" to "Action",
-        "$mainUrl/genres/adventure/page/" to "Adventure",
-        "$mainUrl/genres/comedy/page/" to "Comedy",
-        "$mainUrl/genres/drama/page/" to "Drama",
-        "$mainUrl/genres/fantasy/page/" to "Fantasy",
-        "$mainUrl/genres/romance/page/" to "Romance",
-        "$mainUrl/genres/school/page/" to "School",
-        "$mainUrl/genres/slice-of-life/page/" to "Slice of Life",
-        "$mainUrl/genres/shounen/page/" to "Shounen",
-        "$mainUrl/genres/seinen/page/" to "Seinen",
-        "$mainUrl/genres/isekai/page/" to "Isekai",
-        "$mainUrl/genres/supernatural/page/" to "Supernatural",
-        "$mainUrl/genres/magic/page/" to "Magic",
-        "$mainUrl/genres/mystery/page/" to "Mystery",
-        "$mainUrl/genres/sci-fi/page/" to "Sci-Fi",
-        "$mainUrl/genres/mecha/page/" to "Mecha",
-        "$mainUrl/genres/sports/page/" to "Sports",
-        "$mainUrl/genres/historical/page/" to "Historical",
-        "$mainUrl/genres/harem/page/" to "Harem",
-        "$mainUrl/genres/ecchi/page/" to "Ecchi",
-        "$mainUrl/genres/horror/page/" to "Horror"
+        "$mainUrl/genres/action/" to "Action",
+        "$mainUrl/genres/adventure/" to "Adventure",
+        "$mainUrl/genres/comedy/" to "Comedy",
+        "$mainUrl/genres/drama/" to "Drama",
+        "$mainUrl/genres/fantasy/" to "Fantasy",
+        "$mainUrl/genres/romance/" to "Romance",
+        "$mainUrl/genres/school/" to "School",
+        "$mainUrl/genres/slice-of-life/" to "Slice of Life",
+        "$mainUrl/genres/shounen/" to "Shounen",
+        "$mainUrl/genres/seinen/" to "Seinen",
+        "$mainUrl/genres/isekai/" to "Isekai",
+        "$mainUrl/genres/supernatural/" to "Supernatural",
+        "$mainUrl/genres/magic/" to "Magic",
+        "$mainUrl/genres/mystery/" to "Mystery",
+        "$mainUrl/genres/sci-fi/" to "Sci-Fi",
+        "$mainUrl/genres/mecha/" to "Mecha",
+        "$mainUrl/genres/sports/" to "Sports",
+        "$mainUrl/genres/historical/" to "Historical",
+        "$mainUrl/genres/harem/" to "Harem",
+        "$mainUrl/genres/ecchi/" to "Ecchi",
+        "$mainUrl/genres/horror/" to "Horror"
     )
 
     override suspend fun getMainPage(page: Int, pageRequest: MainPageRequest): HomePageResponse {
-        val document = request(pageRequest.data + page).document
+        val baseUrl = pageRequest.data.trimEnd('/')
+        val pageUrl = if (page <= 1) {
+            "$baseUrl/"
+        } else {
+            "$baseUrl/page/$page/"
+        }
+        val document = request(pageUrl).document
         val home = document.select("div.listupd article, article").mapNotNull {
             it.toSearchResult()
         }.distinctBy { it.url }
@@ -607,12 +613,19 @@ class AnimeSailProvider : MainAPI() {
 }
 
 class TurnstileInterceptor(
-    private val targetCookies: List<String> = listOf("cf_clearance", "_as_turnstile")
+    private val challengeCookies: List<String> = listOf(
+        "cf_clearance",
+        "_as_turnstile",
+        "_as_ipin_tz",
+        "_as_ipin_lc",
+        "_as_ipin_ct"
+    )
 ) : Interceptor {
     companion object {
         private const val POLL_INTERVAL_MS = 250L
-        private const val MAX_ATTEMPTS = 12
-        private const val PAGE_WAIT_SECONDS = 8L
+        private const val MAX_ATTEMPTS = 16
+        private const val PAGE_WAIT_SECONDS = 10L
+        private val challengeLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
     }
 
     private fun getCookieHeader(url: String, domainUrl: String): String {
@@ -620,21 +633,31 @@ class TurnstileInterceptor(
         return manager.getCookie(url) ?: manager.getCookie(domainUrl) ?: ""
     }
 
-    private fun getCookieValue(url: String, domainUrl: String): String? {
-        val raw = getCookieHeader(url, domainUrl)
-        if (raw.isBlank()) return null
+    private fun hasCookie(raw: String, name: String): Boolean {
+        if (raw.isBlank()) return false
         return raw.split(";")
             .map { it.trim() }
-            .firstNotNullOfOrNull { cookie ->
-                targetCookies.firstOrNull { target -> cookie.startsWith("$target=") }
-                    ?.let { cookie.substringAfter("=") }
-                    ?.takeIf { it.isNotBlank() }
+            .any { cookie ->
+                cookie.startsWith("$name=") && cookie.substringAfter("=").isNotBlank()
             }
+    }
+
+    private fun hasUsableClearance(url: String, domainUrl: String): Boolean {
+        val raw = getCookieHeader(url, domainUrl)
+        if (raw.isBlank()) return false
+        if (hasCookie(raw, "cf_clearance")) return true
+
+        val hasTurnstile = hasCookie(raw, "_as_turnstile")
+        val hasIpInfo = hasCookie(raw, "_as_ipin_tz") ||
+            hasCookie(raw, "_as_ipin_lc") ||
+            hasCookie(raw, "_as_ipin_ct")
+
+        return hasTurnstile && hasIpInfo
     }
 
     private fun invalidateCookie(domainUrl: String) {
         CookieManager.getInstance().apply {
-            targetCookies.forEach { cookie ->
+            challengeCookies.forEach { cookie ->
                 setCookie(domainUrl, "$cookie=; Max-Age=0")
             }
             flush()
@@ -651,47 +674,35 @@ class TurnstileInterceptor(
         if (preview.isBlank()) return false
 
         val challengeHints = listOf(
+            "<title>Loading..</title>",
+            "Checking your Browser",
             "cf-challenge",
             "cf-browser-verification",
             "cf_clearance",
+            "_as_turnstile",
             "challenge-platform",
+            "challenges.cloudflare.com",
             "Just a moment",
             "Attention Required",
             "turnstile",
+            "Berhasil!",
             "/cdn-cgi/challenge-platform/"
         )
+
         return challengeHints.any { preview.contains(it, ignoreCase = true) }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    override fun intercept(chain: Interceptor.Chain): Response {
-        val originalRequest = chain.request()
-        val url = originalRequest.url.toString()
-        val domainUrl = "${originalRequest.url.scheme}://${originalRequest.url.host}"
+    private fun solveChallengeWithWebView(
+        url: String,
+        domainUrl: String,
+        userAgent: String
+    ): String {
+        val context = AcraApplication.context ?: return userAgent
         val cookieManager = CookieManager.getInstance()
-
-        val cookieHeader = getCookieHeader(url, domainUrl)
-        if (getCookieValue(url, domainUrl) != null) {
-            val response = chain.proceed(
-                originalRequest.newBuilder()
-                    .header("Cookie", cookieHeader)
-                    .build()
-            )
-            if (!hasChallenge(response)) return response
-            response.close()
-            invalidateCookie(domainUrl)
-        } else {
-            val normalResponse = chain.proceed(originalRequest)
-            if (!hasChallenge(normalResponse)) return normalResponse
-            normalResponse.close()
-        }
-
-        val context = AcraApplication.context
-            ?: return chain.proceed(originalRequest)
-
         val handler = Handler(Looper.getMainLooper())
         var webView: WebView? = null
-        var resolvedUserAgent = originalRequest.header("User-Agent") ?: ""
+        var resolvedUserAgent = userAgent
         val challengeLatch = CountDownLatch(1)
 
         handler.post {
@@ -712,9 +723,12 @@ class TurnstileInterceptor(
                     override fun onPageFinished(view: WebView, finishedUrl: String) {
                         super.onPageFinished(view, finishedUrl)
                         cookieManager.flush()
-                        if (getCookieValue(finishedUrl, domainUrl) != null) {
-                            challengeLatch.countDown()
-                        }
+                        handler.postDelayed({
+                            cookieManager.flush()
+                            if (hasUsableClearance(finishedUrl, domainUrl)) {
+                                challengeLatch.countDown()
+                            }
+                        }, 1000L)
                     }
                 }
                 wv.loadUrl(url)
@@ -727,7 +741,7 @@ class TurnstileInterceptor(
         challengeLatch.await(PAGE_WAIT_SECONDS, TimeUnit.SECONDS)
 
         var attempts = 0
-        while (attempts < MAX_ATTEMPTS && getCookieValue(url, domainUrl) == null) {
+        while (attempts < MAX_ATTEMPTS && !hasUsableClearance(url, domainUrl)) {
             Thread.sleep(POLL_INTERVAL_MS)
             cookieManager.flush()
             attempts++
@@ -746,11 +760,43 @@ class TurnstileInterceptor(
             }
         }
 
+        return resolvedUserAgent
+    }
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val originalRequest = chain.request()
+        val url = originalRequest.url.toString()
+        val domainUrl = "${originalRequest.url.scheme}://${originalRequest.url.host}"
+
+        if (hasUsableClearance(url, domainUrl)) {
+            val response = chain.proceed(
+                originalRequest.newBuilder()
+                    .header("Cookie", getCookieHeader(url, domainUrl))
+                    .build()
+            )
+            if (!hasChallenge(response)) return response
+            response.close()
+            invalidateCookie(domainUrl)
+        } else {
+            val normalResponse = chain.proceed(originalRequest)
+            if (!hasChallenge(normalResponse)) return normalResponse
+            normalResponse.close()
+        }
+
+        var resolvedUserAgent = originalRequest.header("User-Agent") ?: ""
+        val lock = challengeLocks.getOrPut(domainUrl) { Any() }
+        synchronized(lock) {
+            if (!hasUsableClearance(url, domainUrl)) {
+                resolvedUserAgent = solveChallengeWithWebView(url, domainUrl, resolvedUserAgent)
+            }
+        }
+
         val finalCookies = getCookieHeader(url, domainUrl)
         val finalRequest = originalRequest.newBuilder()
             .apply {
                 if (finalCookies.isNotBlank()) header("Cookie", finalCookies)
                 if (resolvedUserAgent.isNotBlank()) header("User-Agent", resolvedUserAgent)
+                if (originalRequest.header("Referer").isNullOrBlank()) header("Referer", "$domainUrl/")
             }
             .build()
 
