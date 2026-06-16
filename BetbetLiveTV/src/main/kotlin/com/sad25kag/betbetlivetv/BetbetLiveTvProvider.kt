@@ -20,6 +20,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
 import java.net.URLDecoder
@@ -38,19 +39,20 @@ class BetbetLiveTvProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Live)
 
     override val mainPage = mainPageOf(
-        "id" to "Indonesia",
-        "my" to "Malaysia",
-        "sg" to "Singapore",
-        "ph" to "Philippines",
-        "th" to "Thailand",
-        "vn" to "Vietnam",
-        "jp" to "Japan",
-        "kr" to "South Korea",
-        "in" to "India",
-        "us" to "United States"
+        "id" to "🇮🇩 Indonesia",
+        "my" to "🇲🇾 Malaysia",
+        "sg" to "🇸🇬 Singapore",
+        "ph" to "🇵🇭 Philippines",
+        "th" to "🇹🇭 Thailand",
+        "vn" to "🇻🇳 Vietnam",
+        "jp" to "🇯🇵 Japan",
+        "kr" to "🇰🇷 South Korea",
+        "in" to "🇮🇳 India",
+        "us" to "🇺🇸 United States"
     )
 
     private val cache = ConcurrentHashMap<String, List<LiveChannel>>()
+    private val logoCache = ConcurrentHashMap<String, String>()
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val country = countryByCode(request.data) ?: return newHomePageResponse(
@@ -114,6 +116,7 @@ class BetbetLiveTvProvider : MainAPI() {
         val channel = channelsFor(country).firstOrNull { it.stableId == channelId }
             ?: throw ErrorLoadingException("Channel tidak ditemukan atau terfilter demi safety repo.")
 
+        val safeStreamCount = channel.safeStreams().size
         return newLiveStreamLoadResponse(
             name = channel.displayName,
             url = channel.detailUrl,
@@ -121,11 +124,13 @@ class BetbetLiveTvProvider : MainAPI() {
         ).apply {
             posterUrl = channel.posterUrl
             plot = buildString {
-                append(channel.country.name)
+                append(channel.country.flag).append(" ").append(channel.country.name)
                 if (channel.groupTitle.isNotBlank()) append(" • ").append(channel.groupTitle)
-                if (channel.label.isNotBlank()) append(" • ").append(channel.label)
+                append("\n")
+                append("Public live TV entry parsed at runtime from IPTV-org stream data.")
+                append("\n")
+                append("Available public HLS mirror(s): ").append(safeStreamCount)
                 append("\n\n")
-                append("Public live TV entry parsed at runtime from IPTV-org stream data. ")
                 append("No login, account sharing, private cookie, token bypass, DRM bypass, proxy, or restreaming is used.")
             }
         }
@@ -138,27 +143,38 @@ class BetbetLiveTvProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val channel = LiveChannel.fromJson(data) ?: return false
-        if (!channel.isRepoSafe()) return false
+        val streams = channel.safeStreams()
+            .distinctBy { it.streamUrl }
 
-        val headers = channel.playbackHeaders()
-        callback.invoke(
-            newExtractorLink(
-                source = name,
-                name = "${channel.displayName} - Live",
-                url = channel.streamUrl,
-                type = ExtractorLinkType.M3U8
-            ) {
-                quality = channel.quality
-                referer = headers["Referer"] ?: channel.referrer.ifBlank { mainUrl }
-                this.headers = headers
-            }
-        )
+        streams.forEachIndexed { index, stream ->
+            val headers = stream.playbackHeaders()
+            callback.invoke(
+                newExtractorLink(
+                    source = name,
+                    name = buildString {
+                        append(channel.name)
+                        if (streams.size > 1) append(" - Mirror ").append(index + 1)
+                        append(" - Live")
+                    },
+                    url = stream.streamUrl,
+                    type = ExtractorLinkType.M3U8
+                ) {
+                    quality = stream.quality(channel)
+                    referer = headers["Referer"] ?: stream.referrer.ifBlank { mainUrl }
+                    this.headers = headers
+                }
+            )
+        }
 
-        return true
+        return streams.isNotEmpty()
     }
 
     private suspend fun channelsFor(country: Country): List<LiveChannel> {
         cache[country.code]?.let { return it }
+
+        val logoMap = runCatching { loadLogoMap() }
+            .onFailure { logError(it) }
+            .getOrDefault(emptyMap())
 
         val text = app.get(
             "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/${country.code}.m3u",
@@ -169,17 +185,45 @@ class BetbetLiveTvProvider : MainAPI() {
             timeout = 30L
         ).text
 
-        val parsed = parseM3u(text, country)
-            .filter { it.isRepoSafe() }
-            .distinctBy { it.stableId }
+        val parsed = parseM3u(text, country, logoMap)
+            .filter { it.safeStreams().isNotEmpty() }
             .sortedWith(compareBy({ it.groupTitle.ifBlank { "~" } }, { it.name }))
 
         cache[country.code] = parsed
         return parsed
     }
 
-    private fun parseM3u(text: String, country: Country): List<LiveChannel> {
-        val result = mutableListOf<LiveChannel>()
+    private suspend fun loadLogoMap(): Map<String, String> {
+        if (logoCache.isNotEmpty()) return logoCache
+
+        val text = app.get(
+            "https://iptv-org.github.io/api/channels.json",
+            headers = mapOf(
+                "Accept" to "application/json,text/plain,*/*",
+                "User-Agent" to USER_AGENT
+            ),
+            timeout = 30L
+        ).text
+
+        val array = JSONArray(text)
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val id = item.optString("id").trim()
+            val logo = item.optString("logo").trim().toSafePosterUrl()
+            if (id.isNotBlank() && !logo.isNullOrBlank()) {
+                logoCache[id] = logo
+            }
+        }
+
+        return logoCache
+    }
+
+    private fun parseM3u(
+        text: String,
+        country: Country,
+        logoMap: Map<String, String>
+    ): List<LiveChannel> {
+        val entries = mutableListOf<ParsedEntry>()
         var currentInfo: String? = null
         var currentName: String? = null
         var currentAttrs: Map<String, String> = emptyMap()
@@ -206,19 +250,32 @@ class BetbetLiveTvProvider : MainAPI() {
                 }
 
                 line.startsWith("http://", ignoreCase = true) || line.startsWith("https://", ignoreCase = true) -> {
-                    val rawName = currentName.orEmpty().ifBlank { currentAttrs["tvg-id"].orEmpty() }
-                    if (rawName.isNotBlank()) {
-                        result += LiveChannel(
-                            name = rawName.cleanChannelName(),
+                    val tvgId = currentAttrs["tvg-id"].orEmpty()
+                    val baseTvgId = tvgId.baseTvgId()
+                    val rawName = currentName.orEmpty().ifBlank { tvgId }
+                    val cleanName = rawName.cleanChannelName()
+                    val logo = currentAttrs["tvg-logo"].orEmpty().toSafePosterUrl()
+                        ?: logoMap[baseTvgId]
+
+                    if (cleanName.isNotBlank()) {
+                        entries += ParsedEntry(
+                            stableId = stableChannelId(
+                                tvgId = tvgId,
+                                name = cleanName,
+                                groupTitle = currentAttrs["group-title"].orEmpty()
+                            ),
+                            name = cleanName,
                             rawName = rawName,
-                            tvgId = currentAttrs["tvg-id"].orEmpty(),
-                            tvgLogo = currentAttrs["tvg-logo"].orEmpty(),
+                            tvgId = tvgId,
+                            tvgLogo = logo.orEmpty(),
                             groupTitle = currentAttrs["group-title"].orEmpty(),
-                            streamUrl = line,
-                            referrer = pendingReferrer,
-                            userAgent = pendingUserAgent,
-                            label = currentInfo.orEmpty().extractBracketLabels(),
-                            country = country
+                            stream = LiveStream(
+                                streamUrl = line,
+                                referrer = pendingReferrer,
+                                userAgent = pendingUserAgent,
+                                label = currentInfo.orEmpty().extractBracketLabels(),
+                                rawInfo = currentInfo.orEmpty()
+                            )
                         )
                     }
                     currentInfo = null
@@ -230,7 +287,25 @@ class BetbetLiveTvProvider : MainAPI() {
             }
         }
 
-        return result
+        return entries
+            .groupBy { it.stableId }
+            .mapNotNull { (_, group) ->
+                val first = group.firstOrNull() ?: return@mapNotNull null
+                val logo = group.firstNotNullOfOrNull { it.tvgLogo.takeIf { value -> value.isNotBlank() } }.orEmpty()
+                LiveChannel(
+                    name = first.name,
+                    rawName = first.rawName,
+                    tvgId = first.tvgId,
+                    tvgLogo = logo,
+                    groupTitle = first.groupTitle,
+                    country = country,
+                    streams = group.map { it.stream }
+                        .filter { it.isRepoSafe(first.name, first.rawName, first.tvgId, first.groupTitle) }
+                        .distinctBy { it.streamUrl }
+                )
+            }
+            .filter { it.streams.isNotEmpty() }
+            .distinctBy { it.stableId }
     }
 
     private fun parseAttributes(line: String): Map<String, String> {
@@ -249,13 +324,26 @@ class BetbetLiveTvProvider : MainAPI() {
             type = TvType.Live
         ).apply {
             posterUrl = this@toSearchResponse.posterUrl
-            lang = country.code
+            // Do not map country codes to SearchResponse.lang.
+            // CloudStream treats lang as a language code, so country codes like my/sg/kr can display wrong flags.
+            lang = null
         }
     }
 
     private data class Country(
         val code: String,
-        val name: String
+        val name: String,
+        val flag: String
+    )
+
+    private data class ParsedEntry(
+        val stableId: String,
+        val name: String,
+        val rawName: String,
+        val tvgId: String,
+        val tvgLogo: String,
+        val groupTitle: String,
+        val stream: LiveStream
     )
 
     private data class LiveChannel(
@@ -264,22 +352,16 @@ class BetbetLiveTvProvider : MainAPI() {
         val tvgId: String,
         val tvgLogo: String,
         val groupTitle: String,
-        val streamUrl: String,
-        val referrer: String,
-        val userAgent: String,
-        val label: String,
-        val country: Country
+        val country: Country,
+        val streams: List<LiveStream>
     ) {
         val stableId: String by lazy {
-            listOf(tvgId, name, groupTitle, label)
-                .joinToString("|")
-                .ifBlank { name }
+            stableChannelId(tvgId, name, groupTitle)
         }
 
         val displayName: String by lazy {
             buildString {
-                append(name)
-                if (label.isNotBlank()) append(" ").append(label)
+                append(country.flag).append(" ").append(name)
                 append(" • ").append(country.name)
             }.trim()
         }
@@ -289,36 +371,90 @@ class BetbetLiveTvProvider : MainAPI() {
         }
 
         val posterUrl: String? by lazy {
-            tvgLogo.toSafePosterUrl() ?: faviconFromStream()
+            tvgLogo.toSafePosterUrl()
         }
 
-        val quality: Int by lazy {
-            val text = "$rawName $label $streamUrl".lowercase(Locale.ROOT)
-            when {
-                text.contains("2160") || text.contains("4k") -> Qualities.P2160.value
-                text.contains("1440") -> Qualities.P1440.value
-                text.contains("1080") -> Qualities.P1080.value
-                text.contains("720") -> Qualities.P720.value
-                text.contains("576") -> Qualities.P480.value
-                text.contains("480") -> Qualities.P480.value
-                text.contains("360") -> Qualities.P360.value
-                text.contains("240") -> Qualities.P240.value
-                else -> Qualities.Unknown.value
+        fun safeStreams(): List<LiveStream> {
+            return streams.filter { stream ->
+                stream.isRepoSafe(name, rawName, tvgId, groupTitle)
             }
         }
 
-        fun isRepoSafe(): Boolean {
+        fun toJson(): String {
+            return JSONObject().apply {
+                put("name", name)
+                put("rawName", rawName)
+                put("tvgId", tvgId)
+                put("tvgLogo", tvgLogo)
+                put("groupTitle", groupTitle)
+                put("countryCode", country.code)
+                put("countryName", country.name)
+                put("countryFlag", country.flag)
+                put(
+                    "streams",
+                    JSONArray().apply {
+                        streams.forEach { stream ->
+                            put(stream.toJsonObject())
+                        }
+                    }
+                )
+            }.toString()
+        }
+
+        companion object {
+            fun fromJson(text: String): LiveChannel? {
+                return runCatching {
+                    val json = JSONObject(text)
+                    val country = Country(
+                        code = json.optString("countryCode"),
+                        name = json.optString("countryName"),
+                        flag = json.optString("countryFlag")
+                    )
+                    val array = json.optJSONArray("streams") ?: JSONArray()
+                    val streams = buildList {
+                        for (index in 0 until array.length()) {
+                            val stream = LiveStream.fromJsonObject(array.optJSONObject(index) ?: continue)
+                            add(stream)
+                        }
+                    }
+                    LiveChannel(
+                        name = json.optString("name"),
+                        rawName = json.optString("rawName"),
+                        tvgId = json.optString("tvgId"),
+                        tvgLogo = json.optString("tvgLogo"),
+                        groupTitle = json.optString("groupTitle"),
+                        country = country,
+                        streams = streams
+                    )
+                }.getOrNull()
+            }
+        }
+    }
+
+    private data class LiveStream(
+        val streamUrl: String,
+        val referrer: String,
+        val userAgent: String,
+        val label: String,
+        val rawInfo: String
+    ) {
+        fun isRepoSafe(
+            channelName: String,
+            rawName: String,
+            tvgId: String,
+            groupTitle: String
+        ): Boolean {
             val url = streamUrl.trim()
             if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) return false
             if (!url.lowercase(Locale.ROOT).substringBefore("?").endsWith(".m3u8")) return false
 
-            val haystack = listOf(name, rawName, tvgId, groupTitle, label, streamUrl)
+            val haystack = listOf(channelName, rawName, tvgId, groupTitle, label, rawInfo, streamUrl)
                 .joinToString(" ")
                 .lowercase(Locale.ROOT)
 
             if (BLOCKED_FLAGS.any { haystack.contains(it) }) return false
             if (PREMIUM_OR_RISKY_KEYWORDS.any { haystack.contains(it) }) return false
-            if (ADULT_KEYWORDS.any { haystack.contains(it) }) return false
+            if (ADULT_KEYWORD_REGEX.containsMatchIn(haystack)) return false
             if (SUSPICIOUS_URL_PARTS.any { streamUrl.lowercase(Locale.ROOT).contains(it) }) return false
             if (CREDENTIAL_URL_REGEX.containsMatchIn(streamUrl)) return false
 
@@ -335,50 +471,40 @@ class BetbetLiveTvProvider : MainAPI() {
             }
         }
 
-        fun toJson(): String {
+        fun quality(channel: LiveChannel): Int {
+            val text = "${channel.rawName} ${channel.name} $label $rawInfo $streamUrl".lowercase(Locale.ROOT)
+            return when {
+                text.contains("2160") || text.contains("4k") -> Qualities.P2160.value
+                text.contains("1440") -> Qualities.P1440.value
+                text.contains("1080") -> Qualities.P1080.value
+                text.contains("720") -> Qualities.P720.value
+                text.contains("576") -> Qualities.P480.value
+                text.contains("480") -> Qualities.P480.value
+                text.contains("360") -> Qualities.P360.value
+                text.contains("240") -> Qualities.P240.value
+                else -> Qualities.Unknown.value
+            }
+        }
+
+        fun toJsonObject(): JSONObject {
             return JSONObject().apply {
-                put("name", name)
-                put("rawName", rawName)
-                put("tvgId", tvgId)
-                put("tvgLogo", tvgLogo)
-                put("groupTitle", groupTitle)
                 put("streamUrl", streamUrl)
                 put("referrer", referrer)
                 put("userAgent", userAgent)
                 put("label", label)
-                put("countryCode", country.code)
-                put("countryName", country.name)
-            }.toString()
-        }
-
-        private fun faviconFromStream(): String? {
-            val host = runCatching { URI(streamUrl).host }.getOrNull()?.removePrefix("www.")
-            return host?.takeIf { it.isNotBlank() }?.let {
-                "https://www.google.com/s2/favicons?domain=$it&sz=128"
+                put("rawInfo", rawInfo)
             }
         }
 
         companion object {
-            fun fromJson(text: String): LiveChannel? {
-                return runCatching {
-                    val json = JSONObject(text)
-                    val country = Country(
-                        code = json.optString("countryCode"),
-                        name = json.optString("countryName")
-                    )
-                    LiveChannel(
-                        name = json.optString("name"),
-                        rawName = json.optString("rawName"),
-                        tvgId = json.optString("tvgId"),
-                        tvgLogo = json.optString("tvgLogo"),
-                        groupTitle = json.optString("groupTitle"),
-                        streamUrl = json.optString("streamUrl"),
-                        referrer = json.optString("referrer"),
-                        userAgent = json.optString("userAgent"),
-                        label = json.optString("label"),
-                        country = country
-                    )
-                }.getOrNull()
+            fun fromJsonObject(json: JSONObject): LiveStream {
+                return LiveStream(
+                    streamUrl = json.optString("streamUrl"),
+                    referrer = json.optString("referrer"),
+                    userAgent = json.optString("userAgent"),
+                    label = json.optString("label"),
+                    rawInfo = json.optString("rawInfo")
+                )
             }
         }
     }
@@ -388,19 +514,19 @@ class BetbetLiveTvProvider : MainAPI() {
         private const val SEARCH_LIMIT = 80
 
         private val countries = listOf(
-            Country("id", "Indonesia"),
-            Country("my", "Malaysia"),
-            Country("sg", "Singapore"),
-            Country("ph", "Philippines"),
-            Country("th", "Thailand"),
-            Country("vn", "Vietnam"),
-            Country("jp", "Japan"),
-            Country("kr", "South Korea"),
-            Country("in", "India"),
-            Country("us", "United States")
+            Country("id", "Indonesia", "🇮🇩"),
+            Country("my", "Malaysia", "🇲🇾"),
+            Country("sg", "Singapore", "🇸🇬"),
+            Country("ph", "Philippines", "🇵🇭"),
+            Country("th", "Thailand", "🇹🇭"),
+            Country("vn", "Vietnam", "🇻🇳"),
+            Country("jp", "Japan", "🇯🇵"),
+            Country("kr", "South Korea", "🇰🇷"),
+            Country("in", "India", "🇮🇳"),
+            Country("us", "United States", "🇺🇸")
         )
 
-        private val ATTR_REGEX = Regex("""([a-zA-Z0-9_-]+)="([^"]*)""")
+        private val ATTR_REGEX = Regex("""([a-zA-Z0-9_-]+)="([^"]*)"""")
 
         private val BLOCKED_FLAGS = listOf(
             "[geo-blocked]",
@@ -423,8 +549,9 @@ class BetbetLiveTvProvider : MainAPI() {
             "fox movies", "warner tv", "axn", "thrill", "hits movies"
         )
 
-        private val ADULT_KEYWORDS = listOf(
-            "adult", "xxx", "porn", "sex", "erotic", "playboy", "brazzers", "redtube"
+        private val ADULT_KEYWORD_REGEX = Regex(
+            """(^|[^a-z0-9])(adult|xxx|porn|sex|erotic|playboy|brazzers|redtube)([^a-z0-9]|$)""",
+            RegexOption.IGNORE_CASE
         )
 
         private val SUSPICIOUS_URL_PARTS = listOf(
@@ -440,6 +567,21 @@ private fun String.cleanChannelName(): String {
     return replace(Regex("""\[[^\]]+]"""), "")
         .replace(Regex("""\([^)]*p\)""", RegexOption.IGNORE_CASE), "")
         .replace(Regex("""\s+"""), " ")
+        .trim()
+}
+
+private fun stableChannelId(
+    tvgId: String,
+    name: String,
+    groupTitle: String
+): String {
+    return listOf(tvgId.baseTvgId(), name, groupTitle)
+        .joinToString("|")
+        .ifBlank { name }
+}
+
+private fun String.baseTvgId(): String {
+    return substringBefore("@")
         .trim()
 }
 
@@ -470,7 +612,7 @@ private fun String.encodeUrl(): String {
 }
 
 private fun String.decodeUrl(): String {
-    return URLDecoder.decode(this, "UTF-8")
+    return runCatching { URLDecoder.decode(this, "UTF-8") }.getOrDefault(this)
 }
 
 private fun String.originOrNull(): String? {
