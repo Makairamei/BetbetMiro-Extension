@@ -361,7 +361,7 @@ class Animexin : MainAPI() {
         }
     }
 
-    private fun emitDirect(
+    private suspend fun emitDirect(
         link: String,
         label: String,
         referer: String,
