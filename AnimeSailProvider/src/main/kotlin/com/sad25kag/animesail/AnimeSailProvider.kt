@@ -628,6 +628,20 @@ class TurnstileInterceptor(
         private val challengeLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
     }
 
+    private fun proceedBounded(
+        chain: Interceptor.Chain,
+        request: okhttp3.Request,
+        connectTimeoutSec: Long = 10L,
+        readTimeoutSec: Long = 15L,
+        writeTimeoutSec: Long = 10L
+    ): Response {
+        return chain
+            .withConnectTimeout(connectTimeoutSec.toInt(), TimeUnit.SECONDS)
+            .withReadTimeout(readTimeoutSec.toInt(), TimeUnit.SECONDS)
+            .withWriteTimeout(writeTimeoutSec.toInt(), TimeUnit.SECONDS)
+            .proceed(request)
+    }
+
     private fun getCookieHeader(url: String, domainUrl: String): String {
         val manager = CookieManager.getInstance()
         return manager.getCookie(url) ?: manager.getCookie(domainUrl) ?: ""
@@ -769,7 +783,7 @@ class TurnstileInterceptor(
         val domainUrl = "${originalRequest.url.scheme}://${originalRequest.url.host}"
 
         if (hasUsableClearance(url, domainUrl)) {
-            val response = chain.proceed(
+            val response = proceedBounded(chain, 
                 originalRequest.newBuilder()
                     .header("Cookie", getCookieHeader(url, domainUrl))
                     .build()
@@ -778,7 +792,7 @@ class TurnstileInterceptor(
             response.close()
             invalidateCookie(domainUrl)
         } else {
-            val normalResponse = chain.proceed(originalRequest)
+            val normalResponse = proceedBounded(chain, originalRequest)
             if (!hasChallenge(normalResponse)) return normalResponse
             normalResponse.close()
         }
@@ -800,6 +814,6 @@ class TurnstileInterceptor(
             }
             .build()
 
-        return chain.proceed(finalRequest)
+        return proceedBounded(chain, finalRequest)
     }
 }
