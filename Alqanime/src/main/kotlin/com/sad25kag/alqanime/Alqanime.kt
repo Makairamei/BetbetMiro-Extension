@@ -330,6 +330,10 @@ class Alqanime : MainAPI() {
                 if (tryExternalStreaming(resolvedUrl, qualityInt, ::markEmit, subtitleCallback)) continue
             }
 
+            if (resolvedUrl.isExternalDownloadHostUrl()) {
+                if (tryExternalDownloadHost(resolvedUrl, qualityInt, ::markEmit, subtitleCallback)) continue
+            }
+
             val directFromUrl = emitDirect(
                 source = name,
                 url = resolvedUrl,
@@ -670,6 +674,97 @@ class Alqanime : MainAPI() {
         return emitted
     }
 
+    private suspend fun tryExternalDownloadHost(
+        url: String,
+        quality: Int,
+        callback: (ExtractorLink) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit
+    ): Boolean {
+        val sourceName = url.externalDownloadHostName()
+        val visited = linkedSetOf<String>()
+        val pageQueue = mutableListOf<String>()
+
+        fun addPage(page: String, baseUrl: String = url) {
+            val normalized = normalizeUrl(page, baseUrl)?.cleanEscaped() ?: return
+            if (normalized.isBlank() || normalized == "#") return
+            if (normalized.isArchiveDownloadUrl()) return
+            if (!normalized.isExternalDownloadHostUrl() && !normalized.isLikelyResolvableUrl() && !normalized.isPlayableMediaUrl()) return
+            if (visited.add(normalized)) pageQueue.add(normalized)
+        }
+
+        fun emitDirect(sourceUrl: String, referer: String) {
+            val fixed = sourceUrl.cleanEscaped().replace(".txt", ".m3u8")
+            if (!fixed.isPlayableMediaUrl() || fixed.isArchiveDownloadUrl()) return
+            val type = if (fixed.contains(".m3u8", true)) {
+                ExtractorLinkType.M3U8
+            } else {
+                ExtractorLinkType.VIDEO
+            }
+            callback(newExtractorLink(sourceName, sourceName, fixed, type) {
+                this.referer = referer
+                this.quality = quality
+                this.headers = commonHeaders + mapOf("Referer" to referer)
+            })
+        }
+
+        addPage(url)
+        var emitted = false
+        var index = 0
+
+        while (index < pageQueue.size && index < 5) {
+            val pageUrl = pageQueue[index++]
+            val referer = if (pageUrl == url.cleanEscaped()) "$mainUrl/" else url
+
+            if (pageUrl.isPlayableMediaUrl()) {
+                emitDirect(pageUrl, referer)
+                emitted = true
+                continue
+            }
+
+            runCatching {
+                loadExtractor(pageUrl, referer, subtitleCallback) { link ->
+                    callback(link)
+                    emitted = true
+                }
+            }
+            if (emitted) return true
+
+            val response = runCatching {
+                app.get(
+                    pageUrl,
+                    headers = commonHeaders + mapOf("Referer" to referer),
+                    referer = referer,
+                    timeout = 20000L
+                )
+            }.getOrNull() ?: continue
+
+            val document = response.document
+            val html = response.text.cleanEscaped()
+
+            collectPlayableUrls(document, html, pageUrl)
+                .filterNot { it.isArchiveDownloadUrl() }
+                .forEach { direct ->
+                    emitDirect(direct, pageUrl)
+                    emitted = true
+                }
+
+            if (emitted) return true
+
+            document.select(
+                "iframe[src], embed[src], video[src], video source[src], source[src], " +
+                    "a[href], form[action], [data-url], [data-href], [data-link], [data-download], [data-src]"
+            ).forEach { element ->
+                listOf("src", "href", "action", "data-url", "data-href", "data-link", "data-download", "data-src")
+                    .map { element.attr(it) }
+                    .map { it.cleanEscaped() }
+                    .filter { it.isNotBlank() }
+                    .forEach { addPage(it, pageUrl) }
+            }
+        }
+
+        return emitted
+    }
+
     private fun collectPlayableUrls(
         document: org.jsoup.nodes.Document,
         html: String,
@@ -725,7 +820,6 @@ class Alqanime : MainAPI() {
                 .getOrElse { fixUrl(clean) }
         }
     }
-
 
     private suspend fun resolvePlaybackUrl(url: String): String {
         val resolved = resolveUrl(url)
@@ -902,14 +996,6 @@ class Alqanime : MainAPI() {
             }
         }
 
-        if (cleanUrl.contains("acefile.co/f/", true)) {
-            val id = Regex("/f/(\\w+)")
-                .find(cleanUrl)
-                ?.groupValues
-                ?.getOrNull(1)
-            if (id != null) return "https://acefile.co/player/$id"
-        }
-
         return fixUrl(cleanUrl)
     }
 
@@ -963,7 +1049,6 @@ class Alqanime : MainAPI() {
             .trim()
     }
 
-
     private fun String.isArchiveDownloadUrl(): Boolean {
         val lower = substringBefore("?").lowercase()
         return lower.endsWith(".zip") ||
@@ -991,7 +1076,15 @@ class Alqanime : MainAPI() {
             lower.contains("gofile.io") ||
             lower.contains("resharer.org") ||
             lower.contains("terabox") ||
+            lower.contains("uptobox.com") ||
+            lower.contains("uptostream.com") ||
+            lower.contains("hxdrive") ||
             lower.contains("drive.google.com") ||
+            lower.contains("docs.google.com") ||
+            lower.contains("onedrive.live.com") ||
+            lower.contains("1drv.ms") ||
+            lower.contains("mega.nz") ||
+            lower.contains("mega.co.nz") ||
             lower.contains("yurinime.com")
     }
 
@@ -1008,7 +1101,42 @@ class Alqanime : MainAPI() {
             lower.contains("gofile.io") ||
             lower.contains("yurinime.com") ||
             lower.contains("terabox") ||
-            lower.contains("drive.google.com")
+            lower.contains("uptobox.com") ||
+            lower.contains("uptostream.com") ||
+            lower.contains("hxdrive") ||
+            lower.contains("drive.google.com") ||
+            lower.contains("docs.google.com") ||
+            lower.contains("onedrive.live.com") ||
+            lower.contains("1drv.ms") ||
+            lower.contains("mega.nz") ||
+            lower.contains("mega.co.nz")
+    }
+
+    private fun String.isExternalDownloadHostUrl(): Boolean {
+        val lower = lowercase()
+        return lower.contains("drive.google.com") ||
+            lower.contains("docs.google.com") ||
+            lower.contains("uptobox.com") ||
+            lower.contains("uptostream.com") ||
+            lower.contains("terabox") ||
+            lower.contains("hxdrive") ||
+            lower.contains("onedrive.live.com") ||
+            lower.contains("1drv.ms") ||
+            lower.contains("mega.nz") ||
+            lower.contains("mega.co.nz")
+    }
+
+    private fun String.externalDownloadHostName(): String {
+        val lower = lowercase()
+        return when {
+            lower.contains("drive.google.com") || lower.contains("docs.google.com") -> "Google Drive"
+            lower.contains("uptobox.com") || lower.contains("uptostream.com") -> "Uptobox"
+            lower.contains("terabox") -> "TeraBox"
+            lower.contains("hxdrive") -> "HxDrive"
+            lower.contains("onedrive.live.com") || lower.contains("1drv.ms") -> "OneDrive"
+            lower.contains("mega.nz") || lower.contains("mega.co.nz") -> "Mega"
+            else -> name
+        }
     }
 
     private fun String.isPlayableMediaUrl(): Boolean {
