@@ -692,7 +692,7 @@ class Alqanime : MainAPI() {
             if (visited.add(normalized)) pageQueue.add(normalized)
         }
 
-        fun emitDirect(sourceUrl: String, referer: String) {
+        suspend fun emitDirect(sourceUrl: String, referer: String) {
             val fixed = sourceUrl.cleanEscaped().replace(".txt", ".m3u8")
             if (!fixed.isPlayableMediaUrl() || fixed.isArchiveDownloadUrl()) return
             val type = if (fixed.contains(".m3u8", true)) {
