@@ -26,7 +26,6 @@ class DonghuaFilm : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "" to "Latest Release",
         "anime/?order=update&status=&type=" to "New Donghua",
         "anime/?order=update&status=completed&type=" to "Completed",
         "anime/?order=popular&status=&type=" to "Popular",
@@ -165,7 +164,7 @@ class DonghuaFilm : MainAPI() {
 
         val candidates = collectPlayerCandidates(document, response.text, data)
         for (candidate in candidates.take(50)) {
-            val playerUrl = candidate.decodeEmbedText().toAbsoluteUrl(data) ?: continue
+            val playerUrl = candidate.decodeEmbedText().toAbsoluteUrl(data)?.normalizeDailymotionUrl() ?: continue
             if (emitDirect(playerUrl, hostLabel(playerUrl), data)) continue
 
             val before = emitted.size
@@ -182,10 +181,9 @@ class DonghuaFilm : MainAPI() {
             val unpacked = runCatching { getAndUnpack(playerHtml) }.getOrNull().orEmpty()
             val nested = collectUrlsFromText(playerHtml + "\n" + unpacked, playerUrl)
             for (nestedUrl in nested.take(20)) {
-                if (emitDirect(nestedUrl, hostLabel(playerUrl), playerUrl)) continue
-                nestedUrl.toAbsoluteUrl(playerUrl)?.let { fixed ->
-                    runCatching { loadExtractor(fixed, playerUrl, subtitleCallback, countedCallback) }
-                }
+                val fixed = nestedUrl.toAbsoluteUrl(playerUrl)?.normalizeDailymotionUrl() ?: continue
+                if (emitDirect(fixed, hostLabel(playerUrl), playerUrl)) continue
+                runCatching { loadExtractor(fixed, playerUrl, subtitleCallback, countedCallback) }
             }
         }
 
@@ -443,6 +441,24 @@ class DonghuaFilm : MainAPI() {
             .substringBeforeLast("-episode", slug)
             .replace(Regex("[^a-z0-9]+"), "-")
             .trim('-')
+    }
+
+    private fun String.normalizeDailymotionUrl(): String {
+        val id = extractDailymotionId() ?: return this
+        return "https://www.dailymotion.com/video/$id"
+    }
+
+    private fun String.extractDailymotionId(): String? {
+        val clean = decodeEmbedText()
+        Regex("""(?:video=|/video/|/embed/video/)([A-Za-z0-9]+)""")
+            .find(clean)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.let { return it }
+        return Regex("""dai\.ly/([A-Za-z0-9]+)""")
+            .find(clean)
+            ?.groupValues
+            ?.getOrNull(1)
     }
 
     private fun cleanTitle(raw: String?): String? {
