@@ -30,7 +30,7 @@ object DGSParser {
         }
 
         if (results.size < 4) {
-            document.select("a[href*='/video/']:has(img), a[href]:has(img), a[href]:has(picture), a[href]:has(noscript)").forEach { anchor ->
+            document.select("a[href*='/video/']:has(img), a[href*='/video/']:has(picture), a[href*='/video/']:has(noscript), a[href*='/video/']").forEach { anchor ->
                 parseAnchorCard(api, anchor)?.let { results.add(it) }
             }
         }
@@ -42,14 +42,13 @@ object DGSParser {
     }
 
     private fun parseCard(api: MainAPI, element: Element): SearchResponse? {
-        val link = element.selectFirst("a.post-permalink[href*='/video/']")
-            ?: element.selectFirst("a[href*='/video/']")
-            ?: element.selectFirst("a[href]:has(img)")
-            ?: element.selectFirst("h2 a[href], h3 a[href], .post-title a[href], .title a[href], .name a[href], a[href]")
-            ?: return null
+        val link = firstVideoLink(
+            api,
+            element,
+            "a.post-permalink[href*='/video/'], a[href*='/video/'], h2 a[href], h3 a[href], .post-title a[href], .title a[href], .name a[href], a[href]:has(img), a[href]"
+        ) ?: return null
 
         val href = absoluteUrl(api.mainUrl, link.attr("href")) ?: return null
-        if (!isVideoUrl(href)) return null
 
         val poster = posterFromElement(api, element, link)
         val rawTitle = link.attr("title")
@@ -82,6 +81,12 @@ object DGSParser {
         if (title.length < 3 || title.equals("home", true)) return null
         return api.newMovieSearchResponse(title, href, TvType.NSFW) {
             posterUrl = poster
+        }
+    }
+
+    private fun firstVideoLink(api: MainAPI, element: Element, selector: String): Element? {
+        return element.select(selector).firstOrNull { link ->
+            absoluteUrl(api.mainUrl, link.attr("href"))?.let { isVideoUrl(it) } == true
         }
     }
 

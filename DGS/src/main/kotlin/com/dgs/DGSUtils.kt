@@ -103,9 +103,7 @@ object DGSUtils {
         if (!isDGSUrl(lower)) return false
         val path = runCatching { URI(lower).path.orEmpty() }.getOrDefault("").trim('/')
         if (path.isBlank()) return false
-        if (path.startsWith("video/")) return true
-        if (path.contains('/')) return false
-        return !isCatalogPageUrl(lower) && !isBlockedUrl(lower)
+        return Regex("^video/[^/]+/?$").matches(path)
     }
 
     fun isCatalogPageUrl(url: String): Boolean {
