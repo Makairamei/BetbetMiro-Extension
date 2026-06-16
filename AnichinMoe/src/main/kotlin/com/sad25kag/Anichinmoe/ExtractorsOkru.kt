@@ -15,17 +15,17 @@ import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONArray
 
 class OkRuSSL : Odnoklassniki() {
-    override var name = "OkRuSSL"
+    override var name = "OK.ru"
     override var mainUrl = "https://ok.ru"
 }
 
 class OkRuHTTP : Odnoklassniki() {
-    override var name = "OkRuHTTP"
+    override var name = "OK.ru"
     override var mainUrl = "http://ok.ru"
 }
 
 open class Odnoklassniki : ExtractorApi() {
-    override val name = "Odnoklassniki"
+    override val name = "OK.ru"
     override val mainUrl = "https://odnoklassniki.ru"
     override val requiresReferer = false
 
@@ -36,32 +36,45 @@ open class Odnoklassniki : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val embedUrl = normalizeEmbedUrl(url)
-        val headers = mapOf(
+        val embedReferer = referer ?: "https://anichin.moe/"
+        val embedHeaders = mapOf(
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Connection" to "keep-alive",
+            "User-Agent" to USER_AGENT,
+            "Referer" to embedReferer,
+        )
+        val mediaHeaders = mapOf(
             "Accept" to "*/*",
             "Connection" to "keep-alive",
-            "Sec-Fetch-Dest" to "empty",
-            "Sec-Fetch-Mode" to "cors",
-            "Sec-Fetch-Site" to "cross-site",
-            "Origin" to mainUrl,
+            "Origin" to "https://ok.ru",
             "User-Agent" to USER_AGENT,
             "Referer" to embedUrl,
         )
 
         val videoReq = app.get(
             embedUrl,
-            referer = referer ?: "https://anichin.moe/",
-            headers = headers,
+            referer = embedReferer,
+            headers = embedHeaders,
         ).text.cleanOkRuPayload()
 
         val hlsManifest = extractOkRuField(videoReq, "hlsManifestUrl")
         if (!hlsManifest.isNullOrBlank()) {
-            M3u8Helper.generateM3u8(
-                source = this.name,
-                streamUrl = hlsManifest,
-                referer = embedUrl,
-                headers = headers,
-            ).forEach(callback)
-            return
+            val hlsLinks = runCatching {
+                M3u8Helper.generateM3u8(
+                    source = this.name,
+                    streamUrl = hlsManifest,
+                    referer = embedUrl,
+                    headers = mediaHeaders,
+                )
+            }.getOrElse { error ->
+                Log.w("AnichinOkRu", "Failed to resolve OK.ru HLS manifest", error)
+                emptyList()
+            }
+
+            if (hlsLinks.isNotEmpty()) {
+                hlsLinks.forEach(callback)
+                return
+            }
         }
 
         val metadataWebm = extractOkRuField(videoReq, "metadataWebmUrl")
@@ -75,7 +88,7 @@ open class Odnoklassniki : ExtractorApi() {
                 ) {
                     this.referer = embedUrl
                     this.quality = Qualities.Unknown.value
-                    this.headers = headers
+                    this.headers = mediaHeaders
                 }
             )
             return
@@ -111,7 +124,7 @@ open class Odnoklassniki : ExtractorApi() {
                 ) {
                     this.referer = embedUrl
                     this.quality = getQualityFromName(quality)
-                    this.headers = headers
+                    this.headers = mediaHeaders
                 }
             )
         }
@@ -165,6 +178,8 @@ open class Odnoklassniki : ExtractorApi() {
             .replace("\\u003D", "=")
             .replace("\\u002F", "/")
             .replace("\\/", "/")
+            .replace("\\&", "&")
+            .replace("\\=", "=")
             .replace("\\\\", "\\")
             .replace(Regex("\\\\u([0-9A-Fa-f]{4})")) { matchResult ->
                 Integer.parseInt(matchResult.groupValues[1], 16).toChar().toString()
