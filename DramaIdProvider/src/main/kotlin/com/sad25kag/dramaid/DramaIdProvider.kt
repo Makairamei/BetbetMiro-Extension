@@ -1,27 +1,8 @@
 package com.sad25kag.dramaid
 
-import com.lagradost.cloudstream3.Episode
-import com.lagradost.cloudstream3.ErrorLoadingException
-import com.lagradost.cloudstream3.HomePageResponse
-import com.lagradost.cloudstream3.LoadResponse
-import com.lagradost.cloudstream3.MainAPI
-import com.lagradost.cloudstream3.MainPageRequest
-import com.lagradost.cloudstream3.Score
-import com.lagradost.cloudstream3.SearchResponse
-import com.lagradost.cloudstream3.ShowStatus
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.USER_AGENT
-import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.fixUrl
-import com.lagradost.cloudstream3.mainPageOf
-import com.lagradost.cloudstream3.newEpisode
-import com.lagradost.cloudstream3.newHomePageResponse
-import com.lagradost.cloudstream3.newMovieLoadResponse
-import com.lagradost.cloudstream3.newMovieSearchResponse
-import com.lagradost.cloudstream3.newSubtitleFile
-import com.lagradost.cloudstream3.newTvSeriesLoadResponse
-import com.lagradost.cloudstream3.newTvSeriesSearchResponse
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
@@ -44,6 +25,11 @@ class DramaIdProvider : MainAPI() {
     override val hasQuickSearch = true
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.AsianDrama, TvType.TvSeries, TvType.Movie)
+
+    private val tmdbApi = "https://api.themoviedb.org/3"
+    private val tmdbApiKey = "b030404650f279792a8d3287232358e3"
+    private val tmdbImage = "https://image.tmdb.org/t/p"
+    private val detailPathPattern = Regex("""(?i)/nonton-[^/?#]+/?(?:$|[?#])""")
 
     override val mainPage = mainPageOf(
         "$mainUrl/page/%d/" to "Update Terbaru",
@@ -117,6 +103,8 @@ class DramaIdProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val fixedUrl = normalizeUrl(url, mainUrl) ?: throw ErrorLoadingException("Invalid URL")
+        if (!fixedUrl.isDramaIdDetailUrl()) throw ErrorLoadingException("Invalid DramaID detail URL")
+
         val document = app.get(fixedUrl, referer = "$mainUrl/").document
 
         val title = listOf(
@@ -130,8 +118,16 @@ class DramaIdProvider : MainAPI() {
             ?.takeIf { it.isNotBlank() }
             ?: throw ErrorLoadingException("Title not found")
 
-        val poster = document.selectFirst(".thumbnail_single img, .poster img, img.wp-post-image, meta[property=og:image], img[alt]")
-            ?.imageUrl()
+        val sourcePoster = document.select(
+            ".thumbnail_single img, " +
+                ".poster img, " +
+                "img.wp-post-image, " +
+                "article img, " +
+                ".entry-content img, " +
+                "meta[property=og:image]"
+        )
+            .mapNotNull { it.imageUrl() }
+            .firstOrNull { !it.isDramaIdSiteAsset() }
 
         val plot = document.select("#sinopsis p, .synopsis p, .entry-content p")
             .map { it.text().trim() }
@@ -152,6 +148,13 @@ class DramaIdProvider : MainAPI() {
         val duration = detailValue(document, "Durasi")?.durationToMinutes()
         val typeText = detailValue(document, "Tipe").orEmpty()
 
+        val tmdb = fetchTmdbMetadata(title, year, typeText)
+        val finalTitle = tmdb?.title?.takeIf { it.isNotBlank() } ?: title
+        val finalPoster = tmdb?.poster ?: sourcePoster
+        val finalBackdrop = tmdb?.backdrop ?: finalPoster
+        val finalPlot = tmdb?.plot?.takeIf { it.isNotBlank() } ?: plot
+        val finalTags = tmdb?.tags?.takeIf { it.isNotEmpty() } ?: tags
+
         val episodes = document.select(
             ".daftar-episode li a[href*='episode='], " +
                 ".episode-list li a[href*='episode='], " +
@@ -169,27 +172,31 @@ class DramaIdProvider : MainAPI() {
         val isMovie = typeText.contains("movie", true) && episodes.size <= 1
 
         return if (isMovie) {
-            newMovieLoadResponse(title, fixedUrl, TvType.Movie, episodes.firstOrNull()?.data ?: fixedUrl) {
-                posterUrl = poster
-                backgroundPosterUrl = poster
-                this.year = year
-                plot?.let { this.plot = it }
-                this.tags = tags
-                rating?.let { score = Score.from10(it) }
-                duration?.let { this.duration = it }
+            newMovieLoadResponse(finalTitle, fixedUrl, TvType.Movie, episodes.firstOrNull()?.data ?: fixedUrl) {
+                posterUrl = finalPoster
+                backgroundPosterUrl = finalBackdrop
+                this.year = tmdb?.year ?: year
+                finalPlot?.let { this.plot = it }
+                this.tags = finalTags
+                (tmdb?.rating ?: rating)?.let { score = Score.from10(it) }
+                (tmdb?.duration ?: duration)?.let { this.duration = it }
+                tmdb?.actors?.takeIf { it.isNotEmpty() }?.let { actors = it }
+                tmdb?.id?.let { addTMDbId(it.toString()) }
                 this.recommendations = recommendations
             }
         } else {
             val safeEpisodes = episodes.ifEmpty { listOf(newEpisode(fixedUrl) { name = "Episode 1"; episode = 1 }) }
-            newTvSeriesLoadResponse(title, fixedUrl, TvType.AsianDrama, safeEpisodes) {
-                posterUrl = poster
-                backgroundPosterUrl = poster
-                this.year = year
-                plot?.let { this.plot = it }
-                this.tags = tags
-                rating?.let { score = Score.from10(it) }
-                showStatus = status
-                duration?.let { this.duration = it }
+            newTvSeriesLoadResponse(finalTitle, fixedUrl, TvType.AsianDrama, safeEpisodes) {
+                posterUrl = finalPoster
+                backgroundPosterUrl = finalBackdrop
+                this.year = tmdb?.year ?: year
+                finalPlot?.let { this.plot = it }
+                this.tags = finalTags
+                (tmdb?.rating ?: rating)?.let { score = Score.from10(it) }
+                showStatus = tmdb?.status ?: status
+                (tmdb?.duration ?: duration)?.let { this.duration = it }
+                tmdb?.actors?.takeIf { it.isNotEmpty() }?.let { actors = it }
+                tmdb?.id?.let { addTMDbId(it.toString()) }
                 this.recommendations = recommendations
             }
         }
@@ -396,7 +403,7 @@ class DramaIdProvider : MainAPI() {
             ?.takeIf { it.isNotBlank() }
             ?: return null
 
-        val poster = selectFirst(".thumbnail img, img, .poster img")?.imageUrl()
+        val poster = selectFirst(".thumbnail img, img, .poster img")?.imageUrl()?.takeIf { !it.isDramaIdSiteAsset() }
         val type = if (text().contains("Episode:", true) || text().contains("Episode", true)) TvType.AsianDrama else TvType.Movie
 
         return if (type == TvType.Movie) {
@@ -435,6 +442,121 @@ class DramaIdProvider : MainAPI() {
             name = episodeNumber?.let { "Episode $it" } ?: title.ifBlank { "Episode" }
             episode = episodeNumber
         }
+    }
+
+    private suspend fun fetchTmdbMetadata(title: String, year: Int?, typeText: String): TmdbMetadata? {
+        val query = title.toTmdbQuery()
+        if (query.isBlank()) return null
+
+        val preferredType = if (typeText.contains("movie", true)) "movie" else "tv"
+        return fetchTmdbMetadataByType(query, year, preferredType)
+            ?: fetchTmdbMetadataByType(query, year, if (preferredType == "tv") "movie" else "tv")
+    }
+
+    private suspend fun fetchTmdbMetadataByType(query: String, year: Int?, type: String): TmdbMetadata? {
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val searchUrl = "$tmdbApi/search/$type?api_key=$tmdbApiKey&language=en-US&query=$encoded&page=1&include_adult=false"
+        val search = runCatching { app.get(searchUrl).parsedSafe<TmdbSearchResponse>() }.getOrNull()
+        val selected = search?.results
+            .orEmpty()
+            .filter { it.id != null && !it.bestTitle.isNullOrBlank() }
+            .maxByOrNull { it.matchScore(query, year) }
+            ?: return null
+
+        val append = "credits,keywords"
+        val detailUrl = "$tmdbApi/$type/${selected.id}?api_key=$tmdbApiKey&language=en-US&append_to_response=$append"
+        val detail = runCatching { app.get(detailUrl).parsedSafe<TmdbDetail>() }.getOrNull() ?: return null
+
+        val tags = detail.keywords?.results.orEmpty()
+            .ifEmpty { detail.keywords?.keywords.orEmpty() }
+            .mapNotNull { it.name?.trim() }
+            .filter { it.isNotBlank() }
+            .ifEmpty {
+                detail.genres.orEmpty()
+                    .mapNotNull { it.name?.trim() }
+                    .filter { it.isNotBlank() }
+            }
+
+        val actors = detail.credits?.cast
+            .orEmpty()
+            .take(20)
+            .mapNotNull { cast ->
+                val actorName = cast.name ?: cast.originalName ?: return@mapNotNull null
+                ActorData(
+                    Actor(actorName, tmdbPoster(cast.profilePath)),
+                    roleString = cast.character
+                )
+            }
+
+        val releaseYear = (detail.releaseDate ?: detail.firstAirDate)
+            ?.split("-")
+            ?.firstOrNull()
+            ?.toIntOrNull()
+
+        return TmdbMetadata(
+            id = detail.id ?: selected.id ?: return null,
+            title = detail.title ?: detail.name ?: selected.bestTitle,
+            year = releaseYear,
+            poster = tmdbPoster(detail.posterPath, original = true),
+            backdrop = tmdbPoster(detail.backdropPath, original = true),
+            plot = detail.overview?.trim()?.ifBlank { null },
+            tags = tags,
+            rating = detail.voteAverage,
+            status = detail.status?.let(::getStatus),
+            duration = detail.runtime ?: detail.episodeRunTime?.firstOrNull(),
+            actors = actors
+        )
+    }
+
+    private val TmdbSearchItem.bestTitle: String?
+        get() = title ?: name ?: originalTitle ?: originalName
+
+    private fun TmdbSearchItem.matchScore(query: String, year: Int?): Int {
+        val itemTitle = bestTitle.orEmpty()
+        val normalizedQuery = query.normalizeTmdbName()
+        val normalizedItem = itemTitle.normalizeTmdbName()
+        val itemYear = (releaseDate ?: firstAirDate)?.split("-")?.firstOrNull()?.toIntOrNull()
+        var score = voteCount ?: 0
+        if (normalizedItem == normalizedQuery) score += 10_000
+        if (normalizedItem.contains(normalizedQuery) || normalizedQuery.contains(normalizedItem)) score += 2_500
+        if (year != null && itemYear == year) score += 5_000
+        return score
+    }
+
+    private fun String.toTmdbQuery(): String {
+        return cleanTitle()
+            .replace(Regex("""(?i)\s*\((?:19|20)\d{2}\)\s*"""), " ")
+            .replace(Regex("""(?i)\s+season\s+\d+\s*$"""), " ")
+            .replace(Regex("""(?i)\s+episode\s+\d+.*$"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+
+    private fun String.normalizeTmdbName(): String {
+        return lowercase()
+            .replace(Regex("""[^a-z0-9]+"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+
+    private fun tmdbPoster(path: String?, original: Boolean = false): String? {
+        val clean = path?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        if (clean.startsWith("http://", true) || clean.startsWith("https://", true)) return clean
+        val size = if (original) "original" else "w500"
+        return if (clean.startsWith("/")) "$tmdbImage/$size$clean" else "$tmdbImage/$size/$clean"
+    }
+
+    private fun String.isDramaIdDetailUrl(): Boolean {
+        return startsWith(mainUrl, true) && detailPathPattern.containsMatchIn(this)
+    }
+
+    private fun String.isDramaIdSiteAsset(): Boolean {
+        val value = lowercase()
+        return value.contains("favicon") ||
+            value.contains("t2.gstatic.com/favicon") ||
+            value.contains("/logo") ||
+            value.contains("logo.") ||
+            value.endsWith(".svg")
     }
 
     private fun detailValue(document: Document, label: String): String? {
@@ -591,7 +713,8 @@ class DramaIdProvider : MainAPI() {
         return when {
             value == null -> null
             value.contains("ongoing", true) -> ShowStatus.Ongoing
-            value.contains("complete", true) || value.contains("tamat", true) -> ShowStatus.Completed
+            value.contains("returning", true) -> ShowStatus.Ongoing
+            value.contains("complete", true) || value.contains("tamat", true) || value.contains("ended", true) -> ShowStatus.Completed
             else -> null
         }
     }
@@ -730,5 +853,104 @@ class DramaIdProvider : MainAPI() {
         val url: String? = null,
         val mode: String? = null,
         val urutan_text: String? = null,
+    )
+
+    data class TmdbMetadata(
+        val id: Int,
+        val title: String? = null,
+        val year: Int? = null,
+        val poster: String? = null,
+        val backdrop: String? = null,
+        val plot: String? = null,
+        val tags: List<String> = emptyList(),
+        val rating: Double? = null,
+        val status: ShowStatus? = null,
+        val duration: Int? = null,
+        val actors: List<ActorData> = emptyList(),
+    )
+
+    data class TmdbSearchResponse(
+        @JsonProperty("results")
+        val results: List<TmdbSearchItem>? = null,
+    )
+
+    data class TmdbSearchItem(
+        @JsonProperty("id")
+        val id: Int? = null,
+        @JsonProperty("name")
+        val name: String? = null,
+        @JsonProperty("title")
+        val title: String? = null,
+        @JsonProperty("original_name")
+        val originalName: String? = null,
+        @JsonProperty("original_title")
+        val originalTitle: String? = null,
+        @JsonProperty("first_air_date")
+        val firstAirDate: String? = null,
+        @JsonProperty("release_date")
+        val releaseDate: String? = null,
+        @JsonProperty("vote_count")
+        val voteCount: Int? = null,
+    )
+
+    data class TmdbDetail(
+        @JsonProperty("id")
+        val id: Int? = null,
+        @JsonProperty("name")
+        val name: String? = null,
+        @JsonProperty("title")
+        val title: String? = null,
+        @JsonProperty("overview")
+        val overview: String? = null,
+        @JsonProperty("poster_path")
+        val posterPath: String? = null,
+        @JsonProperty("backdrop_path")
+        val backdropPath: String? = null,
+        @JsonProperty("first_air_date")
+        val firstAirDate: String? = null,
+        @JsonProperty("release_date")
+        val releaseDate: String? = null,
+        @JsonProperty("vote_average")
+        val voteAverage: Double? = null,
+        @JsonProperty("episode_run_time")
+        val episodeRunTime: List<Int>? = null,
+        @JsonProperty("runtime")
+        val runtime: Int? = null,
+        @JsonProperty("status")
+        val status: String? = null,
+        @JsonProperty("genres")
+        val genres: List<TmdbNamed>? = null,
+        @JsonProperty("keywords")
+        val keywords: TmdbKeywords? = null,
+        @JsonProperty("credits")
+        val credits: TmdbCredits? = null,
+    )
+
+    data class TmdbNamed(
+        @JsonProperty("name")
+        val name: String? = null,
+    )
+
+    data class TmdbKeywords(
+        @JsonProperty("results")
+        val results: List<TmdbNamed>? = null,
+        @JsonProperty("keywords")
+        val keywords: List<TmdbNamed>? = null,
+    )
+
+    data class TmdbCredits(
+        @JsonProperty("cast")
+        val cast: List<TmdbCast>? = null,
+    )
+
+    data class TmdbCast(
+        @JsonProperty("name")
+        val name: String? = null,
+        @JsonProperty("original_name")
+        val originalName: String? = null,
+        @JsonProperty("character")
+        val character: String? = null,
+        @JsonProperty("profile_path")
+        val profilePath: String? = null,
     )
 }
