@@ -129,8 +129,6 @@ class DonghuaID : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val response = app.get(data, headers = siteHeaders, referer = "$mainUrl/")
-        val document = response.document
         val emitted = linkedSetOf<String>()
 
         fun countedCallback(link: ExtractorLink) {
@@ -157,19 +155,35 @@ class DonghuaID : MainAPI() {
             return true
         }
 
-        val candidates = collectSourcePlayerCandidates(document, data)
-        for (candidate in candidates) {
-            val playerUrl = candidate.url.normalizePlayerUrl(candidate.referer) ?: continue
-            val before = emitted.size
-            if (playerUrl.isDirectMediaLike()) {
-                emitDirect(playerUrl, candidate.label, candidate.referer)
-            } else {
-                runCatching { loadExtractor(playerUrl, candidate.referer, subtitleCallback) { link -> countedCallback(link) } }
+        suspend fun resolvePage(pageUrl: String, allowDetailToEpisode: Boolean): Boolean {
+            val document = app.get(pageUrl, headers = siteHeaders, referer = "$mainUrl/").document
+            val candidates = collectSourcePlayerCandidates(document, pageUrl)
+            for (candidate in candidates) {
+                val playerUrl = candidate.url.normalizePlayerUrl(candidate.referer) ?: continue
+                val before = emitted.size
+                if (playerUrl.isDirectMediaLike()) {
+                    emitDirect(playerUrl, candidate.label, candidate.referer)
+                } else {
+                    runCatching { loadExtractor(playerUrl, candidate.referer, subtitleCallback) { link -> countedCallback(link) } }
+                }
+                if (emitted.size > before) continue
             }
-            if (emitted.size > before) continue
+
+            if (emitted.isNotEmpty()) return true
+
+            // Some CloudStream tests may pass the search/detail URL into loadLinks().
+            // Keep the real source flow by resolving that detail page to the first episode/watch URL,
+            // then process that watch page normally: option[value] -> decode -> iframe -> loadExtractor.
+            if (allowDetailToEpisode) {
+                val watchLink = firstEpisodeWatchLink(document, pageUrl)
+                if (!watchLink.isNullOrBlank() && watchLink.normalizedKey() != pageUrl.normalizedKey()) {
+                    return resolvePage(watchLink, false)
+                }
+            }
+            return emitted.isNotEmpty()
         }
 
-        return emitted.isNotEmpty()
+        return resolvePage(data, true)
     }
 
     private fun parseDonghuaCards(document: Document, includeSidebar: Boolean = false): List<SearchResponse> {
@@ -233,18 +247,26 @@ class DonghuaID : MainAPI() {
     }
 
     private fun parseEpisodes(document: Document, pageUrl: String): List<Episode> {
-        val scopedAnchors = document.select(
-            ".episodelist li a[href], .eplister li a[href], .bixbox.bxcl li a[href], .episodelist a[href*='episode']"
+        val episodeScopedAnchors = document.select(
+            ".episodelist a[href], .eplister a[href], .bixbox.bxcl a[href], #episodes a[href], #episode a[href], .episodes a[href], .episode-list a[href], .epcheck a[href], .episodios a[href], .listing a[href]"
         )
-        val anchors = if (scopedAnchors.isNotEmpty()) scopedAnchors else {
+        val anchors = if (episodeScopedAnchors.isNotEmpty()) {
+            episodeScopedAnchors.map { EpisodeAnchor(it, true) }
+        } else {
             val currentSlug = pageUrl.slugSeriesKey()
-            document.select("article.post a[href*='episode'], .postbody a[href*='episode'], .entry-content a[href*='episode']")
-                .filter { anchor -> anchor.attr("href").absoluteUrl(pageUrl)?.slugSeriesKey() == currentSlug }
+            document.select("article.post a[href], .postbody a[href], .entry-content a[href]")
+                .filter { anchor ->
+                    val href = anchor.attr("href").absoluteUrl(pageUrl) ?: return@filter false
+                    href.slugSeriesKey() == currentSlug || href.isWatchUrlCandidate(pageUrl, false)
+                }
+                .map { EpisodeAnchor(it, false) }
         }
 
-        return anchors.mapNotNull { anchor ->
+        return anchors.mapNotNull { candidate ->
+            val anchor = candidate.anchor
             val href = anchor.attr("href").absoluteUrl(pageUrl) ?: return@mapNotNull null
-            if (!href.startsWith(mainUrl, true) || !href.contains("episode", true)) return@mapNotNull null
+            if (!href.startsWith(mainUrl, true)) return@mapNotNull null
+            if (!href.isWatchUrlCandidate(pageUrl, candidate.fromEpisodeContainer)) return@mapNotNull null
             val rawTitle = anchor.selectFirst(".epl-title, .playinfo h3, h3, .title")?.text()?.cleanText()
                 ?: anchor.ownText().cleanText().takeIf { it.length > 2 }
                 ?: anchor.text().cleanText().takeIf { it.length > 2 && !it.equals("Prev", true) && !it.equals("Next", true) }
@@ -261,6 +283,17 @@ class DonghuaID : MainAPI() {
             .distinctBy { it.data.normalizedKey() }
             .sortedByDescending { it.episode ?: -1 }
     }
+
+    private fun firstEpisodeWatchLink(document: Document, pageUrl: String): String? {
+        return parseEpisodes(document, pageUrl)
+            .map { it.data }
+            .firstOrNull { it.normalizedKey() != pageUrl.normalizedKey() }
+    }
+
+    private data class EpisodeAnchor(
+        val anchor: Element,
+        val fromEpisodeContainer: Boolean,
+    )
 
     private data class PlayerCandidate(
         val url: String,
@@ -478,6 +511,18 @@ class DonghuaID : MainAPI() {
         return assetExtensions.none { path.endsWith(it) }
     }
 
+
+    private fun String.isWatchUrlCandidate(pageUrl: String, fromEpisodeContainer: Boolean): Boolean {
+        val value = substringBefore("#").substringBefore("?").trimEnd('/').lowercase(Locale.ROOT)
+        val root = mainUrl.trimEnd('/').lowercase(Locale.ROOT)
+        if (value == pageUrl.normalizedKey() || !value.startsWith(root)) return false
+        val path = value.removePrefix(root).trim('/')
+        if (path.isBlank()) return false
+        if (path.startsWith("anime/") || path.startsWith("genre/") || path.startsWith("genres/") || path.startsWith("tag/") || path.startsWith("category/") || path.startsWith("wp-")) return false
+        if (path.contains("/page/")) return false
+        if (path.contains("episode") || path.contains("-eps-") || path.contains("-ep-")) return true
+        return fromEpisodeContainer && !path.contains("/")
+    }
 
     private fun String.isDonghuaContentUrl(): Boolean {
         val value = substringBefore("#").substringBefore("?").trimEnd('/').lowercase(Locale.ROOT)
