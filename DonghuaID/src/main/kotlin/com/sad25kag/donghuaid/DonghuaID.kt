@@ -12,12 +12,13 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.newAnimeSearchResponse
+import com.lagradost.cloudstream3.mainPageOf
+import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
-import com.lagradost.cloudstream3.utils.newEpisode
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
