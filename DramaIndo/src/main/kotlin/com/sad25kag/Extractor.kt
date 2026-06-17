@@ -21,6 +21,11 @@ class BysetayicoFileMoon : Filesim() {
     override val name = "FileMoon"
 }
 
+class DramaIndoFileMoon : Filesim() {
+    override val mainUrl = "https://filemoon.to"
+    override val name = "FileMoon"
+}
+
 class DrakorkitaStream : DramaIndoEncryptedStream(
     extractorName = "Drakorkita",
     extractorMainUrl = "https://drakorkita.stream",
@@ -67,7 +72,8 @@ object DramaIndoStreamResolver {
     ): Boolean {
         val uri = runCatching { URI(url) }.getOrNull() ?: return false
         val host = uri.host ?: return false
-        val baseUrl = "${uri.scheme ?: "https"}://$host"
+        val scheme = uri.scheme ?: "https"
+        val baseUrl = "$scheme://$host"
         val playerReferer = "$baseUrl/"
         val videoId = extractVideoId(uri, url) ?: return false
         val refererHost = runCatching { URI(referer).host?.removePrefix("www.") }
@@ -79,7 +85,6 @@ object DramaIndoStreamResolver {
             "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36",
         )
 
-        // HAR shows browser opens the player origin first, then calls /api/v1/video as same-origin XHR.
         runCatching {
             app.get(
                 playerReferer,
@@ -102,6 +107,7 @@ object DramaIndoStreamResolver {
                         headers = browserHeaders + mapOf(
                             "Accept" to "*/*",
                             "Referer" to playerReferer,
+                            "Origin" to baseUrl,
                             "Sec-Fetch-Site" to "same-origin",
                             "Sec-Fetch-Mode" to "cors",
                             "Sec-Fetch-Dest" to "empty",
@@ -159,10 +165,7 @@ object DramaIndoStreamResolver {
     }
 
     private fun JsonObject.pickStreamUrl(): StreamCandidate? {
-        // HAR playback requests prefer the direct source master.m3u8 when available.
-        // cf-master.txt is retained as fallback because it is also a HLS playlist in HAR.
-        val orderedKeys = listOf("source", "cf")
-        orderedKeys.forEach { key ->
+        listOf("source", "cf").forEach { key ->
             val value = runCatching { get(key)?.takeIf { it.isJsonPrimitive }?.asString }.getOrNull()
                 ?.replace("\\/", "/")
                 ?.trim()
@@ -170,7 +173,7 @@ object DramaIndoStreamResolver {
                 ?: return@forEach
             if (value.isHlsLike()) {
                 return StreamCandidate(
-                    name = if (key.equals("cf", ignoreCase = true)) "${this.titleText()} Cloudflare HLS" else "${this.titleText()} HLS",
+                    name = if (key.equals("cf", ignoreCase = true)) "${titleText()} Cloudflare HLS" else "${titleText()} HLS",
                     url = value,
                     quality = value.qualityFromText(),
                 )

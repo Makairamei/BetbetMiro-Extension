@@ -8,6 +8,7 @@ class DramaIndoProvider : BasePlugin() {
     override fun load() {
         registerMainAPI(DramaIndo())
         registerExtractorAPI(BysetayicoFileMoon())
+        registerExtractorAPI(DramaIndoFileMoon())
         registerExtractorAPI(DrakorkitaStream())
         registerExtractorAPI(NunaUpnsStream())
     }

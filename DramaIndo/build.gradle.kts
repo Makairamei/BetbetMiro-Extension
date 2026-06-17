@@ -1,6 +1,7 @@
-version = 5
+version = 6
+
 cloudstream {
-    description = "DramaIndo - Drama Korea subtitle Indonesia"
+    description = "DramaIndo"
     language = "id"
     authors = listOf("sad25kag")
 
@@ -10,15 +11,13 @@ cloudstream {
      * 1: Ok
      * 2: Slow
      * 3: Beta only
-     */
+     * */
     status = 1
-
     tvTypes = listOf(
         "AsianDrama",
         "TvSeries",
         "Movie",
     )
 
-    iconUrl = "https://www.google.com/s2/favicons?domain=dramaindo.my&sz=%size%"
-    isCrossPlatform = true
+    iconUrl = "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://dramaindo.my&size=%size%"
 }
