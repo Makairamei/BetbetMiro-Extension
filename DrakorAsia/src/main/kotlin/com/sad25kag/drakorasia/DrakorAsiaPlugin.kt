@@ -8,7 +8,6 @@ import com.lagradost.cloudstream3.plugins.Plugin
 class DrakorAsiaPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(DrakorAsia())
-        registerExtractorAPI(DrakorAsiaAbyssExtractor())
         registerExtractorAPI(DrakorAsiaShortInkExtractor())
     }
 }

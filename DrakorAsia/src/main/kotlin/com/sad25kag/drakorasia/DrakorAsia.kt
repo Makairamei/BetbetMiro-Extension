@@ -278,26 +278,54 @@ class DrakorAsia : MainAPI() {
     }
 
     private fun extractPlayerCandidates(document: Document, pageUrl: String): Set<String> {
+        val fromServerOptions = extractServerOptionCandidates(document, pageUrl)
+        if (fromServerOptions.isNotEmpty()) return fromServerOptions
+        return extractInlinePlayerCandidates(document, pageUrl)
+    }
+
+    private fun extractServerOptionCandidates(document: Document, pageUrl: String): Set<String> {
         val candidates = linkedSetOf<String>()
-        collectCandidates(document.html(), pageUrl, candidates)
-        document.select("iframe[src], embed[src], video[src], video source[src], option[value], .mobius option[value], select option[value], .mirror option[value], [data-url], [data-src], [data-link], [data-href], [data-iframe], [data-embed], [data-player], [data-video], [data-file], [data-stream]")
+        document.select(
+            ".mobius select.selectServ option[value], " +
+                ".mobius option[value], " +
+                "select.selectServ option[value], " +
+                "select[name=selectServ] option[value], " +
+                ".mirror option[value]"
+        ).forEach { option ->
+            val raw = option.attr("value").trim()
+            if (raw.isBlank() || raw == "#" || raw.startsWith("javascript", true)) return@forEach
+            extractPlayerUrlsFromServerValue(raw, pageUrl).forEach(candidates::add)
+        }
+        return candidates
+    }
+
+    private fun extractInlinePlayerCandidates(document: Document, pageUrl: String): Set<String> {
+        val candidates = linkedSetOf<String>()
+        document.select("iframe[src], embed[src], video[src], video source[src], [data-url], [data-src], [data-link], [data-href], [data-iframe], [data-embed], [data-player], [data-video], [data-file], [data-stream]")
             .forEach { element ->
-                listOf("src", "value", "data-url", "data-src", "data-link", "data-href", "data-iframe", "data-embed", "data-player", "data-video", "data-file", "data-stream").forEach attrs@{ attr ->
+                listOf("src", "data-url", "data-src", "data-link", "data-href", "data-iframe", "data-embed", "data-player", "data-video", "data-file", "data-stream").forEach attrs@{ attr ->
                     val raw = element.attr(attr).trim()
                     if (raw.isBlank() || raw == "#" || raw.startsWith("javascript", true)) return@attrs
-                    val decoded = decodePayload(raw)
-                    collectCandidates(decoded, pageUrl, candidates)
-                    Jsoup.parse(decoded).select("iframe[src], embed[src], video[src], video source[src]").forEach { nested ->
-                        listOf("src").forEach { nestedAttr ->
-                            normalizeUrl(nested.attr(nestedAttr), pageUrl)
-                                .takeIf { it.startsWith("http", true) }
-                                ?.let(candidates::add)
-                        }
-                    }
-                    if (decoded.startsWith("http", true)) candidates.add(decoded)
-                    else normalizeUrl(decoded, pageUrl).takeIf { it.startsWith("http", true) }?.let(candidates::add)
+                    extractPlayerUrlsFromServerValue(raw, pageUrl).forEach(candidates::add)
                 }
             }
+        return candidates
+    }
+
+    private fun extractPlayerUrlsFromServerValue(raw: String, pageUrl: String): Set<String> {
+        val candidates = linkedSetOf<String>()
+        val decoded = decodePayload(raw)
+        listOf(raw, decoded).forEach { value ->
+            val clean = value.replace("\\/", "/").trim().trim('"', '\'', ',', ';')
+            Jsoup.parse(clean).select("iframe[src], embed[src], video[src], video source[src]").forEach { nested ->
+                normalizeUrl(nested.attr("src"), pageUrl)
+                    .takeIf { it.startsWith("http", true) }
+                    ?.let(candidates::add)
+            }
+            if (clean.startsWith("http", true) || clean.startsWith("//")) {
+                normalizeUrl(clean, pageUrl).takeIf { it.startsWith("http", true) }?.let(candidates::add)
+            }
+        }
         return candidates
     }
 
