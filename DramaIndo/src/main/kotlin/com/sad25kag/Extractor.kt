@@ -75,29 +75,40 @@ object DramaIndoStreamResolver {
             .takeUnless { it.isNullOrBlank() }
             ?: DEFAULT_REFERER_HOST
 
+        val browserHeaders = mapOf(
+            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36",
+        )
+
         // HAR shows browser opens the player origin first, then calls /api/v1/video as same-origin XHR.
         runCatching {
             app.get(
                 playerReferer,
                 referer = referer,
-                headers = mapOf(
+                headers = browserHeaders + mapOf(
                     "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                     "Referer" to referer,
                 ),
             )
         }
 
-        val apiUrl = "$baseUrl/api/v1/video?id=$videoId&w=421&h=935&r=$refererHost"
-        val encrypted = runCatching {
-            app.get(
-                apiUrl,
-                referer = playerReferer,
-                headers = mapOf(
-                    "Accept" to "*/*",
-                    "Referer" to playerReferer,
-                ),
-            ).text
-        }.getOrNull()?.trim()?.takeIf { it.isNotBlank() } ?: return false
+        val encrypted = listOf(refererHost, DEFAULT_REFERER_HOST)
+            .distinct()
+            .firstNotNullOfOrNull { hostParam ->
+                val apiUrl = "$baseUrl/api/v1/video?id=$videoId&w=421&h=935&r=$hostParam"
+                runCatching {
+                    app.get(
+                        apiUrl,
+                        referer = playerReferer,
+                        headers = browserHeaders + mapOf(
+                            "Accept" to "*/*",
+                            "Referer" to playerReferer,
+                            "Sec-Fetch-Site" to "same-origin",
+                            "Sec-Fetch-Mode" to "cors",
+                            "Sec-Fetch-Dest" to "empty",
+                        ),
+                    ).text.trim().takeIf { it.isNotBlank() }
+                }.getOrNull()
+            } ?: return false
 
         val decrypted = decryptHex(encrypted) ?: return false
         val json = runCatching { JsonParser.parseString(decrypted).asJsonObject }.getOrNull() ?: return false
