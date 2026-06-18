@@ -2,7 +2,7 @@ android {
     namespace = "com.BetbetMiro.alqanime"
 }
 
-version = 22
+version = 23
 
 cloudstream {
     language = "id"

@@ -66,10 +66,7 @@ class Alqanime : MainAPI() {
         "$mainUrl/tag/seinen/page/%d/" to "Seinen",
         "$mainUrl/tag/magic/page/%d/" to "Magic",
         "$mainUrl/tag/martial-arts/page/%d/" to "Martial Arts",
-        "$mainUrl/tag/donghua/page/%d/" to "Donghua",
-        "$mainUrl/tag/ecchi/page/%d/" to "Ecchi",
-        "$mainUrl/tag/hentong/page/%d/" to "Hentong",
-        "$mainUrl/tag/harem/page/%d/" to "Harem"
+        "$mainUrl/tag/donghua/page/%d/" to "Donghua"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
