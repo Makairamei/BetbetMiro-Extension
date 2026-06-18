@@ -13,6 +13,7 @@ import com.nonton01.Nonton01Utils.absoluteUrl
 import com.nonton01.Nonton01Utils.cleanText
 import com.nonton01.Nonton01Utils.durationMinutes
 import com.nonton01.Nonton01Utils.isValidPoster
+import com.nonton01.Nonton01Utils.isFilteredContent
 import com.nonton01.Nonton01Utils.isVideoUrl
 import com.nonton01.Nonton01Utils.typeFromUrlOrTitle
 import org.jsoup.nodes.Document
@@ -67,6 +68,7 @@ object Nonton01Parser {
                 .ifBlank { image?.attr("alt").orEmpty() }
                 .ifBlank { image?.attr("title").orEmpty() }
         ).ifBlank { return null }
+        if (isFilteredContent("$href $title ${element.text()}")) return null
 
         val poster = extractPoster(api.mainUrl, image, element)
         val type = typeFromUrlOrTitle(href, title)
@@ -77,6 +79,16 @@ object Nonton01Parser {
 
     suspend fun parseLoadResponse(api: MainAPI, url: String, document: Document): LoadResponse? {
         val title = extractDetailTitle(document, url) ?: return null
+        val metaText = listOf(
+            url,
+            title,
+            document.title(),
+            document.selectFirst("meta[name=description]")?.attr("content").orEmpty(),
+            document.selectFirst("meta[property=og:description]")?.attr("content").orEmpty(),
+            document.select("a[href*='/genre/']").joinToString(" ") { it.text() + " " + it.attr("href") }
+        ).joinToString(" ")
+        if (isFilteredContent(metaText)) return null
+
         val poster = extractDetailPoster(api.mainUrl, title, document)
             ?: extractPoster(
                 api.mainUrl,
@@ -94,7 +106,7 @@ object Nonton01Parser {
         val tags = document.select("a[href*='/genre/'], a[href*='/country/'], a[href*='/year/'], a[href*='/quality/']")
             .map { cleanTitle(it.text()) }
             .filter { it.length in 2..35 }
-            .filterNot { tag -> tag.equals("Watch", true) || tag.equals("Trailer", true) || tag.equals("Download", true) || tag.equals("Home", true) }
+            .filterNot { tag -> tag.equals("Watch", true) || tag.equals("Trailer", true) || tag.equals("Download", true) || tag.equals("Home", true) || isFilteredContent(tag) }
             .distinct()
             .take(16)
 
@@ -139,6 +151,7 @@ object Nonton01Parser {
         val episodes = document.select(selectors).mapNotNull { anchor ->
             val href = absoluteUrl(api.mainUrl, anchor.attr("href")) ?: return@mapNotNull null
             if (!isVideoUrl(href)) return@mapNotNull null
+            if (isFilteredContent("$href ${anchor.text()} ${anchor.attr("title")}")) return@mapNotNull null
             val normalized = href.substringBefore("#")
             if (!seen.add(normalized)) return@mapNotNull null
             val rawText = cleanTitle(anchor.text())

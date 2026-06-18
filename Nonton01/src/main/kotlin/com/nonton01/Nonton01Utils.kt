@@ -147,6 +147,23 @@ object Nonton01Utils {
         return origins.map { it.trimEnd('/') + pathAndQuery }.distinct()
     }
 
+    private val filteredContentTokens = setOf(
+        "film-semi",
+        "adult",
+        "erotic"
+    )
+
+    private val filteredContentRegex = Regex(
+        "(?i)(^|[^a-z0-9])(film[-\\s]?semi|adult|erotic|semi)([^a-z0-9]|$)"
+    )
+
+    fun isFilteredContent(value: String?): Boolean {
+        val raw = value.orEmpty().lowercase()
+        if (raw.isBlank()) return false
+        if (filteredContentTokens.any { token -> raw.contains("/$token/") || raw.contains("/$token-") || raw.contains("-$token-") }) return true
+        return filteredContentRegex.containsMatchIn(raw)
+    }
+
     private val catalogSegments = setOf(
         "", "page", "dmca", "faq", "kontak", "contact", "about", "privacy",
         "movie", "movies", "film", "tv-series", "series", "tvshows", "tv-shows",
@@ -161,7 +178,7 @@ object Nonton01Utils {
 
     private val playablePrefixes = setOf(
         "movie", "movies", "film", "tv-series", "series", "tvshows", "tv-shows",
-        "episode", "episodes", "film-semi", "drakor", "dracin"
+        "episode", "episodes", "drakor", "dracin"
     )
 
     fun isCatalogUrl(url: String): Boolean {
@@ -176,6 +193,7 @@ object Nonton01Utils {
 
     fun isVideoUrl(url: String): Boolean {
         if (!isSameHost(url)) return false
+        if (isFilteredContent(url)) return false
         if (isCatalogUrl(url)) return false
         val path = runCatching { URI(url).path.orEmpty().trim('/') }.getOrDefault("")
         if (path.isBlank()) return false
@@ -191,7 +209,6 @@ object Nonton01Utils {
     fun typeFromUrlOrTitle(url: String, title: String): TvType {
         val low = "$url $title".lowercase()
         return when {
-            low.contains("adult") || low.contains("semi") || low.contains("erotic") -> TvType.NSFW
             low.contains("tvshows") || low.contains("tv-series") || low.contains("series") || low.contains("episode") || low.contains("season") -> TvType.TvSeries
             else -> TvType.Movie
         }

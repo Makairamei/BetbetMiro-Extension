@@ -40,8 +40,7 @@ object Nonton01Seeds {
         paths("/genre/mystery/page/%d/") to "Mystery",
         paths("/genre/romance/page/%d/") to "Romance",
         paths("/genre/science-fiction/page/%d/") to "Science Fiction",
-        paths("/genre/thriller/page/%d/") to "Thriller",
-        paths("/genre/adult/page/%d/", "/genre/erotic/page/%d/") to "Adult"
+        paths("/genre/thriller/page/%d/") to "Thriller"
     )
 
     private fun paths(vararg values: String): String = "paths:" + values.joinToString("|")
