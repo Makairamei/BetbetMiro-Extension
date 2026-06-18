@@ -583,7 +583,7 @@ class AnimeBagus : MainAPI() {
         return emitted
     }
 
-    private fun emitM3u8(
+    private suspend fun emitM3u8(
         serverName: String,
         videoUrl: String,
         refererUrl: String,
