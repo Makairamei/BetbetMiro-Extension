@@ -1,4 +1,4 @@
-version = 5
+version = 6
 
 cloudstream {
     authors = listOf("sad25kag")
@@ -10,8 +10,7 @@ cloudstream {
         "TvSeries",
         "AsianDrama",
         "AnimeMovie",
-        "Cartoon",
-        "NSFW"
+        "Cartoon"
     )
     iconUrl = "https://www.google.com/s2/favicons?domain=surgafilm21.website&sz=%size%"
 }
