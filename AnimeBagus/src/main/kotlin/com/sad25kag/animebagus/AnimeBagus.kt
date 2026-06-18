@@ -264,11 +264,14 @@ class AnimeBagus : MainAPI() {
             .distinctBy { it.first }
             .sortedBy { it.first }
 
-        val latest = latestEpisodeCount(document)
-        val generated = if (latest != null && latest > anchors.size && latest >= (anchors.maxOfOrNull { it.first } ?: 0)) {
-            (1..latest).map { number -> number to "$cleanBase/episode-$number" }
-        } else {
-            anchors
+        val explicitLatest = explicitLatestEpisodeCount(document)
+        val generated = when {
+            anchors.isNotEmpty() && explicitLatest != null && explicitLatest > anchors.size && explicitLatest >= (anchors.maxOfOrNull { it.first } ?: 0) ->
+                (1..explicitLatest).map { number -> number to "$cleanBase/episode-$number" }
+            anchors.isNotEmpty() -> anchors
+            explicitLatest != null && explicitLatest > 0 && looksLikeSeriesDocument(document) ->
+                (1..explicitLatest).map { number -> number to "$cleanBase/episode-$number" }
+            else -> emptyList()
         }
 
         return generated.map { (number, href) ->
@@ -299,8 +302,7 @@ class AnimeBagus : MainAPI() {
 
         listOf(
             "$cleanAnimeUrl/episode-1",
-            "$cleanAnimeUrl/episode-01",
-            "$cleanAnimeUrl/episode-0"
+            "$cleanAnimeUrl/episode-01"
         ).forEach(candidates::add)
 
         return candidates.filter { it.isNotBlank() }.distinct()
@@ -340,7 +342,7 @@ class AnimeBagus : MainAPI() {
                 element.attr("data-href"),
                 element.attr("data-url")
             ).forEach rawLoop@ { raw ->
-                val fixed = cleanPlayerUrl(raw)?.substringBefore("#")?.trimEnd('/') ?: return@rawLoop
+                val fixed = normalizeSourceUrl(raw, cleanBase)?.substringBefore("#")?.trimEnd('/') ?: return@rawLoop
                 if (!fixed.startsWith(mainUrl)) return@rawLoop
                 if (fixed == cleanBase) return@rawLoop
 
@@ -371,13 +373,17 @@ class AnimeBagus : MainAPI() {
         return candidates.toList()
     }
 
-    private fun latestEpisodeCount(document: Document): Int? {
+    private fun explicitLatestEpisodeCount(document: Document): Int? {
         val html = document.html()
         return Regex("""(?i)"numberOfEpisodes"\s*:\s*"?(\d{1,5})"?""").find(html)?.groupValues?.getOrNull(1)?.toIntOrNull()
             ?: Regex("""(?i)Terbaru\s*\((\d{1,5})\)""").find(document.text())?.groupValues?.getOrNull(1)?.toIntOrNull()
-            ?: document.select("a[href]")
-                .mapNotNull { parseEpisodeNumber(it.attr("href")) ?: parseEpisodeNumber(it.text()) }
-                .maxOrNull()
+    }
+
+    private fun looksLikeSeriesDocument(document: Document): Boolean {
+        val text = document.text()
+        return document.select("a[href*='/episode-']").isNotEmpty() ||
+            Regex("""(?i)Episode\s+\d{1,5}""").containsMatchIn(text) ||
+            Regex("""(?i)Terbaru\s*\(\d{1,5}\)""").containsMatchIn(text)
     }
 
     private fun isEpisodeUrl(url: String): Boolean {
@@ -442,7 +448,7 @@ class AnimeBagus : MainAPI() {
                 }
 
                 if (!isEpisodeUrl(pageUrl)) {
-                    listOf("$pageUrl/episode-1", "$pageUrl/episode-01", "$pageUrl/episode-0").forEach { fallbackPage ->
+                    listOf("$pageUrl/episode-1", "$pageUrl/episode-01").forEach { fallbackPage ->
                         try {
                             val fallbackDocument = app.get(fallbackPage, referer = pageUrl).document
                             collectPlayerServers(fallbackDocument).forEach { servers.add(fallbackPage to it) }
@@ -577,6 +583,16 @@ class AnimeBagus : MainAPI() {
             lower.contains(".mp4")
     }
 
+    private fun normalizeSourceUrl(rawUrl: String?, baseUrl: String): String? {
+        val cleaned = cleanPlayerUrl(rawUrl) ?: return null
+        return when {
+            cleaned.startsWith("http://", true) || cleaned.startsWith("https://", true) -> cleaned
+            cleaned.startsWith("//") -> "https:$cleaned"
+            cleaned.startsWith("/") -> "$mainUrl$cleaned"
+            else -> "${baseUrl.trimEnd('/')}/$cleaned"
+        }.substringBefore("#").trim()
+    }
+
     private fun cleanPlayerUrl(rawUrl: String?): String? {
         var cleaned = rawUrl
             ?.trim()
@@ -614,7 +630,8 @@ class AnimeBagus : MainAPI() {
     private fun decodeUrl(value: String): String {
         var decoded = value
         repeat(2) {
-            decoded = runCatching { URLDecoder.decode(decoded, "UTF-8") }.getOrDefault(decoded)
+            val plusSafe = decoded.replace("+", "%2B")
+            decoded = runCatching { URLDecoder.decode(plusSafe, "UTF-8") }.getOrDefault(decoded)
                 .replace("&amp;", "&")
                 .replace("\\/", "/")
         }
@@ -722,7 +739,7 @@ class AnimeBagus : MainAPI() {
                 val page = app.get(url, referer = refererUrl).text
                     .replace("&amp;", "&")
                     .replace("\\/", "/")
-                extractDirectMediaUrls(page).forEach { mediaUrl ->
+                extractDirectMediaUrls(page, url).forEach { mediaUrl ->
                     when {
                         mediaUrl.contains(".m3u8", ignoreCase = true) -> emitM3u8(serverName, mediaUrl, url, callback)
                         mediaUrl.contains(".mp4", ignoreCase = true) -> callback(newExtractorLink(name, serverName.ifBlank { "MP4" }, mediaUrl) {
@@ -739,7 +756,7 @@ class AnimeBagus : MainAPI() {
         return emitted
     }
 
-    private fun extractDirectMediaUrls(text: String): List<String> {
+    private fun extractDirectMediaUrls(text: String, baseUrl: String): List<String> {
         val decoded = decodeUrl(text)
             .replace("&quot;", "\"")
             .replace("&#34;", "\"")
@@ -750,7 +767,7 @@ class AnimeBagus : MainAPI() {
             .forEach { urls.add(it.value.trimEnd(',', ')', ';')) }
         Regex("""(?i)(?:manifestUri|file|src|url)\s*[:=]\s*["']([^"']+(?:\.m3u8|\.mp4)[^"']*)["']""")
             .findAll(decoded)
-            .forEach { urls.add(resolveAgainst(mainUrl, it.groupValues[1])) }
+            .forEach { urls.add(resolveAgainst(baseUrl, it.groupValues[1]).trimEnd(',', ')', ';')) }
         return urls.toList()
     }
 
