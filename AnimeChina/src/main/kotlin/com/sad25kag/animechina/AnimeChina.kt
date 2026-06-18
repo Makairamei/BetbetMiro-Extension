@@ -22,7 +22,6 @@ class AnimeChina : MainAPI() {
         "Referer" to "$mainUrl/",
     )
 
-    // Known embeddable player domains for plain-link detection
     private val knownPlayerHosts = listOf(
         "ok.ru", "dailymotion.com", "anichin.stream", "drive.google.com",
         "rumble.com", "filemoon.", "streamtape.", "dood.", "vidhide.",
@@ -62,7 +61,6 @@ class AnimeChina : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        // Always fetch the canonical URL (without ?episode=N) for metadata
         val canonicalUrl = canonicalSeriesUrl(url)
         val document = app.get(canonicalUrl, headers = browserHeaders).document
 
@@ -88,7 +86,6 @@ class AnimeChina : MainAPI() {
         val tags = document.select("a[href*='/genres/']").map { it.text().cleanText() }
             .filter { it.isValidGenreTag() }.distinct()
 
-        // Episode list: each episode.data keeps ?episode=N so loadLinks fetches the right player
         val episodes = parseEpisodeList(document, canonicalUrl)
 
         val recommendations = document.select(".recommended a[href*='/watch/'], .related a[href*='/watch/']").mapNotNull { a ->
@@ -118,91 +115,73 @@ class AnimeChina : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        // data = episode URL with ?episode=N  (or canonical for single-episode / movie)
         val document = app.get(data, headers = browserHeaders, referer = "$mainUrl/").document
+        val visited = linkedSetOf<String>()
         val emitted = linkedSetOf<String>()
 
-        // ── STEP 1: Read plain-text player links from .the__content ──────────────
-        // animechina.my.id embeds the player URL as a plain hyperlink at the top
-        // of the post content, e.g. https://ok.ru/videoembed/xxx or
-        // https://anichin.stream/?id=xxx — not inside <iframe>.
+        fun countingCallback(link: ExtractorLink) {
+            if (emitted.add(link.url.substringBefore("#"))) {
+                callback.invoke(link)
+            }
+        }
+
+        suspend fun tryExtractor(playerUrl: String, referer: String = data) {
+            val key = playerUrl.substringBefore("#")
+            if (!visited.add(key)) return
+            runCatching {
+                loadExtractor(playerUrl, referer, subtitleCallback, ::countingCallback)
+            }
+        }
+
         val contentLinks = document.select(
             ".the__content a[href], .entry-content a[href], .post-content a[href], article .content a[href]"
         ).mapNotNull { it.attr("href").toAbsoluteUrl(data) }
             .filter { url -> knownPlayerHosts.any { host -> url.contains(host, ignoreCase = true) } }
 
         for (playerUrl in contentLinks) {
-            val key = playerUrl.substringBefore("#")
-            if (!emitted.add(key)) continue
-            runCatching {
-                loadExtractor(playerUrl, data, subtitleCallback) { link ->
-                    emitted.add(link.url.substringBefore("#"))
-                    callback.invoke(link)
-                }
-            }
+            tryExtractor(playerUrl)
         }
 
-        // ── STEP 2: Read SVR buttons (mirror servers) ─────────────────────────────
-        // Mirror servers may be in option[value], data-src, or iframe src
         val mirrorCandidates = linkedSetOf<String>()
         document.select("select option[value], .mirror option[value], .mobius option[value]").forEach { opt ->
-            val v = opt.attr("value").trim()
-            if (v.isNotBlank()) {
-                // Try base64 decode (common pattern for mirror options)
-                val decoded = runCatching { base64Decode(v) }.getOrNull().orEmpty()
+            val value = opt.attr("value").trim()
+            if (value.isNotBlank()) {
+                val decoded = runCatching { base64Decode(value) }.getOrNull().orEmpty()
                 val iframeUrl = if (decoded.contains("<iframe", ignoreCase = true)) {
                     org.jsoup.Jsoup.parse(decoded).selectFirst("iframe[src]")?.attr("src")
                 } else {
                     decoded.ifBlank { null }
                 }
                 iframeUrl?.toAbsoluteUrl(data)?.let { mirrorCandidates.add(it) }
-                    ?: v.toAbsoluteUrl(data)?.let { mirrorCandidates.add(it) }
+                    ?: value.toAbsoluteUrl(data)?.let { mirrorCandidates.add(it) }
             }
         }
-        // Also iframe/embed direct
-        document.select("iframe[src], embed[src]").forEach { el ->
-            el.attr("src").toAbsoluteUrl(data)?.let { mirrorCandidates.add(it) }
+
+        document.select("iframe[src], embed[src]").forEach { element ->
+            element.attr("src").toAbsoluteUrl(data)?.let { mirrorCandidates.add(it) }
         }
 
         for (playerUrl in mirrorCandidates) {
-            val key = playerUrl.substringBefore("#")
-            if (!emitted.add(key)) continue
-            runCatching {
-                loadExtractor(playerUrl, data, subtitleCallback) { link ->
-                    emitted.add(link.url.substringBefore("#"))
-                    callback.invoke(link)
-                }
-            }
+            tryExtractor(playerUrl)
         }
 
-        // ── STEP 3: Script scan fallback ──────────────────────────────────────────
         if (emitted.isEmpty()) {
             document.select("script").forEach { script ->
                 val text = script.html()
                 val unpacked = runCatching { getAndUnpack(text) }.getOrNull().orEmpty()
-                Regex("""https?:\\/\\/[^'"<>\\\s]+""", RegexOption.IGNORE_CASE)
+                val matches = Regex("""https?:\\/\\/[^'"<>\\\s]+""", RegexOption.IGNORE_CASE)
                     .findAll(text + "\n" + unpacked)
-                    .forEach { match ->
-                        val u = match.value.replace("\\/", "/").toAbsoluteUrl(data) ?: return@forEach
-                        if (knownPlayerHosts.any { host -> u.contains(host, ignoreCase = true) }) {
-                            val key = u.substringBefore("#")
-                            if (emitted.add(key)) {
-                                runCatching {
-                                    loadExtractor(u, data, subtitleCallback) { link ->
-                                        emitted.add(link.url.substringBefore("#"))
-                                        callback.invoke(link)
-                                    }
-                                }
-                            }
-                        }
+                for (match in matches) {
+                    val playerUrl = match.value.replace("\\/", "/").toAbsoluteUrl(data) ?: continue
+                    if (knownPlayerHosts.any { host -> playerUrl.contains(host, ignoreCase = true) }) {
+                        runCatching { tryExtractor(playerUrl) }
                     }
+                }
             }
         }
 
         return emitted.isNotEmpty()
     }
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────────
 
     private fun buildPageUrl(path: String, page: Int): String {
         val cleanPath = path.trim().trimStart('/')
@@ -228,7 +207,6 @@ class AnimeChina : MainAPI() {
             ?: return null
         val title = cleanCardTitle(rawTitle).takeIf { it.length > 2 } ?: return null
         val poster = selectFirst("img")?.imageUrl(href)
-        // Use canonical URL (no ?episode=N) for the card — load() will build episode list
         val responseUrl = canonicalSeriesUrl(href)
         return newMovieSearchResponse(title, responseUrl, TvType.Anime) {
             this.posterUrl = poster
@@ -237,22 +215,20 @@ class AnimeChina : MainAPI() {
     }
 
     private fun parseEpisodeList(document: Document, baseUrl: String): List<Episode> {
-        // Episode links use ?episode=N query param — keep them intact as episode.data
         val anchors = document.select("div.gsd a[href*='episode='], .gsd a[href*='episode=']").ifEmpty {
-            document.select("a[href*='episode=']").filterNot { a ->
-                val href = a.attr("href")
+            document.select("a[href*='episode=']").filterNot { anchor ->
+                val href = anchor.attr("href")
                 href.contains("/genres/") || href.contains("/category/")
             }
         }
 
         val episodes = anchors.mapNotNull { anchor ->
-            // Preserve ?episode=N in href
             val href = anchor.attr("href").toAbsoluteUrl(baseUrl) ?: return@mapNotNull null
             if (!href.contains("episode=", ignoreCase = true)) return@mapNotNull null
             val episodeNumber = href.substringAfter("episode=").substringBefore("&").toIntOrNull()
                 ?: anchor.text().toEpisodeNumber()
             newEpisode(href) {
-                this.name = anchor.text().cleanText().ifBlank { null } ?: episodeNumber?.let { "Episode $it" }
+                this.name = anchor.text().cleanText().takeIf { it.isNotBlank() } ?: episodeNumber?.let { "Episode $it" }
                 this.episode = episodeNumber
             }
         }.distinctBy { it.data.normalizedKey() }
@@ -260,7 +236,6 @@ class AnimeChina : MainAPI() {
 
         if (episodes.isNotEmpty()) return episodes
 
-        // Fallback: single-episode / movie — use canonical URL
         val currentEpisode = baseUrl.toEpisodeNumber()
         return if (currentEpisode != null) {
             listOf(newEpisode(baseUrl) {
@@ -268,7 +243,6 @@ class AnimeChina : MainAPI() {
                 this.episode = currentEpisode
             })
         } else {
-            // Single playable item (movie-like without episode number)
             listOf(newEpisode(baseUrl) { this.name = "Play" })
         }
     }
@@ -284,24 +258,24 @@ class AnimeChina : MainAPI() {
     }
 
     private fun String.isGoodPlot(title: String? = null): Boolean {
-        val v = cleanText()
-        if (v.isBlank() || v.length < 20) return false
-        if (title != null && v.equals(title, ignoreCase = true)) return false
-        if (v.contains("Share on", true)) return false
-        if (v.contains("Article Rating", true)) return false
-        if (v.contains("Login", true) && v.contains("Register", true)) return false
-        if (v.contains("Nonton Donghua Sub Indo", true) && v.length < 90) return false
+        val value = cleanText()
+        if (value.isBlank() || value.length < 20) return false
+        if (title != null && value.equals(title, ignoreCase = true)) return false
+        if (value.contains("Share on", true)) return false
+        if (value.contains("Article Rating", true)) return false
+        if (value.contains("Login", true) && value.contains("Register", true)) return false
+        if (value.contains("Nonton Donghua Sub Indo", true) && value.length < 90) return false
         return true
     }
 
     private fun String.isValidGenreTag(): Boolean {
-        val v = cleanText()
-        if (v.isBlank() || v.equals("All Genres", true)) return false
-        if (Regex("""^\d{4}$""").matches(v)) return false
-        if (v.length < 3) return false
-        if (v.contains("Episode", true)) return false
-        if (v.contains("Subtitle", true)) return false
-        if (v.contains("Nonton", true)) return false
+        val value = cleanText()
+        if (value.isBlank() || value.equals("All Genres", true)) return false
+        if (Regex("""^\d{4}$""").matches(value)) return false
+        if (value.length < 3) return false
+        if (value.contains("Episode", true)) return false
+        if (value.contains("Subtitle", true)) return false
+        if (value.contains("Nonton", true)) return false
         return true
     }
 
@@ -339,10 +313,10 @@ class AnimeChina : MainAPI() {
     }
 
     private fun Element.imageUrl(referer: String = mainUrl): String? {
-        val img = if (tagName().equals("img", true)) this else selectFirst("img")
+        val image = if (tagName().equals("img", true)) this else selectFirst("img")
         return listOf("data-src", "data-original", "data-lazy-src", "src")
             .firstNotNullOfOrNull { key ->
-                img?.attr(key)?.trim()?.takeIf { it.isNotBlank() && !it.startsWith("data:") }
+                image?.attr(key)?.trim()?.takeIf { it.isNotBlank() && !it.startsWith("data:") }
             }?.toAbsoluteUrl(referer)
     }
 
