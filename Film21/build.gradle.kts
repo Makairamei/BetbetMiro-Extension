@@ -1,4 +1,4 @@
-version = 4
+version = 5
 
 cloudstream {
     authors = listOf("sad25kag")
@@ -9,8 +9,7 @@ cloudstream {
     tvTypes = listOf(
         "Movie",
         "TvSeries",
-        "AsianDrama",
-        "NSFW"
+        "AsianDrama"
     )
 
     iconUrl = "https://www.google.com/s2/favicons?domain=palacepalace.com&sz=%size%"

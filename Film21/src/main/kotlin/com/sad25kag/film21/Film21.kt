@@ -47,7 +47,7 @@ class Film21 : MainAPI() {
     override val hasDownloadSupport = true
     override var lang = "id"
 
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama, TvType.NSFW)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
     private val headers = mapOf(
         "User-Agent" to USER_AGENT,
@@ -59,8 +59,6 @@ class Film21 : MainAPI() {
 
     override val mainPage = mainPageOf(
         "/" to "Film Terbaru",
-        "/index-movie/" to "Index Movie",
-        "/order-by-title/" to "Order by Title",
         "/best-rating/" to "Best Rating",
         "/action/" to "Action",
         "/adventure/" to "Adventure",
@@ -73,9 +71,6 @@ class Film21 : MainAPI() {
         "/romance/" to "Romance",
         "/science-fiction/" to "Science Fiction",
         "/thriller/" to "Thriller",
-        "/semi/" to "Film Semi",
-        "/semi-jepang/" to "Semi Jepang",
-        "/semi-korea/" to "Semi Korea",
         "/country/indonesia/" to "Indonesia",
         "/country/australia/" to "Australia",
         "/country/canada/" to "Canada",
@@ -139,6 +134,7 @@ class Film21 : MainAPI() {
 
         val poster = findPoster(document, page)
         val text = cleanText(document.text())
+        if (isAdultContent(page, title, text)) return null
         val tags = document.select(".gmr-movie-on a, a[href*='/genre/'], a[href*='/category/']")
             .map { cleanText(it.text()).substringBefore("(").trim() }
             .filter { it.length in 2..40 && !it.equals("Trailer", true) && !it.equals("Watch", true) && !it.contains("film21", true) }
@@ -231,8 +227,9 @@ class Film21 : MainAPI() {
             anchor.text(),
             titleFromUrl(href)
         ).firstOrNull { isUsefulTitle(it) }?.let { cleanTitle(it) } ?: return null
-        val poster = image?.imageUrl(mainUrl) ?: container.styleImage(mainUrl) ?: anchor.findNearbyImage(mainUrl)
         val text = cleanText(container.text())
+        if (isAdultContent(href, title, text)) return null
+        val poster = image?.imageUrl(mainUrl) ?: container.styleImage(mainUrl) ?: anchor.findNearbyImage(mainUrl)
         val type = inferType(href, title, text, 0, null)
         val year = Regex("""\b(19|20)\d{2}\b""").find(title)?.value?.toIntOrNull() ?: Regex("""\b(19|20)\d{2}\b""").find(text)?.value?.toIntOrNull()
         val score = container.selectFirst(".gmr-rating-item, .rating, .score, .imdb, .vote")?.text()?.replace(",", ".")?.let { Regex("""\d+(?:\.\d+)?""").find(it)?.value?.toDoubleOrNull() }
@@ -537,11 +534,16 @@ class Film21 : MainAPI() {
         val clean = cleanText("$title $text").lowercase(Locale.ROOT)
         val path = try { URI(url).path.orEmpty().lowercase(Locale.ROOT) } catch (_: Throwable) { "" }
         return when {
-            clean.contains("semi") || clean.contains("uncut") || path.contains("/semi") -> TvType.NSFW
             episodeCount > 0 || sourceType == "tv" || sourceType == "episode" || path.contains("/episode/") -> TvType.TvSeries
             clean.contains("korea") || clean.contains("japan") || clean.contains("china") || clean.contains("thailand") -> TvType.AsianDrama
             else -> TvType.Movie
         }
+    }
+
+    private fun isAdultContent(url: String, title: String = "", text: String = ""): Boolean {
+        val path = runCatching { URI(url).path.orEmpty().lowercase(Locale.ROOT) }.getOrDefault(url.lowercase(Locale.ROOT))
+        val combined = cleanText("$title $text $path").lowercase(Locale.ROOT)
+        return path.contains("/semi") || combined.contains("semi") || combined.contains("uncut")
     }
 
     private fun shouldFollow(url: String): Boolean {
