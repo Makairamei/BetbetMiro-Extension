@@ -27,6 +27,9 @@ class Kawanfilm : MainAPI() {
     override val supportedTypes =
             setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
 
+    private val restrictedContentRegex =
+            Regex("""(?i)(^|[^a-z0-9])(18\+|adult|semi|erotic|erotica|xxx|jav|hentai|ecchi|uncensored|bokep)([^a-z0-9]|$)""")
+
     override val mainPage =
             mainPageOf(
                     "/page/%d/?s&search=advanced&post_type=movie&index&orderby&genre&movieyear&country&quality=" to "Update Terbaru",
@@ -67,6 +70,7 @@ class Kawanfilm : MainAPI() {
     private fun Element.toSearchResult(): SearchResponse? {
         val title = this.selectFirst("h2.entry-title > a")?.text()?.trim() ?: return null
         val href = fixUrl(this.selectFirst("a")!!.attr("href"))
+        if (isRestrictedContent(title, href, this.text())) return null
         val posterUrl = fixUrlNull(this.selectFirst("a > img")?.getImageAttr()).fixImageQuality()
         val ratingText = this.selectFirst("div.gmr-rating-item")?.ownText()?.trim()
         val quality =
@@ -114,6 +118,8 @@ class Kawanfilm : MainAPI() {
         ?.attr("href")
         ?.trim()
         ?: return null
+
+    if (isRestrictedContent(title, href, this.text())) return null
 
     // Poster dari elemen img di content-thumbnail
     val img = selectFirst("div.content-thumbnail img")
@@ -167,6 +173,10 @@ class Kawanfilm : MainAPI() {
         val recommendations = document
     .select("article.item.col-md-20")
     .mapNotNull { it.toRecommendResult() }
+
+        if (isRestrictedContent(title, url, description, tags.joinToString(" "), document.select("div.gmr-moviedata").text())) {
+            throw RuntimeException("Filtered restricted content")
+        }
 
         return if (tvType == TvType.TvSeries) {
             val episodes =
@@ -280,6 +290,10 @@ document.select("ul.gmr-download-list li a").forEach { linkEl ->
     private fun Element?.getIframeAttr(): String? {
         return this?.attr("data-litespeed-src").takeIf { it?.isNotEmpty() == true }
                 ?: this?.attr("src")
+    }
+
+    private fun isRestrictedContent(vararg values: String?): Boolean {
+        return restrictedContentRegex.containsMatchIn(values.filterNotNull().joinToString(" "))
     }
 
     private fun String?.fixImageQuality(): String? {
