@@ -4,7 +4,7 @@
 
 ### CloudStream provider repository maintained by @sad25kag
 
-Anime • Donghua • Drama • Movie • Multi-Source • NSFW
+Anime • Donghua • Drama • Movie • Multi-Source Providers
 
 <img src="https://img.shields.io/github/stars/sad25kag/BetbetMiro-Extension?style=for-the-badge&color=yellow" />
 <img src="https://img.shields.io/github/forks/sad25kag/BetbetMiro-Extension?style=for-the-badge&color=blue" />
@@ -64,7 +64,6 @@ This repository may include providers for categories such as:
 - Indonesian movies
 - Western and Asian movies
 - Multi-source providers
-- Adult/NSFW content for users who meet the legal age requirement in their region
 
 The actual availability of each category depends on the active providers in the repository.
 
@@ -220,18 +219,6 @@ Before opening a PR, please check:
 - [ ] Detail loading was checked.
 - [ ] Playback/loadLinks behavior was checked.
 - [ ] Unrelated files were not changed.
-
----
-
-## Adult Content Warning
-
-Some providers in this repository may access adult/NSFW content.
-
-By using this repository, users confirm that they:
-
-- Meet the legal age requirement in their region.
-- Are fully responsible for their own use of the repository and providers.
-- Understand the applicable laws, rules, and risks in their region.
 
 ---
 
