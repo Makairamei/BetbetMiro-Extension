@@ -35,7 +35,6 @@ class AnimeIndo : MainAPI() {
 
     override val mainPage = mainPageOf(
         "$mainUrl/" to "Episode Terbaru",
-        "$mainUrl/movie/" to "Movie",
         "$mainUrl/genres/action/" to "Action",
         "$mainUrl/genres/adventure/" to "Adventure",
         "$mainUrl/genres/comedy/" to "Comedy",
@@ -86,7 +85,7 @@ class AnimeIndo : MainAPI() {
         candidates.forEach { element ->
             val item = element.toAnimeIndoItem(preferMovie = isMovie, requireContentUrl = true) ?: return@forEach
             if (items.none { it.url == item.url }) {
-                items.add(item)
+                items.add(resolveMissingPoster(item))
             }
         }
 
@@ -233,6 +232,24 @@ class AnimeIndo : MainAPI() {
         }
     }
 
+    private suspend fun resolveMissingPoster(item: AnimeIndoItem): AnimeIndoItem {
+        if (!item.poster.isNullOrBlank()) return item
+
+        val candidates = listOf(item.sourceUrl, item.url.substringBefore("#")).distinct()
+        candidates.forEach { pageUrl ->
+            try {
+                val page = app.get(pageUrl).document
+                val poster = page.selectFirst(
+                    "div.detail img, td.vithumb img, .thumb img, .poster img, .entry-content img, main img, article img"
+                )?.imageAttr()?.let { fixUrlNull(it) }
+                if (!poster.isNullOrBlank()) return item.copy(poster = poster)
+            } catch (_: Exception) {
+            }
+        }
+
+        return item
+    }
+
     private fun cleanupEpisodeTitle(title: String, episodeNumber: Int?, sourceUrl: String): String {
         if (episodeNumber == null || !isEpisodeUrl(sourceUrl)) return title
         return title
@@ -350,7 +367,6 @@ class AnimeIndo : MainAPI() {
         if (movieDetail || (episodes.isEmpty() && !cleanUrl.contains("/anime/", true) && !episodePage)) {
             val movieWatchLink = when {
                 episodePage -> cleanUrl
-                hasPlayableInlinePlayer(document) -> cleanUrl
                 episodes.isNotEmpty() -> episodes.sortedBy { it.episode ?: Int.MAX_VALUE }.first().data
                 else -> findFirstWatchLink(document)
             }
@@ -377,14 +393,6 @@ class AnimeIndo : MainAPI() {
         }
     }
 
-    private fun shouldDecodeWholePlayerUrl(value: String): Boolean {
-        val lower = value.lowercase()
-        if (lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("//")) return false
-        return lower.contains("http%3a%2f%2f") ||
-            lower.contains("https%3a%2f%2f") ||
-            lower.contains("%2f")
-    }
-
     private fun cleanPlayerUrl(rawUrl: String?): String? {
         var cleaned = rawUrl
             ?.trim()
@@ -393,15 +401,12 @@ class AnimeIndo : MainAPI() {
             ?.takeIf { it.isNotBlank() }
             ?: return null
 
-        if (shouldDecodeWholePlayerUrl(cleaned)) {
-            repeat(2) {
-                cleaned = runCatching { URLDecoder.decode(cleaned, "UTF-8") }.getOrDefault(cleaned)
-                    .replace("&amp;", "&")
-                    .replace("\\/", "/")
-            }
+        repeat(2) {
+            cleaned = runCatching { URLDecoder.decode(cleaned, "UTF-8") }.getOrDefault(cleaned)
+                .replace("&amp;", "&")
+                .replace("\\/", "/")
         }
 
-        cleaned = cleaned.trim().trim('"', '\'', '`', ';')
         if (cleaned == "#" || cleaned.startsWith("javascript:", true) || cleaned.startsWith("mailto:", true)) {
             return null
         }
@@ -478,14 +483,12 @@ class AnimeIndo : MainAPI() {
             .trim()
         decoded.add(current)
 
-        if (shouldDecodeWholePlayerUrl(current)) {
-            repeat(2) {
-                current = runCatching { URLDecoder.decode(current, "UTF-8") }.getOrDefault(current)
-                    .replace("&amp;", "&")
-                    .replace("\\/", "/")
-                    .trim()
-                decoded.add(current)
-            }
+        repeat(2) {
+            current = runCatching { URLDecoder.decode(current, "UTF-8") }.getOrDefault(current)
+                .replace("&amp;", "&")
+                .replace("\\/", "/")
+                .trim()
+            decoded.add(current)
         }
 
         val normalizedBase64 = current
@@ -605,8 +608,8 @@ class AnimeIndo : MainAPI() {
         document.select(
             ".server[onclick], .servers [onclick], .player [onclick], .video [onclick], " +
                 "a.server[href], .server a[href], .servers a[href], div.navi a[href], .navi a[href], " +
-                ".download a[href], .downloads a[href], a[href*='download.php?link='], a[href*='gdriveplayer'], " +
-                "a[href*='gdplayer'], a[href*='mp4upload'], a[href*='btube'], a[href*='xtwap'], a[href*='yup']"
+                ".download a[href], .downloads a[href], a[href*='gdriveplayer'], a[href*='gdplayer'], " +
+                "a[href*='mp4upload'], a[href*='btube'], a[href*='xtwap'], a[href*='yup']"
         ).forEach { element ->
             val label = listOf(element.text(), element.attr("title"), element.attr("aria-label"), element.id(), element.className())
                 .joinToString(" ")
@@ -690,6 +693,7 @@ class AnimeIndo : MainAPI() {
             return emitted
         }
 
+        // JWPlayer format: sources:[{"file":"url","type":"..."}] atau "file":"url"
         val filePath = Regex("""(?i)"file"\s*:\s*"([^"]+)"""").find(playerText)
             ?.groupValues
             ?.getOrNull(1)
