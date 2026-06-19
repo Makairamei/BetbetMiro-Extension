@@ -194,7 +194,7 @@ class AnimePlay : MainAPI() {
                 val epNumStr  = href.trimEnd('/').substringAfterLast("/episode/")
                 val epNum     = epNumStr.toIntOrNull()
                     ?: Regex("""(\d+)$""").find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                val epLabel   = a.text().trim().ifBlank { "Episode $epNum" }
+                val epLabel   = cleanEpisodeLabel(a.text(), epNum)
                 newEpisode(fullEpUrl) {
                     name    = epLabel
                     episode = epNum
@@ -229,6 +229,25 @@ class AnimePlay : MainAPI() {
                 this.showStatus = showStatus
             }
         }
+    }
+
+
+    private fun cleanEpisodeLabel(rawLabel: String?, epNum: Int?): String {
+        val fallback = epNum?.let { "Episode $it" } ?: "Episode"
+        val label = rawLabel
+            ?.replace(Regex("""\s+"""), " ")
+            ?.trim()
+            .orEmpty()
+
+        if (label.isBlank()) return fallback
+        if (label.equals("Tonton Sekarang", ignoreCase = true)) return fallback
+
+        val cleaned = epNum?.let {
+            label.replace(Regex("""^\s*$it(?=\D)\s*[-.:)]?\s*"""), "").trim()
+        } ?: label
+
+        if (cleaned.equals("Tonton Sekarang", ignoreCase = true)) return fallback
+        return cleaned.ifBlank { fallback }
     }
 
     // ─── loadLinks (episode/movie watch page) ─────────────────────────────────
