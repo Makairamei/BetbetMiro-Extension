@@ -1,12 +1,10 @@
 // use an integer for version numbers
-version = 1
+version = 2
 
 cloudstream {
     language = "id"
-    // All of the following URLs will be checked when choosing a server
-    hosts = listOf(
-        "ayononton.live"
-    )
+    description = "Nonton film dan series subtitle Indonesia dari ayononton.live"
+    authors = listOf("sad25kag")
 
     /**
      * Status int as follows:
@@ -14,7 +12,7 @@ cloudstream {
      * 1: Ok
      * 2: Slow
      * 3: Beta only
-     * */
+     */
     status = 1
 
     tvTypes = listOf(
