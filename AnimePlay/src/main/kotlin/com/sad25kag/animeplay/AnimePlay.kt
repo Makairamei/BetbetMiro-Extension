@@ -252,13 +252,16 @@ class AnimePlay : MainAPI() {
 
     // ─── loadLinks (episode/movie watch page) ─────────────────────────────────
     // Evidence:
-    //   Hourou Musuko ep1 : <iframe src="https://video.nimegami.id/?url={base64}">
-    //   Naruto ep1        : <iframe src="https://dl.berkasdrive.com/streaming/?id={base64}">
+    //   Movie still works through the old iframe/wrapper flow.
+    //   Series Kanan-sama uses BerkasDrive entries in AnimePlay RSC data:
+    //     "streaming":"https://stordl.halahgan.com/streaming//FWI3LC?...1080p.mp4"
+    //   StorDL resolves through:
+    //     /streaming//{id}?action=stream-url&id={id} -> {"url":"https://stor.halahgan.com/...mp4"}
     //
     // Strategy:
-    //   1. Try CloudStream's built-in loadExtractor (handles nimegami, hxfile, etc.)
-    //   2. Unwrap base64 param and try loadExtractor on decoded URL
-    //   3. Scrape the wrapper page for JWPlayer/HLS/MP4 URLs
+    //   1. Keep the proven iframe flow first, so movie playback is not disturbed.
+    //   2. If that emits no link, fetch episode RSC data and read BerkasDrive streamingSources.
+    //   3. Resolve stordl/dlgan/dl.berkasdrive wrappers to final MP4/HLS and callback.
 
     override suspend fun loadLinks(
         data: String,
@@ -275,88 +278,143 @@ class AnimePlay : MainAPI() {
             .filter { it.isNotBlank() }
             .distinct()
 
-        // Keep the proven iframe flow first. Only if it emits no playable links,
-        // fall back to AnimePlay's embedded streamingSources for series pages.
-        if (tryPlayerSources(iframeSrcs, data, subtitleCallback, callback)) return true
+        // Movie/BerkasDrive flow yang sudah jalan tetap prioritas utama.
+        if (resolvePlayerCandidates(iframeSrcs, data, subtitleCallback, callback)) {
+            return true
+        }
 
-        val streamingSrcs = extractStreamingSources(html)
-            .filterNot { it in iframeSrcs }
+        // Series fallback: AnimePlay/Next RSC menyimpan BerkasDrive series di streamingSources.
+        val sourceSrcs = (extractBerkasDriveStreamingSources(html) +
+            (fetchEpisodeRsc(data)?.let { extractBerkasDriveStreamingSources(it) } ?: emptyList()))
             .distinct()
 
-        return tryPlayerSources(streamingSrcs, data, subtitleCallback, callback)
+        return resolvePlayerCandidates(sourceSrcs, data, subtitleCallback, callback)
     }
 
     // ─── loadLinks helpers ────────────────────────────────────────────────────
 
-    private suspend fun tryPlayerSources(
+    private suspend fun resolvePlayerCandidates(
         rawSources: List<String>,
-        data: String,
+        referer: String,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
         var found = false
 
-        for (rawSrc in rawSources) {
-            val src = when {
-                rawSrc.startsWith("http") -> rawSrc
-                rawSrc.startsWith("//")   -> "https:$rawSrc"
-                rawSrc.startsWith("/")    -> "$mainUrl$rawSrc"
-                else                       -> continue
+        for (rawSrc in rawSources.distinct()) {
+            val src = normalizePlayerUrl(rawSrc) ?: continue
+
+            val trackedCallback: (ExtractorLink) -> Unit = { link ->
+                found = true
+                callback(link)
             }
 
-            // Step 1: built-in extractor
-            if (loadExtractor(src, data, subtitleCallback, callback)) {
+            // Stordl series BerkasDrive path from HAR:
+            // stordl.halahgan.com/streaming//ID -> action=stream-url -> stor.halahgan.com MP4
+            if (resolveStordlStream(src, trackedCallback)) {
                 found = true
                 continue
             }
 
-            // Step 2: decode base64 inner URL and try extractor on it
+            // Keep supported CloudStream extractors alive, but do not trust a bare true
+            // unless the extractor actually emits callback links.
+            try {
+                loadExtractor(src, referer, subtitleCallback, trackedCallback)
+            } catch (_: Exception) {
+                // Continue with source-backed wrapper handling.
+            }
+            if (found) continue
+
+            // Decode base64 inner URL and try extractor on it.
             val inner = unwrapBase64(src)
             if (inner != null) {
-                if (loadExtractor(inner, src, subtitleCallback, callback)) {
-                    found = true
-                    continue
+                try {
+                    loadExtractor(inner, src, subtitleCallback, trackedCallback)
+                } catch (_: Exception) {
+                    // Continue with direct/wrapper handling.
                 }
-                // If inner is a direct stream URL, add it directly
-                if (inner.contains(".m3u8") || inner.contains(".mp4")) {
-                    val isHls = inner.contains(".m3u8")
-                    val host  = inner.substringAfter("://").substringBefore("/").substringAfterLast(".")
-                    callback(
-                        newExtractorLink(
-                            source = name,
-                            name   = "AnimePlay-$host",
-                            url    = inner,
-                            type   = if (isHls) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO,
-                        ) {
-                            this.referer = src
-                            this.quality = Qualities.Unknown.value
-                        }
-                    )
+                if (found) continue
+
+                if (isDirectVideo(inner) && emitDirectLink(inner, src, trackedCallback)) {
                     found = true
                     continue
                 }
             }
 
-            // Step 3: scrape the wrapper player page
-            if (scrapePlayer(src, data, callback)) found = true
+            // Scrape wrapper player page for source/stream_url/mp4/m3u8.
+            if (scrapePlayer(src, referer, trackedCallback)) found = true
         }
 
         return found
     }
 
-    /** Extract fallback player wrappers from AnimePlay RSC/HTML when iframe flow finds no links. */
-    private fun extractStreamingSources(rawHtml: String): List<String> {
-        val clean = rawHtml
+    /** Fetch Next/RSC payload for series episode pages when normal HTML has no iframe. */
+    private suspend fun fetchEpisodeRsc(data: String): String? {
+        val rscUrl = data.substringBefore("#") + if (data.contains("?")) "&_rsc=1" else "?_rsc=1"
+        val path = Regex("""https?://[^/]+(/[^?#]*)""").find(data)?.groupValues?.getOrNull(1) ?: "/"
+        val detailPath = path.substringBefore("/episode/").ifBlank { path }
+
+        return try {
+            app.get(
+                rscUrl,
+                referer = data,
+                headers = mapOf(
+                    "Accept" to "*/*",
+                    "RSC" to "1",
+                    "Next-Url" to detailPath,
+                    "Accept-Language" to "id-ID,id;q=0.9",
+                ),
+            ).text
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Extract only BerkasDrive playback wrappers from AnimePlay HTML/RSC data. */
+    private fun extractBerkasDriveStreamingSources(rawHtml: String): List<String> {
+        val clean = cleanupEscaped(rawHtml)
+        val results = mutableListOf<String>()
+
+        val objectRe = Regex("""\{[^{}]*"streaming"\s*:\s*"([^"]+)"[^{}]*}""")
+        val labelRe = Regex(""""label"\s*:\s*"([^"]+)"""")
+        for (match in objectRe.findAll(clean)) {
+            val block = match.value
+            val url = match.groupValues[1].trim()
+            val label = labelRe.find(block)?.groupValues?.getOrNull(1).orEmpty()
+
+            val isBerkasDrive = label.contains("Berkasdrive", ignoreCase = true) ||
+                url.contains("dl.berkasdrive.com", ignoreCase = true) ||
+                url.contains("stordl.halahgan.com/streaming", ignoreCase = true) ||
+                url.contains("dlgan.halahgan.com/streaming", ignoreCase = true)
+
+            if (isBerkasDrive && url.isNotBlank()) {
+                results.add(url)
+            }
+        }
+
+        return results.distinct()
+    }
+
+    private fun normalizePlayerUrl(src: String?): String? {
+        val clean = cleanupEscaped(src ?: return null).trim().takeIf { it.isNotBlank() } ?: return null
+        return when {
+            clean.startsWith("http", ignoreCase = true) -> clean
+            clean.startsWith("//") -> "https:$clean"
+            clean.startsWith("/") -> "$mainUrl$clean"
+            else -> null
+        }
+    }
+
+    private fun cleanupEscaped(raw: String): String {
+        return raw
             .replace("\\u0026", "&")
             .replace("\\/", "/")
             .replace("&amp;", "&")
+    }
 
-        return Regex(""""streaming"\s*:\s*"([^"]+)""")
-            .findAll(clean)
-            .map { it.groupValues[1].trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .toList()
+    private fun isDirectVideo(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains(".m3u8") || lower.contains(".mp4")
     }
 
     /** Decode base64-wrapped URL from ?url=, ?id=, or ?v= query param */
@@ -371,89 +429,120 @@ class AnimePlay : MainAPI() {
         }
     }
 
-    /** Fetch player wrapper HTML and search for JWPlayer / HLS / HTML5 source / MP4 */
+    /** Resolve StorDL BerkasDrive wrapper to direct stor.halahgan.com video URL. */
+    private suspend fun resolveStordlStream(
+        src: String,
+        callback: (ExtractorLink) -> Unit,
+    ): Boolean {
+        if (!src.contains("stordl.halahgan.com/streaming/", ignoreCase = true)) return false
+
+        val id = Regex("""/streaming/+([^/?&#]+)""").find(src)?.groupValues?.getOrNull(1)
+            ?: return false
+
+        val apiUrl = "https://stordl.halahgan.com/streaming//$id?action=stream-url&id=$id"
+        val json = try {
+            app.get(
+                apiUrl,
+                referer = src,
+                headers = mapOf(
+                    "Referer" to src,
+                    "Origin" to "https://stordl.halahgan.com",
+                    "Accept" to "application/json, text/plain, */*",
+                ),
+            ).text
+        } catch (_: Exception) {
+            return false
+        }
+
+        val direct = Regex(""""(?:url|stream_url)"\s*:\s*"([^"]+)"""")
+            .find(cleanupEscaped(json))
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: return false
+
+        return emitDirectLink(direct, "https://stordl.halahgan.com/", callback)
+    }
+
+    /** Fetch player wrapper HTML and search for stream_url / JWPlayer / HLS / HTML5 source / MP4. */
     private suspend fun scrapePlayer(
         src: String,
         referer: String,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
         val pageHtml = try {
-            app.get(src, referer = referer,
-                headers = mapOf("Referer" to referer, "Origin" to mainUrl)).text
+            app.get(
+                src,
+                referer = referer,
+                headers = mapOf("Referer" to referer, "Origin" to mainUrl),
+            ).text
         } catch (_: Exception) {
             return false
         }
 
-        // HLS m3u8
-        val hlsUrl = Regex(""""(https?://[^"]+\.m3u8[^"]*)"""").find(pageHtml)
-            ?.groupValues?.getOrNull(1)
-        if (!hlsUrl.isNullOrBlank()) {
-            callback(
-                newExtractorLink(
-                    source = name, name = "HLS",
-                    url    = hlsUrl,
-                    type   = ExtractorLinkType.M3U8,
-                ) {
-                    this.referer = src
-                    this.quality = Qualities.Unknown.value
-                }
-            )
-            return true
+        val clean = cleanupEscaped(pageHtml)
+
+        // dlgan/stordl wrappers expose both direct_url and stream_url.
+        // Prefer stream_url so CloudStream receives playback URL, not download URL.
+        val streamUrl = Regex(""""stream_url"\s*:\s*"(https?://[^"]+)"""")
+            .find(clean)
+            ?.groupValues
+            ?.getOrNull(1)
+        if (!streamUrl.isNullOrBlank() && isDirectVideo(streamUrl)) {
+            return emitDirectLink(streamUrl, src, callback)
         }
 
-        // JWPlayer "file":"url"
-        val jwFile = Regex(""""file"\s*:\s*"(https?://[^"]+)"""").find(pageHtml)
+        val directFieldUrl = Regex(""""(?:direct_url|file|url)"\s*:\s*"(https?://[^"]+)"""")
+            .find(clean)
+            ?.groupValues
+            ?.getOrNull(1)
+        if (!directFieldUrl.isNullOrBlank() && isDirectVideo(directFieldUrl)) {
+            return emitDirectLink(directFieldUrl, src, callback)
+        }
+
+        // HLS m3u8
+        val hlsUrl = Regex(""""(https?://[^"]+\.m3u8[^"]*)"""").find(clean)
             ?.groupValues?.getOrNull(1)
-        if (!jwFile.isNullOrBlank()) {
-            val isHls = jwFile.contains(".m3u8")
-            callback(
-                newExtractorLink(
-                    source = name, name = "JW",
-                    url    = jwFile,
-                    type   = if (isHls) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO,
-                ) {
-                    this.referer = src
-                    this.quality = Qualities.Unknown.value
-                }
-            )
-            return true
+        if (!hlsUrl.isNullOrBlank()) {
+            return emitDirectLink(hlsUrl, src, callback)
         }
 
         // HTML5 <source src="...">
-        val sourceEl = org.jsoup.Jsoup.parse(pageHtml).selectFirst("source[src]")?.attr("src")
+        val sourceEl = org.jsoup.Jsoup.parse(clean).selectFirst("source[src]")?.attr("src")
         if (!sourceEl.isNullOrBlank()) {
             val videoUrl = if (sourceEl.startsWith("//")) "https:$sourceEl" else sourceEl
-            callback(
-                newExtractorLink(
-                    source = name, name = "Direct",
-                    url    = videoUrl,
-                    type   = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8
-                             else ExtractorLinkType.VIDEO,
-                ) {
-                    this.referer = src
-                    this.quality = Qualities.Unknown.value
-                }
-            )
-            return true
+            return emitDirectLink(videoUrl, src, callback)
         }
 
         // MP4 anywhere
-        val mp4Url = Regex(""""(https?://[^"]+\.mp4[^"]*)"""").find(pageHtml)
+        val mp4Url = Regex(""""(https?://[^"]+\.mp4[^"]*)"""").find(clean)
             ?.groupValues?.getOrNull(1)
         if (!mp4Url.isNullOrBlank()) {
-            callback(
-                newExtractorLink(
-                    source = name, name = "MP4",
-                    url    = mp4Url,
-                    type   = ExtractorLinkType.VIDEO,
-                ) {
-                    this.referer = src
-                    this.quality = Qualities.Unknown.value
-                }
-            )
-            return true
+            return emitDirectLink(mp4Url, src, callback)
         }
 
         return false
+    }
+
+    private suspend fun emitDirectLink(
+        rawUrl: String,
+        referer: String,
+        callback: (ExtractorLink) -> Unit,
+    ): Boolean {
+        val videoUrl = cleanupEscaped(rawUrl).trim()
+        if (!isDirectVideo(videoUrl)) return false
+
+        callback(
+            newExtractorLink(
+                source = name,
+                name = if (videoUrl.contains(".m3u8", ignoreCase = true)) "HLS" else "BerkasDrive",
+                url = videoUrl,
+                type = if (videoUrl.contains(".m3u8", ignoreCase = true))
+                    ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO,
+            ) {
+                this.referer = referer
+                this.quality = Qualities.Unknown.value
+            }
+        )
+        return true
     }
 }
