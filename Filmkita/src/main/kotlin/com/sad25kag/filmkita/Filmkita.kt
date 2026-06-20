@@ -481,6 +481,7 @@ class Filmkita : MainAPI() {
 
     private fun String.cleanTitle(): String {
         return this
+            .replace(Regex("""(?i)^\s*permalink\s+ke:\s*"""), "")
             .replace(Regex("""(?i)\s+season\s+\d+.*$"""), "")
             .replace(Regex("""(?i)\s+episode\s+\d+.*$"""), "")
             .replace(Regex("""(?i)\s+subtitle\s+indonesia.*$"""), "")

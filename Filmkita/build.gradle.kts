@@ -1,9 +1,9 @@
-version = 5
+version = 6
 
 cloudstream {
     description = "Filmkita"
     language = "id"
-    authors = listOf("sad25kag")
+    authors = listOf("BetbetMiro")
 
     /**
      * Status int as the following:
