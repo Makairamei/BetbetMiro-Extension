@@ -57,36 +57,18 @@ class Film21 : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "/" to "Sedang Trending",
-        "/genre/box-office/" to "Best Rating / Trending",
-        "/tv/" to "Serial TV",
-        "/genre/drama/" to "Drama",
-        "/genre/film-semi/" to "Film Semi",
-        "/genre/action/" to "Action",
-        "/genre/romance/" to "Romance",
-        "/genre/thriller/" to "Thriller",
-        "/genre/comedy/" to "Comedy",
-        "/genre/horror/" to "Horror",
-        "/genre/crime/" to "Crime",
-        "/genre/adventure/" to "Adventure",
-        "/genre/science-fiction/" to "Science Fiction",
-        "/genre/fantasy/" to "Fantasy",
-        "/genre/mystery/" to "Mystery",
-        "/country/usa/" to "USA",
-        "/country/korea/" to "Korea",
-        "/country/china/" to "China",
-        "/country/japan/" to "Japan",
-        "/country/thailand/" to "Thailand",
-        "/country/india/" to "India",
-        "/country/philippines/" to "Philippines",
-        "/country/indonesia/" to "Indonesia",
-        "/year/2026/" to "Tahun 2026",
-        "/year/2025/" to "Tahun 2025",
-        "/year/2024/" to "Tahun 2024",
-        "/year/2023/" to "Tahun 2023",
-        "/year/2022/" to "Tahun 2022",
-        "/year/2021/" to "Tahun 2021",
-        "/year/2020/" to "Tahun 2020"
+        "https://tv13.filem21.net/genre/drama-korea/?utm_source=film21&utm_medium=drama-korea" to "Drama Korea",
+        "https://tv13.filem21.net/genre/drama-china/?utm_source=film21&utm_medium=drama-china" to "Drama China",
+        "https://tv13.filem21.net/genre/drama-thailand/?utm_source=film21&utm_medium=drama-thailand" to "Drama Thailand",
+        "https://tv13.filem21.net/genre/drama-jepang/?utm_source=film21&utm_medium=drama-jepang" to "Drama Jepang",
+        "https://tv13.filem21.net/country/usa/" to "USA",
+        "https://tv13.filem21.net/country/japan/" to "Japan",
+        "https://tv13.filem21.net/country/thailand/" to "Thailand",
+        "https://tv13.filem21.net/country/india/" to "India",
+        "https://tv13.filem21.net/country/indonesia/" to "Indonesia",
+        "https://tv13.filem21.net/country/philippines/" to "Philippines",
+        "https://tv13.filem21.net/country/korea/" to "Korea",
+        "https://tv13.filem21.net/country/china/" to "China"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -433,15 +415,14 @@ class Film21 : MainAPI() {
         }
         if (results.size < 8) {
             val fallbackSelector = listOf(
-                "a[href]:has(img)",
-                "article a[href]",
-                ".post a[href]",
-                ".item a[href]",
-                ".movie a[href]",
-                ".film a[href]",
-                ".ml-item a[href]",
-                ".result-item a[href]",
-                ".entry-title a[href]"
+                ".content-thumbnail > a[href]:has(img)",
+                ".other-content-thumbnail > a[href]:has(img)",
+                "h1.entry-title a[href]",
+                "h2.entry-title a[href]",
+                "h3.entry-title a[href]",
+                ".entry-title a[href]",
+                "a[itemprop=url][href]:has(img)",
+                "a[rel=bookmark][href]:has(img)"
             ).joinToString(",")
             for (anchor in document.select(fallbackSelector)) {
                 anchor.toSearchResult()?.let { results[contentKey(it.url)] = it }
@@ -451,29 +432,53 @@ class Film21 : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val anchor = if (`is`("a[href]")) this else selectFirst("h1 a[href], h2 a[href], h3 a[href], .entry-title a[href], .title a[href], a[href][title], a[href]:has(img), a[href]") ?: return null
+        val container = if (isCardLike()) this else cardContainer()
+        val anchor = container.selectFirst(
+            listOf(
+                "h1.entry-title a[href]",
+                "h2.entry-title a[href]",
+                "h3.entry-title a[href]",
+                ".entry-title a[href]",
+                ".gmr-watch-movie a[href]",
+                ".content-thumbnail > a[href]:has(img)",
+                ".other-content-thumbnail > a[href]:has(img)",
+                "a[itemprop=url][href]",
+                "a[rel=bookmark][href]"
+            ).joinToString(",")
+        ) ?: if (`is`("a[href]")) this else selectFirst("a[href]:has(img), a[href]") ?: return null
+
         val href = anchor.attr("href").toAbsoluteUrl(mainUrl) ?: return null
         if (!isContentUrl(href)) return null
-        val container = anchor.bestContainer()
-        val image = container.selectFirst("img[data-src], img[data-original], img[data-lazy-src], img[data-wpfc-original-src], img[src]:not([src^='data:'])")
-            ?: anchor.selectFirst("img[data-src], img[data-original], img[data-lazy-src], img[src]:not([src^='data:'])")
+
+        val image = container.selectFirst(
+            ".content-thumbnail img[data-src], .content-thumbnail img[data-original], .content-thumbnail img[data-lazy-src], .content-thumbnail img[data-wpfc-original-src], .content-thumbnail img[src]:not([src^='data:']), " +
+                ".other-content-thumbnail img[data-src], .other-content-thumbnail img[data-original], .other-content-thumbnail img[data-lazy-src], .other-content-thumbnail img[src]:not([src^='data:']), " +
+                "img[itemprop=image][data-src], img[itemprop=image][src]:not([src^='data:']), img[data-src], img[data-original], img[data-lazy-src], img[src]:not([src^='data:'])"
+        ) ?: anchor.selectFirst("img[data-src], img[data-original], img[data-lazy-src], img[src]:not([src^='data:'])")
+
+        val entryTitle = container.selectFirst("h1.entry-title a, h2.entry-title a, h3.entry-title a, .entry-title a")?.text()
+        val titleFromAnchorAttr = anchor.attr("title")
+            .replace(Regex("""(?i)^permalink\s+ke:\s*"""), "")
+            .trim()
+        val anchorText = cleanText(anchor.text())
         val title = listOf(
-            container.selectFirst("h1, h2, h3, .entry-title, .title, .name")?.text(),
+            entryTitle,
+            titleFromAnchorAttr,
             anchor.attr("aria-label"),
-            anchor.attr("title"),
             image?.attr("alt"),
-            anchor.text().takeUnless { it.equals("Tonton Film", true) || it.equals("Tonton", true) || it.equals("Trailer", true) },
+            anchorText.takeUnless { it.isBlank() || it.isBadLabel() },
             titleFromUrl(href)
         ).firstOrNull { isUsefulTitle(it) }?.let { cleanTitle(it) } ?: return null
+
         val poster = image?.imageUrl(mainUrl) ?: container.styleImage(mainUrl) ?: anchor.findNearbyImage(mainUrl)
         val text = cleanText(container.text())
         val type = inferType(href, title, text, 0)
         val year = title.firstYear() ?: text.firstYear()
-        val score = container.selectFirst(".rating, .score, .imdb, .vote, .nilai")?.text()?.replace(',', '.')
+        val score = container.selectFirst(".rating, .score, .imdb, .vote, .nilai, .gmr-rating-item")?.text()?.replace(',', '.')
             ?.let { Regex("""\d+(?:\.\d+)?""").find(it)?.value?.toDoubleOrNull() }
 
-        return if (type == TvType.TvSeries) {
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+        return if (type == TvType.TvSeries || type == TvType.AsianDrama) {
+            newTvSeriesSearchResponse(title, href, type) {
                 posterUrl = poster
                 this.year = year
                 score?.let { this.score = Score.from10(it) }
@@ -555,13 +560,18 @@ class Film21 : MainAPI() {
             ?: document.selectFirst("figure img, .poster img, .thumb img, .content-thumbnail img, img[itemprop=image], article img")?.imageUrl(baseUrl)
     }
 
-    private fun Element.bestContainer(): Element {
+    private fun Element.isCardLike(): Boolean {
+        if (tagName().equals("article", true)) return true
+        return hasClass("gmr-box-content") || hasClass("gmr-slider-content") || hasClass("item-infinite") ||
+            hasClass("result-item") || hasClass("ml-item") || hasClass("movie") || hasClass("film") ||
+            hasClass("box-item") || hasClass("grid-item")
+    }
+
+    private fun Element.cardContainer(): Element {
         var current = this
-        repeat(6) {
-            val parent = current.parent() ?: return current
-            val hasImage = parent.select("img").isNotEmpty()
-            val hasTitle = parent.select("h1, h2, h3, .entry-title, .title, .name").isNotEmpty()
-            if (hasImage || hasTitle) current = parent else return current
+        repeat(8) {
+            if (current.isCardLike()) return current
+            current = current.parent() ?: return current
         }
         return current
     }
@@ -627,6 +637,7 @@ class Film21 : MainAPI() {
             .replace(Regex("""(?i)^tonton\s+film\s+"""), "")
             .replace(Regex("""(?i)^tonton\s+"""), "")
             .replace(Regex("""(?i)\s+subtitle\s+indonesia.*$"""), "")
+            .replace(Regex("""(?i)\s+terbaru$"""), "")
             .substringBefore(" - Film21")
             .substringBefore(" – Film21")
             .substringBefore(" | Film21")
@@ -677,7 +688,9 @@ class Film21 : MainAPI() {
     private fun String.isBadLabel(): Boolean {
         val value = lowercase(Locale.ROOT).trim()
         val bad = listOf("tonton", "tonton film", "trailer", "download", "genre", "negara", "tahun", "beranda", "pasang iklan", "tweet", "sharer", "home", "dmca", "iklan", "lihat semua film", "lihat semua serial tv")
-        return bad.any { value == it } || value.startsWith("lihat semua")
+        return bad.any { value == it } || value.startsWith("lihat semua") ||
+            value.startsWith("negara:") || value.startsWith("genre:") || value.startsWith("tahun:") ||
+            value.startsWith("quality:") || value.startsWith("kualitas:")
     }
 
     private fun isContentUrl(url: String): Boolean {
@@ -735,18 +748,17 @@ class Film21 : MainAPI() {
     }
 
     private val cardSelector = listOf(
+        "article.item-infinite",
         "article.item",
-        "article",
-        ".item",
-        ".post",
+        "article.has-post-thumbnail",
+        ".gmr-box-content.gmr-box-archive",
+        ".gmr-box-content:has(.entry-title)",
+        ".gmr-slider-content",
+        ".result-item",
+        ".ml-item",
         ".movie",
         ".film",
-        ".ml-item",
-        ".result-item",
-        ".content-thumbnail",
         ".box-item",
-        ".grid-item",
-        "div:has(> a[href]:has(img))",
-        "li:has(a[href]:has(img))"
+        ".grid-item"
     ).joinToString(",")
 }
