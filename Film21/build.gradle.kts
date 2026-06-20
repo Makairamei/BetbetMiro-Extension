@@ -1,9 +1,9 @@
-version = 5
+version = 7
 
 cloudstream {
     authors = listOf("sad25kag")
     language = "id"
-    description = "Film21 provider untuk streaming film subtitle Indonesia dari palacepalace.com dengan parser listing, detail movie/series, dan extractor modular Muvipro/P2PPlay/PlayerP2P/EditDulu/PlayDulu berbasis evidence source aktif."
+    description = "Film21 provider untuk streaming film subtitle Indonesia dari 178.128.25.32 dengan parser listing, detail movie/series, dan extractor sf21.vidplayer.live/P2PPlay/PlayerP2P/EditDulu/PlayDulu berbasis AES-CBC decryption."
     status = 1
 
     tvTypes = listOf(
@@ -12,5 +12,5 @@ cloudstream {
         "AsianDrama"
     )
 
-    iconUrl = "https://www.google.com/s2/favicons?domain=palacepalace.com&sz=%size%"
+    iconUrl = "https://www.google.com/s2/favicons?domain=178.128.25.32&sz=%size%"
 }

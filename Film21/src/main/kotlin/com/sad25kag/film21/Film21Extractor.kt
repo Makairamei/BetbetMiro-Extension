@@ -21,7 +21,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 object Film21Extractor {
-    private const val MAIN_URL = "https://palacepalace.com"
+    private const val MAIN_URL = "http://178.128.25.32"
 
     private val baseHeaders = mapOf(
         "User-Agent" to USER_AGENT,
@@ -326,7 +326,7 @@ object Film21Extractor {
         val id = extractPlayerId(uri, url)
         if (id.isBlank()) return emptyList()
         val playerOrigin = origin(url)
-        val sourceHost = runCatching { URI(referer).host.orEmpty().removePrefix("www.") }.getOrNull().orEmpty().ifBlank { "palacepalace.com" }
+        val sourceHost = runCatching { URI(referer).host.orEmpty().removePrefix("www.") }.getOrNull().orEmpty().ifBlank { "178.128.25.32" }
         val apiUrls = listOf(
             "$playerOrigin/api/v1/video?id=$id&w=1280&h=720&r=$sourceHost",
             "$playerOrigin/api/v1/video?id=$id&w=421&h=935&r=$sourceHost"

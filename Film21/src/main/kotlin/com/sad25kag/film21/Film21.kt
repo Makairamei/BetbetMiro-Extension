@@ -40,7 +40,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 class Film21 : MainAPI() {
-    override var mainUrl = "https://palacepalace.com"
+    override var mainUrl = "http://178.128.25.32"
     override var name = "Film21"
     override val hasMainPage = true
     override val hasQuickSearch = true
@@ -59,32 +59,31 @@ class Film21 : MainAPI() {
 
     override val mainPage = mainPageOf(
         "/" to "Film Terbaru",
-        "/best-rating/" to "Best Rating",
-        "/action/" to "Action",
-        "/adventure/" to "Adventure",
-        "/comedy/" to "Comedy",
-        "/crime/" to "Crime",
-        "/drama/" to "Drama",
-        "/fantasy/" to "Fantasy",
-        "/horror/" to "Horror",
-        "/mystery/" to "Mystery",
-        "/romance/" to "Romance",
-        "/science-fiction/" to "Science Fiction",
-        "/thriller/" to "Thriller",
+        "/tv/" to "TV Series",
+        "/genre/action/" to "Action",
+        "/genre/adventure/" to "Adventure",
+        "/genre/animation/" to "Animation",
+        "/genre/comedy/" to "Comedy",
+        "/genre/crime/" to "Crime",
+        "/genre/drama/" to "Drama",
+        "/genre/family/" to "Family",
+        "/genre/fantasy/" to "Fantasy",
+        "/genre/history/" to "History",
+        "/genre/horror/" to "Horror",
+        "/genre/mystery/" to "Mystery",
+        "/genre/romance/" to "Romance",
+        "/genre/science-fiction/" to "Science Fiction",
+        "/genre/thriller/" to "Thriller",
+        "/genre/tv-movie/" to "TV Movie",
+        "/genre/war/" to "War",
         "/country/indonesia/" to "Indonesia",
-        "/country/australia/" to "Australia",
-        "/country/canada/" to "Canada",
         "/country/china/" to "China",
+        "/country/japan/" to "Japan",
         "/country/korea/" to "Korea",
-        "/country/new-zealand/" to "New Zealand",
         "/country/usa/" to "USA",
-        "/country/united-kingdom/" to "United Kingdom",
         "/year/2026/" to "Tahun 2026",
         "/year/2025/" to "Tahun 2025",
-        "/year/2024/" to "Tahun 2024",
-        "/year/2016/" to "Tahun 2016",
-        "/year/2015/" to "Tahun 2015",
-        "/year/2014/" to "Tahun 2014"
+        "/year/2024/" to "Tahun 2024"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -250,23 +249,49 @@ class Film21 : MainAPI() {
 
     private fun parseEpisodes(document: Document, baseUrl: String): List<Episode> {
         val episodes = linkedMapOf<String, Episode>()
-        document.select(".episode-list, .episodes, .episodios, .season, .seasons, .tvseason, .tvshows, [class*=episode], [id*=episode], [class*=season], [id*=season]")
-            .select("a[href]")
-            .forEachIndexed { index, element ->
-                val href = fixUrl(element.attr("href"), baseUrl) ?: return@forEachIndexed
-                if (!isContentUrl(href)) return@forEachIndexed
-                val combined = "${element.text()} $href".lowercase(Locale.ROOT)
-                if (!combined.contains("episode") && !combined.contains("eps") && !combined.contains("season")) return@forEachIndexed
-                val title = cleanText(element.text())
-                val ep = Regex("""(?i)(?:episode|eps|ep)\s*[-:.]?\s*(\d{1,4})""").find("$title $href")?.groupValues?.getOrNull(1)?.toIntOrNull()
-                    ?: Regex("""(?i)(?:/|-)(\d{1,4})(?:/|$)""").find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                    ?: (index + 1)
-                episodes[href] = newEpisode(href) {
-                    name = title.ifBlank { "Episode $ep" }
-                    episode = ep
-                }
+
+        // Primary: GMR WordPress theme episode list (.gmr-listseries)
+        document.select(".gmr-listseries a[href]").forEachIndexed { index, element ->
+            if (element.hasClass("gmr-all-serie")) return@forEachIndexed
+            val href = fixUrl(element.attr("href"), baseUrl) ?: return@forEachIndexed
+            if (!isContentUrl(href)) return@forEachIndexed
+            val text = cleanText(element.text())                   // "S1 Eps3"
+            val titleAttr = cleanText(element.attr("title"))       // "Permalink to Show Season 1 Episode 3"
+            val combined = "$text $titleAttr $href"
+            val season = Regex("""(?i)s(?:eason)?\s*[-:.]?\s*(\d{1,3})""").find(combined)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
+            val ep = Regex("""(?i)e(?:p(?:s(?:ode)?)?)?\s*[-:.]?\s*(\d{1,4})""").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?: Regex("""(?i)(?:episode|eps|ep)\s*[-:.]?\s*(\d{1,4})""").find(combined)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?: Regex("""-(\d{1,4})(?:/|$)""").find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?: (index + 1)
+            val name = titleAttr.replace(Regex("(?i)^Permalink to\\s+"), "").trim().ifBlank { text }
+            episodes[href] = newEpisode(href) {
+                this.name = name
+                this.season = season
+                episode = ep
             }
-        return episodes.values.sortedBy { it.episode ?: 9999 }
+        }
+
+        // Fallback: generic episode selectors for other themes
+        if (episodes.isEmpty()) {
+            document.select(".episode-list, .episodes, .episodios, .season, .seasons, .tvseason, .tvshows, [class*=episode], [id*=episode], [class*=season], [id*=season]")
+                .select("a[href]")
+                .forEachIndexed { index, element ->
+                    val href = fixUrl(element.attr("href"), baseUrl) ?: return@forEachIndexed
+                    if (!isContentUrl(href)) return@forEachIndexed
+                    val combined = "${element.text()} $href".lowercase(Locale.ROOT)
+                    if (!combined.contains("episode") && !combined.contains("eps") && !combined.contains("season")) return@forEachIndexed
+                    val title = cleanText(element.text())
+                    val ep = Regex("""(?i)(?:episode|eps|ep)\s*[-:.]?\s*(\d{1,4})""").find("$title $href")?.groupValues?.getOrNull(1)?.toIntOrNull()
+                        ?: Regex("""(?i)(?:/|-)(\d{1,4})(?:/|$)""").find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                        ?: (index + 1)
+                    episodes[href] = newEpisode(href) {
+                        name = title.ifBlank { "Episode $ep" }
+                        episode = ep
+                    }
+                }
+        }
+
+        return episodes.values.sortedWith(compareBy({ it.season ?: 0 }, { it.episode ?: 9999 }))
     }
 
     private fun parseRecommendations(document: Document, currentUrl: String): List<SearchResponse> =
@@ -440,7 +465,7 @@ class Film21 : MainAPI() {
         val id = extractPlayerId(uri, url)
         if (id.isBlank()) return emptyList()
         val playerOrigin = origin(url)
-        val sourceHost = runCatching { URI(referer).host.orEmpty().removePrefix("www.") }.getOrNull().orEmpty().ifBlank { "palacepalace.com" }
+        val sourceHost = runCatching { URI(referer).host.orEmpty().removePrefix("www.") }.getOrNull().orEmpty().ifBlank { "178.128.25.32" }
         val apiUrls = listOf(
             "$playerOrigin/api/v1/video?id=$id&w=1280&h=720&r=$sourceHost",
             "$playerOrigin/api/v1/video?id=$id&w=421&h=935&r=$sourceHost"
@@ -534,7 +559,8 @@ class Film21 : MainAPI() {
         val clean = cleanText("$title $text").lowercase(Locale.ROOT)
         val path = try { URI(url).path.orEmpty().lowercase(Locale.ROOT) } catch (_: Throwable) { "" }
         return when {
-            episodeCount > 0 || sourceType == "tv" || sourceType == "episode" || path.contains("/episode/") -> TvType.TvSeries
+            episodeCount > 0 || sourceType == "tv" || sourceType == "episode" ||
+                path.contains("/episode/") || path.startsWith("/tv/") || path.startsWith("/eps/") -> TvType.TvSeries
             clean.contains("korea") || clean.contains("japan") || clean.contains("china") || clean.contains("thailand") -> TvType.AsianDrama
             else -> TvType.Movie
         }
@@ -549,7 +575,7 @@ class Film21 : MainAPI() {
     private fun shouldFollow(url: String): Boolean {
         val lower = url.lowercase(Locale.ROOT)
         return !lower.isNoiseUrl() && (
-            lower.contains("palacepalace.com") || lower.contains("sht") || lower.contains("short") || lower.contains("embed") || lower.contains("player") ||
+            lower.contains("178.128.25.32") || lower.contains("sht") || lower.contains("short") || lower.contains("embed") || lower.contains("player") ||
                 lower.contains("stream") || lower.contains("drive") || lower.contains("gofile") || lower.contains("dood") || lower.contains("filemoon") ||
                 lower.contains("vidhide") || lower.contains("vidguard") || lower.contains("voe") || lower.contains("mp4upload") || lower.contains("uqload") ||
                 lower.contains("hubcloud") || lower.contains("gdplayer") || lower.contains("gdriveplayer") || lower.contains("krakenfiles") || lower.contains("filelions") ||
@@ -611,10 +637,13 @@ class Film21 : MainAPI() {
     private fun isContentUrl(url: String): Boolean {
         val uri = try { URI(url) } catch (_: Throwable) { return false }
         val host = uri.host.orEmpty()
-        if (!host.contains("palacepalace.com", true)) return false
+        if (!host.contains("178.128.25.32", true)) return false
         val path = uri.path.orEmpty().trim('/')
         if (path.isBlank()) return false
-        val first = path.substringBefore("/").lowercase(Locale.ROOT)
+        val segments = path.split("/").filter { it.isNotBlank() }
+        val first = segments.firstOrNull()?.lowercase(Locale.ROOT) ?: return false
+        // /tv/{slug}/ = series detail page; /eps/{slug}/ = episode page — both are valid content
+        if ((first == "tv" || first == "eps") && segments.size >= 2) return true
         val blocked = setOf(
             "genre", "year", "country", "tag", "category", "page", "dmca", "request-film", "faq", "privacy-policy", "contact",
             "beranda", "home", "wp-admin", "wp-content", "feed", "tv", "film-populer", "best-rating", "semi",
