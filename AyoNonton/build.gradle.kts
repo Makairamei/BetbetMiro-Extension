@@ -1,9 +1,9 @@
 // use an integer for version numbers
-version = 3
+version = 4
 
 cloudstream {
     language = "id"
-    description = "Nonton film dan series subtitle Indonesia dari ayononton.live"
+    description = "Nonton film dan series subtitle Indonesia dari ayononton.live — v2: fixed player extraction (skip play-ads.php → real endpoints), added download support"
     authors = listOf("sad25kag")
 
     /**
