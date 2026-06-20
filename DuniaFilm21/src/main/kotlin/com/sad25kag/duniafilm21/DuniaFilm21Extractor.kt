@@ -127,11 +127,11 @@ object DuniaFilm21Extractor {
         val embedUrls = mutableListOf(iframeUrl)
         if (iframeUrl.contains("minochinos.com", ignoreCase = true)) {
             embedUrls.add(iframeUrl.replace(
-                Regex("minochinos\.com", RegexOption.IGNORE_CASE), "morencius.com"
+                Regex("""minochinos\.com""", RegexOption.IGNORE_CASE), "morencius.com"
             ))
         } else if (iframeUrl.contains("morencius.com", ignoreCase = true)) {
             embedUrls.add(iframeUrl.replace(
-                Regex("morencius\.com", RegexOption.IGNORE_CASE), "minochinos.com"
+                Regex("""morencius\.com""", RegexOption.IGNORE_CASE), "minochinos.com"
             ))
         }
 
