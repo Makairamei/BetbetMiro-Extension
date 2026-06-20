@@ -106,23 +106,28 @@ class DramaIdProvider : MainAPI() {
         if (!fixedUrl.isDramaIdDetailUrl()) throw ErrorLoadingException("Invalid DramaID detail URL")
 
         val document = app.get(fixedUrl, referer = "$mainUrl/").document
+        val listingCard = document.findListingCard(fixedUrl)
 
         val title = listOf(
             detailValue(document, "Judul"),
-            document.selectFirst("h1.single-title, h1.single_h2, h1.entry-title, h1")?.text(),
-            document.selectFirst("meta[property=og:title]")?.attr("content"),
-            document.selectFirst("title")?.text(),
-            titleFromSlug(fixedUrl)
+            listingCard?.listingTitle(fixedUrl),
+            titleFromSlug(fixedUrl),
+            document.selectFirst("h1.single-title, h1.single_h2, h1.entry-title, h1")?.text()?.takeUnless { it.isDramaIdIndexTitle() },
+            document.selectFirst("meta[property=og:title]")?.attr("content")?.takeUnless { it.isDramaIdIndexTitle() },
+            document.selectFirst("title")?.text()?.takeUnless { it.isDramaIdIndexTitle() }
         ).firstOrNull { !it.isNullOrBlank() }
             ?.cleanTitle()
             ?.takeIf { it.isNotBlank() }
             ?: throw ErrorLoadingException("Title not found")
 
-        val sourcePoster = document.select(
+        val listingPoster = listingCard?.selectFirst(".thumbnail img, img, .poster img")
+            ?.imageUrl()
+            ?.takeIf { !it.isDramaIdSiteAsset() }
+
+        val sourcePoster = listingPoster ?: document.select(
             ".thumbnail_single img, " +
                 ".poster img, " +
                 "img.wp-post-image, " +
-                "article img, " +
                 ".entry-content img, " +
                 "meta[property=og:image]"
         )
@@ -161,12 +166,9 @@ class DramaIdProvider : MainAPI() {
                 "a[href*='episode=']"
         )
             .mapNotNull { it.toEpisode() }
+            .ifEmpty { listingCard?.toListingEpisodes(fixedUrl).orEmpty() }
             .distinctBy { it.data }
             .sortedBy { it.episode ?: Int.MAX_VALUE }
-
-        if (!document.isValidDramaIdDetail(episodes, typeText)) {
-            throw ErrorLoadingException("DramaID detail page not found")
-        }
 
         val recommendations = document.select("article")
             .mapNotNull { it.toSearchResult() }
@@ -189,13 +191,7 @@ class DramaIdProvider : MainAPI() {
                 this.recommendations = recommendations
             }
         } else {
-            val safeEpisodes = episodes.ifEmpty {
-                if (document.hasPlayableMarkers()) {
-                    listOf(newEpisode(fixedUrl) { name = "Episode 1"; episode = 1 })
-                } else {
-                    throw ErrorLoadingException("Episode list not found")
-                }
-            }
+            val safeEpisodes = episodes.ifEmpty { listOf(newEpisode(fixedUrl) { name = "Episode 1"; episode = 1 }) }
             newTvSeriesLoadResponse(finalTitle, fixedUrl, TvType.AsianDrama, safeEpisodes) {
                 posterUrl = finalPoster
                 backgroundPosterUrl = finalBackdrop
@@ -388,54 +384,33 @@ class DramaIdProvider : MainAPI() {
     }
 
     private fun Document.toSearchResults(): List<SearchResponse> {
-        return select("a[href*='/nonton-']")
-            .mapNotNull { anchor ->
-                anchor.closestDramaIdCard().toSearchResult(anchor)
-            }
+        return select("article, div.bs, div.listupd article, .post, .item")
+            .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
     }
 
-    private fun Element.closestDramaIdCard(): Element {
-        return parents().firstOrNull { parent ->
-            parent.tagName().equals("article", true) ||
-                parent.hasClass("bs") ||
-                parent.hasClass("post") ||
-                parent.hasClass("item") ||
-                parent.hasClass("thumbnail") ||
-                parent.hasClass("film-poster")
-        } ?: this
-    }
-
-    private fun Element.toSearchResult(forcedLink: Element? = null): SearchResponse? {
-        if (text().contains("Cari Drama di DramaID", true)) return null
-
-        val link = forcedLink
-            ?: select("a[href*='/nonton-']")
-                .firstOrNull()
+    private fun Element.toSearchResult(): SearchResponse? {
+        val link = select("a[href*='/nonton-']")
+            .firstOrNull()
+            ?: selectFirst("h3.title_post a[href], .thumbnail a[href], a[href]")
             ?: return null
 
         val href = normalizeUrl(link.attr("href"), mainUrl) ?: return null
-        if (!href.isDramaIdDetailUrl()) return null
+        if (!href.contains("/nonton-", true)) return null
 
         val title = listOf(
             link.attr("title"),
             selectFirst("h3.title_post a, h2 a, h3 a, .title a, .tt, .entry-title a")?.text(),
-            link.selectFirst("img[alt]")?.attr("alt"),
             selectFirst("img[alt]")?.attr("alt"),
             link.text(),
             titleFromSlug(href),
         ).firstOrNull { !it.isNullOrBlank() }
             ?.cleanTitle()
-            ?.takeIf { it.isNotBlank() && !it.equals("Cari Drama di DramaID", true) }
+            ?.takeIf { it.isNotBlank() }
             ?: return null
 
-        val poster = listOf(
-            link.selectFirst("img")?.imageUrl(),
-            selectFirst(".thumbnail img, img, .poster img")?.imageUrl()
-        ).firstOrNull { !it.isNullOrBlank() && !it.isDramaIdSiteAsset() }
-
-        val itemText = text()
-        val type = if (itemText.contains("Episode:", true) || itemText.contains("Episode", true)) TvType.AsianDrama else TvType.Movie
+        val poster = selectFirst(".thumbnail img, img, .poster img")?.imageUrl()?.takeIf { !it.isDramaIdSiteAsset() }
+        val type = if (text().contains("Episode:", true) || text().contains("Episode", true)) TvType.AsianDrama else TvType.Movie
 
         return if (type == TvType.Movie) {
             newMovieSearchResponse(title, href, type) {
@@ -472,6 +447,57 @@ class DramaIdProvider : MainAPI() {
         return newEpisode(href) {
             name = episodeNumber?.let { "Episode $it" } ?: title.ifBlank { "Episode" }
             episode = episodeNumber
+        }
+    }
+
+    private fun Document.findListingCard(detailUrl: String): Element? {
+        val targetPath = normalizeUrl(detailUrl, mainUrl)
+            ?.substringBefore("?")
+            ?.removeSuffix("/")
+            ?: return null
+
+        return select("article, div.bs, div.listupd article, .post, .item")
+            .firstOrNull { card ->
+                card.select("a[href*='/nonton-']").any { link ->
+                    normalizeUrl(link.attr("href"), mainUrl)
+                        ?.substringBefore("?")
+                        ?.removeSuffix("/")
+                        ?.equals(targetPath, true) == true
+                }
+            }
+    }
+
+    private fun Element.listingTitle(detailUrl: String): String? {
+        return listOf(
+            selectFirst("h3.title_post a, h2 a, h3 a, .title a, .tt, .entry-title a, a[href*='/nonton-']")?.text(),
+            selectFirst("a[href*='/nonton-']")?.attr("title"),
+            selectFirst("img[alt]")?.attr("alt"),
+            titleFromSlug(detailUrl)
+        ).firstOrNull { !it.isNullOrBlank() }
+            ?.cleanTitle()
+            ?.takeIf { it.isNotBlank() && !it.isDramaIdIndexTitle() }
+    }
+
+    private fun Element.toListingEpisodes(detailUrl: String): List<Episode> {
+        val info = text().replace(Regex("""\s+"""), " ")
+        val range = Regex("""Episode:\s*(\d+)\s*-\s*(\d+)""", RegexOption.IGNORE_CASE)
+            .find(info)
+        val single = Regex("""Episode:\s*(\d+)""", RegexOption.IGNORE_CASE)
+            .find(info)
+
+        val firstEpisode = range?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: single?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: return emptyList()
+        val lastEpisode = range?.groupValues?.getOrNull(2)?.toIntOrNull() ?: firstEpisode
+        val start = firstEpisode.coerceAtLeast(1)
+        val end = lastEpisode.coerceAtLeast(start)
+        val cleanUrl = detailUrl.substringBefore("?").removeSuffix("/")
+
+        return (start..end).map { episodeNumber ->
+            newEpisode("$cleanUrl/?episode=$episodeNumber") {
+                name = "Episode $episodeNumber"
+                episode = episodeNumber
+            }
         }
     }
 
@@ -578,36 +604,7 @@ class DramaIdProvider : MainAPI() {
     }
 
     private fun String.isDramaIdDetailUrl(): Boolean {
-        val parsed = normalizeUrl(this, mainUrl) ?: return false
-        return parsed.startsWith(mainUrl, true) && detailPathPattern.containsMatchIn(parsed)
-    }
-
-    private fun Document.isValidDramaIdDetail(episodes: List<Episode>, typeText: String): Boolean {
-        if (isDramaIdHomeDocument()) return false
-        if (detailValue(this, "Judul")?.isNotBlank() == true) return true
-        if (typeText.isNotBlank()) return true
-        if (episodes.isNotEmpty()) return true
-        return hasPlayableMarkers()
-    }
-
-    private fun Document.isDramaIdHomeDocument(): Boolean {
-        val headline = selectFirst("h1, h2")?.text()?.replace(Regex("""\s+"""), " ")?.trim().orEmpty()
-        val pageTitle = title().replace(Regex("""\s+"""), " ").trim()
-        val hasHomeHeading = headline.equals("Cari Drama di DramaID", true) || pageTitle.contains("Cari Drama di DramaID", true)
-        val hasManyHomeGenres = select("a[href*='/genre/']").size >= 5
-        val hasDetailMarkers = select(
-            "#informasi li, .info li, .spe span, .info-content span, " +
-                ".daftar-episode li a[href*='episode='], .episode-list li a[href*='episode='], " +
-                ".streaming_load[data], .resolusi-list li[data], .server-list li[data]"
-        ).isNotEmpty()
-        return hasHomeHeading || (hasManyHomeGenres && !hasDetailMarkers)
-    }
-
-    private fun Document.hasPlayableMarkers(): Boolean {
-        return select(
-            ".streaming_load[data], .resolusi-list li[data], .server-list li[data], " +
-                ".mobius option[value], iframe[src], iframe[data-src], source[src], video[src]"
-        ).isNotEmpty()
+        return startsWith(mainUrl, true) && detailPathPattern.containsMatchIn(this)
     }
 
     private fun String.isDramaIdSiteAsset(): Boolean {
@@ -616,8 +613,14 @@ class DramaIdProvider : MainAPI() {
             value.contains("t2.gstatic.com/favicon") ||
             value.contains("/logo") ||
             value.contains("logo.") ||
-            value.contains("wp-content/uploads/202") && value.contains("dramaid") ||
             value.endsWith(".svg")
+    }
+
+    private fun String.isDramaIdIndexTitle(): Boolean {
+        val value = cleanTitle().lowercase()
+        return value == "dramaid" ||
+            value.contains("cari drama di dramaid") ||
+            value.contains("nonton dan download drama korea")
     }
 
     private fun detailValue(document: Document, label: String): String? {
