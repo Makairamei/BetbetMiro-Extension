@@ -564,7 +564,7 @@ private fun String.baseTvgId(): String {
 private fun String.cleanChannelName(): String {
     return replace(Regex("""\s*\[[^]]*]\s*"""), " ")
         .replace(Regex("""\s*\([^)]*\)\s*"""), " ")
-        .replace(Regex("\s+"), " ")
+        .replace(Regex("""\s+"""), " ")
         .trim()
 }
 
