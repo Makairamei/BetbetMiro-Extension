@@ -85,10 +85,7 @@ class GudangFilm : MainAPI() {
         "/country/usa/" to "USA",
         "/country/germany/" to "Germany",
         "/country/france/" to "France",
-        "/country/china/" to "China",
-        "/genre/semi-jepang/" to "Semi Jepang",
-        "/genre/semi-philippines/" to "Semi Philippines",
-        "/genre/semi-korea/" to "Semi Korea"
+        "/country/china/" to "China"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
