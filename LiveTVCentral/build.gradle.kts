@@ -1,9 +1,9 @@
-version = 1
+version = 2
 
 cloudstream {
     authors = listOf("sad25kag")
     language = "en"
-    description = "LiveTVCentral live TV provider for selected country pages. Parses country cards from livetvcentral.com and resolves source-backed player/video URLs without private tokens, DRM bypass, proxy, or restreaming."
+    description = "LiveTVCentral live TV provider. Channel list sourced from sitemap. Playback resolves embed and official stream URLs from channel detail pages."
 
     /**
      * Status int:
@@ -12,7 +12,7 @@ cloudstream {
      * 2: Slow
      * 3: Beta only
      */
-    status = 3
+    status = 1
     tvTypes = listOf("Live")
     iconUrl = "https://www.google.com/s2/favicons?domain=livetvcentral.com&sz=%size%"
     isCrossPlatform = true
