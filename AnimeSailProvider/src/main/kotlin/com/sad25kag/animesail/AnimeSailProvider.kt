@@ -28,13 +28,6 @@ class AnimeSailProvider : MainAPI() {
     override var lang = "id"
     override val hasDownloadSupport = true
 
-    private fun cloudflareResolver(): WebViewResolver {
-        return WebViewResolver(
-            interceptUrl = Regex("""^${Regex.escape(mainUrl)}(?:/.*)?$"""),
-            useOkhttp = false
-        )
-    }
-
     override val supportedTypes = setOf(
         TvType.Anime,
         TvType.AnimeMovie,
@@ -42,6 +35,10 @@ class AnimeSailProvider : MainAPI() {
     )
 
     companion object {
+        private const val CF_USER_MSG =
+            "Terkena perlindungan Cloudflare. Silakan tap ikon Web/Bumi di kanan atas (Open in Browser), " +
+            "centang verifikasi manusia, lalu kembali dan reload halaman ini."
+
         fun getType(t: String): TvType {
             return if (t.contains("OVA", true) || t.contains("Special", true)) TvType.OVA
             else if (t.contains("Movie", true)) TvType.AnimeMovie
@@ -57,21 +54,38 @@ class AnimeSailProvider : MainAPI() {
         }
     }
 
+    /**
+     * Single entry point for all HTTP requests.
+     * Uses WebViewResolver(useOkhttp = false) — mandatory for Cloudflare sites.
+     * User-Agent is the Android WebView UA supplied by CloudStream (USER_AGENT constant).
+     * No cookies, no debug headers, no local TurnstileInterceptor.
+     */
     private suspend fun request(url: String, ref: String? = null): NiceResponse {
         return app.get(
             url,
-            interceptor = cloudflareResolver(),
+            interceptor = WebViewResolver(
+                interceptUrl = Regex("""^${Regex.escape(mainUrl)}(?:/.*)?$"""),
+                useOkhttp = false
+            ),
             referer = ref ?: "$mainUrl/"
         )
     }
 
+    /**
+     * Detects Cloudflare challenge pages: 403/503 status or body hints.
+     * Covers Turnstile, JS challenge, and "Just a moment..." screens.
+     */
     private fun isChallengeResponse(response: NiceResponse): Boolean {
+        val status = response.code
+        if (status == 403 || status == 503) return true
+
         val body = response.text
         if (body.isBlank()) return false
 
         val title = response.document.title()
-        val challengeHints = listOf(
-            "<title>Loading..</title>",
+        val hints = listOf(
+            "<title>Just a moment</title>",
+            "Just a moment",
             "Checking your Browser",
             "cf-challenge",
             "cf-browser-verification",
@@ -79,21 +93,25 @@ class AnimeSailProvider : MainAPI() {
             "_as_turnstile",
             "challenge-platform",
             "challenges.cloudflare.com",
-            "Just a moment",
-            "Attention Required",
             "turnstile",
-            "Berhasil!",
-            "/cdn-cgi/challenge-platform/"
+            "/cdn-cgi/challenge-platform/",
+            "Attention Required",
+            "<title>Loading..</title>",
+            "Aktifkan JavaScript"
         )
 
-        return title.equals("Loading..", ignoreCase = true) ||
-            challengeHints.any { body.contains(it, ignoreCase = true) }
+        return title.contains("Just a moment", ignoreCase = true) ||
+            title.equals("Loading..", ignoreCase = true) ||
+            hints.any { body.contains(it, ignoreCase = true) }
     }
 
-    private fun ensureSourcePage(response: NiceResponse, url: String) {
-        if (isChallengeResponse(response)) {
-            throw ErrorLoadingException("AnimeSail blocked by Cloudflare challenge: $url")
-        }
+    /**
+     * Throws the user-facing interactive fallback error when Cloudflare blocks.
+     * This is the ONLY error path for CF challenge — no silent empty returns from
+     * load() or loadLinks().
+     */
+    private fun throwCfError(): Nothing {
+        throw ErrorLoadingException(CF_USER_MSG)
     }
 
     override val mainPage = mainPageOf(
@@ -128,13 +146,14 @@ class AnimeSailProvider : MainAPI() {
         val baseUrl = pageRequest.data.trimEnd('/')
         val pageUrl = if (page <= 1) "$baseUrl/" else "$baseUrl/page/$page/"
         val response = request(pageUrl)
-        if (isChallengeResponse(response)) {
-            return newHomePageResponse(pageRequest.name, emptyList(), hasNext = false)
-        }
+
+        // Throw CF error so UI shows the interactive instruction — not a silent empty list.
+        if (isChallengeResponse(response)) throwCfError()
+
         val document = response.document
-        val home = document.select("div.listupd article, div.listupd .bs, div.listupd .bsx, article, .bsx").mapNotNull {
-            it.toSearchResult()
-        }.distinctBy { it.url }
+        val home = document.select(
+            "div.listupd article, div.listupd .bs, div.listupd .bsx, article, .bsx"
+        ).mapNotNull { it.toSearchResult() }.distinctBy { it.url }
 
         return newHomePageResponse(
             pageRequest.name,
@@ -211,7 +230,7 @@ class AnimeSailProvider : MainAPI() {
         val typeText = listOfNotNull(
             selectFirst(".tt > span")?.text(),
             selectFirst(".typez")?.text(),
-            text().takeIf { it.contains("·") }
+            text().takeIf { it.contains("\u00b7") }
         ).joinToString(" ")
         val type = if (typeText.contains("Movie", ignoreCase = true)) TvType.AnimeMovie else TvType.Anime
 
@@ -227,31 +246,35 @@ class AnimeSailProvider : MainAPI() {
 
         val encoded = URLEncoder.encode(keyword, "UTF-8")
         val response = request("$mainUrl/?s=$encoded")
-        if (isChallengeResponse(response)) return emptyList()
-        val document = response.document
+        if (isChallengeResponse(response)) throwCfError()
 
-        return document.select("div.listupd article, div.listupd .bs, div.listupd .bsx, article, .bsx").mapNotNull {
-            it.toSearchResult()
-        }.distinctBy { it.url }
+        return response.document.select(
+            "div.listupd article, div.listupd .bs, div.listupd .bsx, article, .bsx"
+        ).mapNotNull { it.toSearchResult() }.distinctBy { it.url }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val response = request(url)
-        ensureSourcePage(response, url)
+        if (isChallengeResponse(response)) throwCfError()
+
         val document = response.document
 
         val title = document.selectFirst("h1.entry-title")?.text().orEmpty()
             .replace("Subtitle Indonesia", "").trim()
-        val poster = fixUrlNull(document.selectFirst("div.entry-content > img, .entry-content img")?.attr("src"))
-        val type = getType(document.select("tbody th:contains(Tipe)").next().text().lowercase())
+        val poster = fixUrlNull(
+            document.selectFirst("div.entry-content > img, .entry-content img")?.attr("src")
+        )
+        val type = getType(
+            document.select("tbody th:contains(Tipe)").next().text().lowercase()
+        )
         val year = document.select("tbody th:contains(Dirilis)").next().text().trim().toIntOrNull()
 
         val parsedEpisodes = document.select("ul.daftar > li").mapNotNull {
             val link = fixUrlNull(it.selectFirst("a[href]")?.attr("href")) ?: return@mapNotNull null
-            val name = it.selectFirst("a")?.text().orEmpty()
-            val episode = Regex("Episode\\s?(\\d+)").find(name)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            val epName = it.selectFirst("a")?.text().orEmpty()
+            val episode = Regex("Episode\\s?(\\d+)").find(epName)?.groupValues?.getOrNull(1)?.toIntOrNull()
             newEpisode(link) {
-                this.name = name.ifBlank { null }
+                this.name = epName.ifBlank { null }
                 this.episode = episode
             }
         }.reversed()
@@ -267,7 +290,9 @@ class AnimeSailProvider : MainAPI() {
             backgroundPosterUrl = tracker?.cover
             this.year = year
             addEpisodes(DubStatus.Subbed, episodes)
-            showStatus = getStatus(document.select("tbody th:contains(Status)").next().text().trim())
+            showStatus = getStatus(
+                document.select("tbody th:contains(Status)").next().text().trim()
+            )
             plot = document.selectFirst("div.entry-content > p")?.text()
             tags = document.select("tbody th:contains(Genre)").next().select("a").map { it.text() }
             addMalId(tracker?.malId)
@@ -282,7 +307,8 @@ class AnimeSailProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val response = request(data)
-        ensureSourcePage(response, data)
+        if (isChallengeResponse(response)) throwCfError()
+
         val document = response.document
         val playerPath = "$mainUrl/utils/player/"
         val visitedUrls = linkedSetOf<String>()
@@ -370,26 +396,28 @@ class AnimeSailProvider : MainAPI() {
             normalized.contains(playerPath, true) ||
                 normalized.contains("player-kodir.aghanim.xyz", true) ||
                 normalized.contains("uservideo.xyz", true) -> {
-                val response = runCatching { request(normalized, ref = referer) }.getOrNull()
+                val res = runCatching { request(normalized, ref = referer) }.getOrNull()
                 val nestedLinks = linkedSetOf<String>()
 
-                if (response != null) {
-                    val text = response.text
-                    val playerDoc = response.document
+                if (res != null) {
+                    val text = res.text
+                    val playerDoc = res.document
                     val packedHtml = text.substringAfter("= `", "").substringBefore("`;", "")
                     if (packedHtml.isNotBlank()) {
                         nestedLinks.addAll(
                             Jsoup.parse(packedHtml)
                                 .select("source[src], video[src], iframe[src], a[href]")
-                                .mapNotNull { it.attr("src").ifBlank { it.attr("href") }.trim().takeIf(String::isNotBlank) }
+                                .mapNotNull {
+                                    it.attr("src").ifBlank { it.attr("href") }.trim().takeIf(String::isNotBlank)
+                                }
                         )
                     }
-
                     nestedLinks.addAll(
                         playerDoc.select("source[src], video[src], iframe[src], a[href], script[src]")
-                            .mapNotNull { it.attr("src").ifBlank { it.attr("href") }.trim().takeIf(String::isNotBlank) }
+                            .mapNotNull {
+                                it.attr("src").ifBlank { it.attr("href") }.trim().takeIf(String::isNotBlank)
+                            }
                     )
-
                     nestedLinks.addAll(extractCandidatesFromText(text, normalized))
                 }
 
@@ -399,9 +427,11 @@ class AnimeSailProvider : MainAPI() {
                 } else {
                     var emitted = false
                     nestedLinks.forEach { nested ->
-                        if (resolveMirrorLink(nested, normalized, playerPath, serverName, quality, visitedUrls, subtitleCallback, callback)) {
-                            emitted = true
-                        }
+                        if (resolveMirrorLink(
+                                nested, normalized, playerPath, serverName, quality,
+                                visitedUrls, subtitleCallback, callback
+                            )
+                        ) emitted = true
                     }
                     emitted
                 }
@@ -415,7 +445,7 @@ class AnimeSailProvider : MainAPI() {
     }
 
     private fun Element.extractMirrorCandidates(): List<String> {
-        val rawCandidates = listOf(
+        val raw = listOf(
             attr("data-em"),
             attr("value"),
             attr("data-iframe"),
@@ -424,9 +454,7 @@ class AnimeSailProvider : MainAPI() {
         ).filter { it.isNotBlank() }
 
         val results = linkedSetOf<String>()
-        rawCandidates.forEach { encoded ->
-            results.addAll(decodeMirrorCandidates(encoded))
-        }
+        raw.forEach { encoded -> results.addAll(decodeMirrorCandidates(encoded)) }
         return results.toList()
     }
 
@@ -435,20 +463,16 @@ class AnimeSailProvider : MainAPI() {
         val candidates = linkedSetOf<String>()
         val clean = encodedData.trim().replace("\\u0026", "&")
 
-        fun addUrl(raw: String?) {
-            normalizeMirrorUrl(raw)?.let { candidates.add(it) }
-        }
+        fun addUrl(raw: String?) { normalizeMirrorUrl(raw)?.let { candidates.add(it) } }
 
         fun parseBlob(blob: String) {
             if (blob.isBlank()) return
             addUrl(blob)
-            val doc = Jsoup.parse(blob)
-            doc.select("iframe[src], source[src], video[src], a[href]").forEach { el ->
+            Jsoup.parse(blob).select("iframe[src], source[src], video[src], a[href]").forEach { el ->
                 addUrl(el.attr("src").ifBlank { el.attr("href") })
             }
             Regex("""https?://[^\s"'<>]+""", RegexOption.IGNORE_CASE)
-                .findAll(blob)
-                .forEach { addUrl(it.value) }
+                .findAll(blob).forEach { addUrl(it.value) }
         }
 
         parseBlob(clean)
@@ -457,9 +481,7 @@ class AnimeSailProvider : MainAPI() {
         return candidates.toList()
     }
 
-    private fun normalizeMirrorUrl(raw: String?): String? {
-        return normalizeUrlFromBase(raw, mainUrl)
-    }
+    private fun normalizeMirrorUrl(raw: String?): String? = normalizeUrlFromBase(raw, mainUrl)
 
     private fun normalizeUrlFromBase(raw: String?, baseUrl: String?): String? {
         val clean = raw?.trim()
@@ -470,8 +492,7 @@ class AnimeSailProvider : MainAPI() {
             ?.replace("\\/", "/")
             ?.replace("&amp;", "&")
             ?.replace("\\u0026", "&")
-            ?.trim()
-            ?: return null
+            ?.trim() ?: return null
 
         if (clean.isBlank() || clean.startsWith("javascript:", true) || clean.startsWith("data:", true)) return null
 
@@ -488,9 +509,8 @@ class AnimeSailProvider : MainAPI() {
         }
     }
 
-    private fun isDirectMediaUrl(url: String): Boolean {
-        return Regex("""(?i)\.(m3u8|mp4)(?:$|[?#&])""").containsMatchIn(url)
-    }
+    private fun isDirectMediaUrl(url: String): Boolean =
+        Regex("""(?i)\.(m3u8|mp4)(?:$|[?#&])""").containsMatchIn(url)
 
     private fun extractCandidatesFromText(text: String, baseUrl: String): Set<String> {
         if (text.isBlank()) return emptySet()
@@ -500,7 +520,6 @@ class AnimeSailProvider : MainAPI() {
             Regex("""(?:file|src|source|video_url|play_url|hls)\s*[:=]\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE),
             Regex("""["']((?:/|//)[^"']+\.(?:m3u8|mp4)[^"']*)["']""", RegexOption.IGNORE_CASE),
         )
-
         patterns.forEach { rgx ->
             rgx.findAll(text).forEach { match ->
                 val raw = match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() } ?: match.value
@@ -517,9 +536,9 @@ class AnimeSailProvider : MainAPI() {
         refererHint: String?,
         callback: (ExtractorLink) -> Unit
     ) {
-        val isMp4UploadDirect = mediaUrl.contains("mp4upload.com", ignoreCase = true)
-        val directReferer = if (isMp4UploadDirect) "https://www.mp4upload.com/" else (refererHint ?: mainUrl)
-        val directHeaders = if (isMp4UploadDirect) {
+        val isMp4Upload = mediaUrl.contains("mp4upload.com", ignoreCase = true)
+        val directReferer = if (isMp4Upload) "https://www.mp4upload.com/" else (refererHint ?: mainUrl)
+        val directHeaders = if (isMp4Upload) {
             mapOf(
                 "User-Agent" to USER_AGENT,
                 "Referer" to directReferer,
@@ -537,7 +556,8 @@ class AnimeSailProvider : MainAPI() {
                 source = serverName,
                 name = serverName,
                 url = mediaUrl,
-                type = if (mediaUrl.contains(".m3u8", ignoreCase = true)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                type = if (mediaUrl.contains(".m3u8", ignoreCase = true))
+                    ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
             ) {
                 referer = directReferer
                 this.quality = quality ?: Qualities.Unknown.value
@@ -589,12 +609,10 @@ class AnimeSailProvider : MainAPI() {
         quality: Int?,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val id = Regex("""mp4upload\.com/(?:embed-)?([A-Za-z0-9]+)(?:\.html)?""", RegexOption.IGNORE_CASE)
-            .find(url)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.takeIf { it.isNotBlank() }
-            ?: return false
+        val id = Regex(
+            """mp4upload\.com/(?:embed-)?([A-Za-z0-9]+)(?:\.html)?""",
+            RegexOption.IGNORE_CASE
+        ).find(url)?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return false
 
         val downloadUrl = "https://www.mp4upload.com/dl?op=download2&id=$id"
         val watchReferer = "https://www.mp4upload.com/"
