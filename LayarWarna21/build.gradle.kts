@@ -1,9 +1,9 @@
-version = 1
+version = 2
 
 cloudstream {
     authors = listOf("BetbetMiro")
     language = "id"
-    description = "LayarWarna21 provider RC v1: homepage, detail, search, dan dynamic host resolver dari server/player option source."
+    description = "LayarWarna21 provider RC v2: compile fix, homepage, detail, search, dan dynamic host resolver dari server/player option source."
     status = 1
 
     tvTypes = listOf(

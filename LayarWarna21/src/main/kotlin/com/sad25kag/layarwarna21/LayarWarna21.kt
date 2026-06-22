@@ -13,7 +13,6 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mainPageOf
-import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
@@ -279,6 +278,29 @@ class LayarWarna21 : MainAPI() {
         return found
     }
 
+    private fun fixUrl(raw: String?, baseUrl: String): String? {
+        val value = normalize(urlDecode(raw.orEmpty()))
+            .trim()
+            .trim('"', '\'', '\\')
+        if (value.isBlank()) return null
+        val lower = value.lowercase(Locale.ROOT)
+        if (lower.startsWith("javascript:") || lower.startsWith("mailto:") || lower.startsWith("tel:") || lower.startsWith("#")) return null
+        return runCatching {
+            when {
+                value.startsWith("//") -> "https:$value"
+                value.startsWith("http://", true) || value.startsWith("https://", true) -> value
+                value.startsWith("/") -> {
+                    val base = URI(baseUrl)
+                    val scheme = base.scheme ?: "https"
+                    val host = base.host ?: URI(mainUrl).host.orEmpty()
+                    val port = if (base.port != -1) ":${base.port}" else ""
+                    "$scheme://$host$port$value"
+                }
+                else -> URI(baseUrl).resolve(value).toString()
+            }
+        }.getOrNull()
+    }
+
     private fun parseCards(document: Document): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
         document.select(cardSelector).forEach { card ->
@@ -342,14 +364,30 @@ class LayarWarna21 : MainAPI() {
                     ?.groupValues
                     ?.getOrNull(1)
                     ?.toIntOrNull()
-                episodes[href.key()] = newEpisode(href) {
-                    name = rawName.ifBlank { "Episode $number" }
-                    episode = number
-                    this.season = season
-                }
+                episodes[href.key()] = makeEpisode(
+                    data = href,
+                    name = rawName.ifBlank { "Episode $number" },
+                    episode = number,
+                    season = season
+                )
             }
         return episodes.values.sortedWith(compareBy<Episode> { it.season ?: 0 }.thenBy { it.episode ?: 9999 })
     }
+
+    @Suppress("DEPRECATION_ERROR")
+    private fun makeEpisode(
+        data: String,
+        name: String,
+        episode: Int? = null,
+        season: Int? = null,
+        posterUrl: String? = null
+    ): Episode = Episode(
+        data = data,
+        name = name,
+        season = season,
+        episode = episode,
+        posterUrl = posterUrl
+    )
 
     private fun parseRecommendations(document: Document, currentUrl: String): List<SearchResponse> =
         document.select(".related, .recommend, .rekomendasi, section, .owl-carousel, .swiper-wrapper")
