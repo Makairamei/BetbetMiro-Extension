@@ -602,7 +602,7 @@ class NimeIndo : MainAPI() {
         }
     }
 
-    private fun emitBloggerVideoLink(
+    private suspend fun emitBloggerVideoLink(
         videoUrl: String,
         quality: String?,
         emitted: MutableSet<String>,
