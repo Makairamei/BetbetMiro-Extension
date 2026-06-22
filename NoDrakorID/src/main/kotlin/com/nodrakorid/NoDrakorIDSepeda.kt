@@ -1,7 +1,7 @@
 package com.nodrakorid
 
 internal object NoDrakorIDSepeda {
-    const val MAIN_URL = "https://richemmerson.com"
+    const val MAIN_URL = "http://178.128.210.29/"
     const val SITE_NAME = "NoDrakorID"
     const val LANGUAGE = "id"
 
