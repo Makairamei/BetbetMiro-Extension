@@ -41,15 +41,7 @@ class AnimeIsMe : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "$mainUrl/" to "Update Terbaru",
-        "$mainUrl/anime/?status=&type=&sub=&order=" to "Daftar Anime",
-        "$mainUrl/anime/?status=ongoing&type=&order=" to "Ongoing",
-        "$mainUrl/anime/?status=completed&sub=" to "Completed",
-        "$mainUrl/anime/?status=&type=movie&order=" to "Movie",
-        "$mainUrl/genres/action/" to "Action",
-        "$mainUrl/genres/adventure/" to "Adventure",
-        "$mainUrl/genres/fantasy/" to "Fantasy",
-        "$mainUrl/genres/shounen/" to "Shounen"
+        "$mainUrl/" to "Update Terbaru"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -332,16 +324,10 @@ class AnimeIsMe : MainAPI() {
             .sortedWith(compareBy({ it.episode ?: Int.MAX_VALUE }, { it.name ?: "" }))
 
         if (episodes.isNotEmpty()) return episodes
-
-        val hasInlinePlayer = extractCandidates(pageUrl).isNotEmpty()
-        if (!hasInlinePlayer && !pageUrl.isEpisodeContentUrl(title)) return emptyList()
+        if (!pageUrl.isEpisodeContentUrl(title)) return emptyList()
 
         return listOf(newEpisode(pageUrl) {
-            this.name = when {
-                title.parseEpisodeName() != null -> title.parseEpisodeName()
-                pageUrl.isEpisodeContentUrl(title) -> title
-                else -> "Movie"
-            }
+            this.name = title.parseEpisodeName() ?: title
             this.episode = title.parseEpisodeNumber() ?: pageUrl.parseEpisodeNumber()
             this.posterUrl = poster
         })
