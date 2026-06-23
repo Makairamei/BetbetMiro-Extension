@@ -87,11 +87,7 @@ class AnimeIsMe : MainAPI() {
         val title = document.bestTitle()?.cleanTitle()?.ifBlank { null } ?: fixedUrl.slugTitle()
         val poster = document.bestPoster()
         val plot = document.bestPlot()
-        val tags = document.select("a[href*='genre'], a[href*='tag'], .genre a, .genres a")
-            .map { it.text().trim() }
-            .filter { it.isNotBlank() && it.length <= 40 }
-            .distinct()
-            .take(20)
+        val tags = document.bestTags()
         val year = document.text().parseYear()
         val recommendations = document.parseItems().filter { it.url != fixedUrl }.distinctBy { it.url }.take(24)
 
@@ -417,6 +413,26 @@ class AnimeIsMe : MainAPI() {
         return selectFirst("a[rel=next], .pagination a[href*='page=${page + 1}'], a[href*='p=${page + 1}']") != null
     }
 
+
+    private fun Document.bestTags(): List<String> {
+        val selectors = listOf(
+            ".single-info .infox .info-content .genxed a[href*='/genres/']",
+            ".single-info .genxed a[href*='/genres/']",
+            ".infox .info-content .genxed a[href*='/genres/']",
+            ".info-content .genxed a[href*='/genres/']"
+        )
+
+        return selectors
+            .asSequence()
+            .map { selector -> select(selector) }
+            .firstOrNull { it.isNotEmpty() }
+            .orEmpty()
+            .map { it.text().trim() }
+            .filter { it.isNotBlank() && it.length <= 40 && !it.isBlockedTagLabel() }
+            .distinct()
+            .take(20)
+    }
+
     private fun Document.bestTitle(): String? {
         return selectFirst("h1, .title h1, .entry-title, .anime-title, .judul")?.text()?.trim()
             ?: selectFirst("meta[property=og:title], meta[name=twitter:title]")?.attr("content")?.trim()
@@ -568,6 +584,14 @@ class AnimeIsMe : MainAPI() {
             return clean
         }
         return null
+    }
+
+    private fun String.isBlockedTagLabel(): Boolean {
+        val normalized = lowercase().trim()
+        return normalized in setOf(
+            "genre", "genres", "all", "anime", "ongoing", "completed", "movie",
+            "daftar anime", "update terbaru", "lihat semua"
+        )
     }
 
     private fun String.isBlockedTitle(): Boolean {

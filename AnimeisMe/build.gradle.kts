@@ -1,9 +1,9 @@
 // use an integer for version numbers
-version = 4
+version = 5
 
 cloudstream {
     description = "AnimeIsMe - Nonton anime subtitle Indonesia"
-    authors = listOf("sad25kag")
+    authors = listOf("BetbetMiro")
 
     /**
      * Status int as the following:
