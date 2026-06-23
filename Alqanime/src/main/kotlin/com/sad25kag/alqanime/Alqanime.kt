@@ -1,5 +1,6 @@
 package com.sad25kag.alqanime
 
+import android.util.Base64
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
@@ -432,7 +433,10 @@ class Alqanime : MainAPI() {
 
         suspend fun emitAcefileDirect(candidate: String, referer: String): Boolean {
             val fixed = candidate.cleanEscaped().replace(".txt", ".m3u8")
-            if (!fixed.isPlayableMediaUrl() || fixed.isArchiveDownloadUrl() || fixed.isAcefileLandingPageUrl()) return false
+            if ((!fixed.isPlayableMediaUrl() && !fixed.isAcefileServicePlayUrl()) ||
+                fixed.isArchiveDownloadUrl() ||
+                fixed.isAcefileLandingPageUrl()
+            ) return false
             val type = if (fixed.contains(".m3u8", true)) {
                 ExtractorLinkType.M3U8
             } else {
@@ -455,10 +459,11 @@ class Alqanime : MainAPI() {
         var emitted = false
         var index = 0
 
-        while (index < pageQueue.size && index < 4) {
+        while (index < pageQueue.size && index < 6) {
             val pageUrl = pageQueue[index++]
             val referer = when {
                 pageUrl.contains("/player/", true) && cleanUrl.contains("acefile.co", true) -> cleanUrl
+                pageUrl.contains("/local/", true) -> "https://acefile.co/player/${id ?: ""}"
                 else -> "$mainUrl/"
             }
 
@@ -477,6 +482,12 @@ class Alqanime : MainAPI() {
             val document = response.document
             val html = response.text.cleanEscaped()
 
+            extractAcefileSourceUrls(html, pageUrl).forEach { direct ->
+                if (emitAcefileDirect(direct, pageUrl)) emitted = true
+            }
+
+            if (emitted) return true
+
             collectPlayableUrls(document, html, pageUrl)
                 .filterNot { it.isAcefileLandingPageUrl() }
                 .forEach { direct ->
@@ -484,6 +495,10 @@ class Alqanime : MainAPI() {
                 }
 
             if (emitted) return true
+
+            extractAcefileLocalPages(document, html, pageUrl).forEach { localPage ->
+                addPage(localPage, pageUrl)
+            }
 
             document.select(
                 "iframe[src], embed[src], video[src], video source[src], source[src], " +
@@ -499,7 +514,10 @@ class Alqanime : MainAPI() {
             runCatching {
                 loadExtractor(pageUrl, referer, subtitleCallback) { link ->
                     val linkUrl = link.url.cleanEscaped()
-                    if (linkUrl.isPlayableMediaUrl() && !linkUrl.isAcefileLandingPageUrl() && !linkUrl.isArchiveDownloadUrl()) {
+                    if ((linkUrl.isPlayableMediaUrl() || linkUrl.isAcefileServicePlayUrl()) &&
+                        !linkUrl.isAcefileLandingPageUrl() &&
+                        !linkUrl.isArchiveDownloadUrl()
+                    ) {
                         callback(link)
                         emitted = true
                     }
@@ -510,6 +528,89 @@ class Alqanime : MainAPI() {
         }
 
         return false
+    }
+
+    private fun extractAcefileLocalPages(
+        document: org.jsoup.nodes.Document,
+        html: String,
+        baseUrl: String
+    ): List<String> {
+        val pages = linkedSetOf<String>()
+
+        document.select("[data-holder=local][data-video], [data-video*=local]").forEach { element ->
+            listOf("data-video", "data-src", "src", "href")
+                .map { element.attr(it) }
+                .mapNotNull { normalizeUrl(it, baseUrl) }
+                .map { it.cleanEscaped() }
+                .filter { it.contains("acefile.co/local/", true) }
+                .forEach { pages.add(it) }
+        }
+
+        Regex("""https?://acefile\.co/local/\d+\?key=[A-Za-z0-9]+""", RegexOption.IGNORE_CASE)
+            .findAll(html)
+            .map { it.value.cleanEscaped() }
+            .forEach { pages.add(it) }
+
+        Regex("""/local/(\d+)\?key=([A-Za-z0-9]+)""", RegexOption.IGNORE_CASE)
+            .findAll(html)
+            .map { "https://acefile.co/local/${it.groupValues[1]}?key=${it.groupValues[2]}" }
+            .forEach { pages.add(it) }
+
+        Regex("""'([^']*)'\.split\('\|'\)""")
+            .findAll(html)
+            .map { it.groupValues[1].split("|") }
+            .forEach { parts ->
+                val serverIndex = parts.indexOf("server")
+                val keyIndex = parts.indexOf("mirrorHasVideo")
+                val localId = parts.getOrNull(serverIndex + 1)?.takeIf { it.matches(Regex("""\d{5,}""")) }
+                val key = parts.getOrNull(keyIndex + 1)?.takeIf { it.matches(Regex("""[A-Fa-f0-9]{24,}""")) }
+                if (localId != null && key != null) {
+                    pages.add("https://acefile.co/local/$localId?key=$key")
+                }
+            }
+
+        return pages.toList()
+    }
+
+    private fun extractAcefileSourceUrls(html: String, baseUrl: String): List<String> {
+        val results = linkedSetOf<String>()
+        val encodedSources = linkedSetOf<String>()
+
+        Regex(
+            """sources\s*:\s*JSON\.parse\s*\(\s*(?:atob|a2b)\s*\(\s*["']([^"']+)["']\s*\)\s*\)""",
+            RegexOption.IGNORE_CASE
+        ).findAll(html)
+            .map { it.groupValues[1] }
+            .forEach { encodedSources.add(it) }
+
+        Regex(
+            """JSON\.parse\s*\(\s*(?:atob|a2b)\s*\(\s*["']([^"']+)["']\s*\)\s*\)""",
+            RegexOption.IGNORE_CASE
+        ).findAll(html)
+            .map { it.groupValues[1] }
+            .forEach { encodedSources.add(it) }
+
+        encodedSources.forEach { encoded ->
+            val decoded = decodeAcefileBase64(encoded) ?: return@forEach
+            runCatching {
+                val array = JSONArray(decoded)
+                for (i in 0 until array.length()) {
+                    val file = array.optJSONObject(i)?.optString("file").orEmpty()
+                    normalizeUrl(file, baseUrl)?.cleanEscaped()?.let { results.add(it) }
+                }
+            }
+        }
+
+        return results.toList()
+    }
+
+    private fun decodeAcefileBase64(value: String): String? {
+        val clean = value.trim().replace(Regex("""\s+"""), "")
+        if (clean.isBlank()) return null
+        val padded = clean + "=".repeat((4 - clean.length % 4) % 4)
+        return runCatching {
+            String(Base64.decode(padded, Base64.DEFAULT), Charsets.UTF_8)
+        }.getOrNull()
     }
 
     private suspend fun tryReshare(
@@ -1207,12 +1308,18 @@ class Alqanime : MainAPI() {
             lower.contains("/api/file/")
     }
 
+    private fun String.isAcefileServicePlayUrl(): Boolean {
+        val lower = lowercase().substringBefore("?")
+        return lower.contains("acefile.co/service/play/")
+    }
+
     private fun String.isAcefileLandingPageUrl(): Boolean {
         val lower = lowercase().substringBefore("?")
         if (!lower.contains("acefile.co")) return false
         return lower.contains("/f/") ||
             lower.contains("/file/") ||
-            lower.contains("/player/")
+            lower.contains("/player/") ||
+            lower.contains("/files/copy_page/")
     }
 
     data class EpisodeLink(
