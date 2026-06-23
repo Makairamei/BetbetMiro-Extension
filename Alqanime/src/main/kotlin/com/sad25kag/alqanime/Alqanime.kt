@@ -118,8 +118,15 @@ class Alqanime : MainAPI() {
             .replace(Regex("\\s*BD Batch.*", RegexOption.IGNORE_CASE), "")
             .trim()
 
-        val poster = document.selectFirst("div.thumb img")?.attr("src")
-        val coverBg = document.selectFirst("div.ime img")?.attr("src")
+        val poster = document.selectFirst(
+            "div.thumb img, div.bigcontent div.thumb img, div.postbody div.thumb img, " +
+                "div.infox div.thumb img, div.ime img, div.bigcover img, img.wp-post-image, " +
+                "meta[property=og:image], meta[name=twitter:image]"
+        )?.imageUrl()
+        val coverBg = document.selectFirst(
+            "div.ime img, div.bigcover img, div.thumb img, img.wp-post-image, " +
+                "meta[property=og:image], meta[name=twitter:image]"
+        )?.imageUrl() ?: poster
         val trailerRaw = document.selectFirst("a.trailerbutton")?.attr("href")
         val trailer = trailerRaw?.let { trailerUrl ->
             val videoId = Regex("[?&]v=([^&]+)").find(trailerUrl)?.groupValues?.getOrNull(1)
@@ -1054,6 +1061,28 @@ class Alqanime : MainAPI() {
             )
         }
         return array.toString()
+    }
+
+    private fun Element.imageUrl(): String? {
+        val direct = listOf(
+            "data-src",
+            "data-lazy-src",
+            "data-original",
+            "data-bg",
+            "src",
+            "content"
+        ).firstNotNullOfOrNull { key ->
+            attr(key)
+                .trim()
+                .takeIf { it.isNotBlank() && !it.startsWith("data:", ignoreCase = true) }
+        }
+
+        val srcset = attr("srcset").ifBlank { attr("data-srcset") }
+            .split(",")
+            .map { it.trim().substringBefore(" ").trim() }
+            .firstOrNull { it.isNotBlank() && !it.startsWith("data:", ignoreCase = true) }
+
+        return fixUrlNull(direct ?: srcset)
     }
 
     private fun String.fixQuality(): Int = when {
