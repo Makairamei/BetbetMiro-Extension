@@ -645,6 +645,14 @@ class AnimeIndo : MainAPI() {
             ?: Qualities.Unknown.value
     }
 
+    private fun xtwapHeaders(refererUrl: String): Map<String, String> {
+        return mapOf(
+            "Referer" to refererUrl,
+            "Accept" to "*/*",
+            "Range" to "bytes=0-"
+        )
+    }
+
     private suspend fun emitXtwapM3u8Link(
         name: String,
         url: String,
@@ -655,6 +663,7 @@ class AnimeIndo : MainAPI() {
         callback(newExtractorLink("AnimeIndo", name, url, type = ExtractorLinkType.M3U8) {
             this.quality = quality
             this.referer = refererUrl
+            this.headers = xtwapHeaders(refererUrl)
         })
     }
 
@@ -662,7 +671,11 @@ class AnimeIndo : MainAPI() {
         fullUrl: String,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val playerText = app.get(fullUrl, referer = mainUrl).text
+        val playerText = app.get(
+            fullUrl,
+            referer = fullUrl,
+            headers = xtwapHeaders(fullUrl)
+        ).text
             .replace("\r", "")
             .trim()
 
@@ -714,6 +727,7 @@ class AnimeIndo : MainAPI() {
                 callback(newExtractorLink("AnimeIndo", "CEPAT", videoUrl) {
                     this.quality = parseQualityFromXtwap("$fullUrl $videoUrl")
                     this.referer = fullUrl
+                    this.headers = xtwapHeaders(fullUrl)
                 })
             }
             return true
