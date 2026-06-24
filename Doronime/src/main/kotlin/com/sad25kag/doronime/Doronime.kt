@@ -1,6 +1,5 @@
 package com.sad25kag.doronime
 
-import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.utils.*
@@ -38,12 +37,8 @@ class Doronime : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = request.data.replace("{page}", page.toString())
         val document = app.get(url, headers = defaultHeaders, referer = mainUrl).document
-
-        val cards = parseListingCards(document, url)
-            .distinctBy { it.url }
-
-        val hasNext = document.select("a[href*='?page=${page + 1}'], a[href$='page=${page + 1}'], a:matchesOwn((?i)next)")
-            .isNotEmpty()
+        val cards = parseListingCards(document, url).distinctBy { it.url }
+        val hasNext = document.select("a[href*='?page=${page + 1}'], a[href$='page=${page + 1}'], a:matchesOwn((?i)next)").isNotEmpty()
 
         return newHomePageResponse(
             HomePageList(request.name, cards, isHorizontalImages = false),
@@ -55,7 +50,6 @@ class Doronime : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         if (query.isBlank()) return emptyList()
-
         val encoded = query.urlEncoded()
         val candidates = listOf(
             "$mainUrl/search?keyword=$encoded",
@@ -85,7 +79,6 @@ class Doronime : MainAPI() {
         val document = app.get(url, headers = defaultHeaders, referer = mainUrl).document
         val title = document.bestTitle(url)
             ?: throw ErrorLoadingException("Judul Doronime tidak ditemukan")
-
         val poster = document.bestPoster(url)
         val tags = document.select("a[href*='/genre/']")
             .map { it.text().cleanText() }
@@ -99,28 +92,23 @@ class Doronime : MainAPI() {
             .take(20)
 
         val playablePage = url.isDoronimePlayableUrl()
-        val episodes = if (playablePage) {
-            emptyList()
-        } else {
-            parseEpisodes(document, url)
-        }
-
+        val episodes = if (playablePage) emptyList() else parseEpisodes(document, url)
         val plot = document.selectFirst(".sinopsis, .synopsis, .entry-content, .content, .desc, .description, article")
             ?.text()
             ?.cleanText()
             ?.takeIf { it.length > 40 }
 
         return if (!playablePage && episodes.isNotEmpty()) {
-            newTvSeriesLoadResponse(
+            newAnimeLoadResponse(
                 title.removeEpisodeSuffix(),
                 url,
-                TvType.Anime,
-                episodes
+                TvType.Anime
             ) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.tags = tags
                 this.recommendations = recommendations
+                addEpisodes(DubStatus.Subbed, episodes)
             }
         } else {
             val data = findFirstPlayableUrl(document, url) ?: url
@@ -152,24 +140,30 @@ class Doronime : MainAPI() {
     ): Boolean {
         val response = app.get(data, headers = defaultHeaders, referer = mainUrl)
         val document = response.document
-        val emitted = linkedSetOf<String>()
+        val seen = linkedSetOf<String>()
+        var emitted = false
+        val trackedCallback: (ExtractorLink) -> Unit = { link ->
+            emitted = true
+            callback(link)
+        }
 
         suspend fun emitDirect(rawUrl: String, label: String) {
             val finalUrl = rawUrl.decodePlayerText().toAbsoluteUrl(data).takeIf { it.isValidMediaUrl() } ?: return
             val key = finalUrl.substringBefore("#")
-            if (!emitted.add(key)) return
+            if (!seen.add(key)) return
 
-            when {
-                finalUrl.contains(".m3u8", true) -> M3u8Helper.generateM3u8(label, finalUrl, data).forEach(callback)
-                else -> callback(
+            if (finalUrl.contains(".m3u8", true)) {
+                M3u8Helper.generateM3u8(label.ifBlank { name }, finalUrl, data).forEach(trackedCallback)
+            } else {
+                trackedCallback(
                     newExtractorLink(
                         source = name,
-                        name = label,
+                        name = label.ifBlank { name },
                         url = finalUrl,
                         type = inferType(finalUrl)
                     ) {
                         this.referer = data
-                        this.quality = getQualityFromName(label)
+                        this.quality = getQualityFromName(label.ifBlank { finalUrl })
                         this.headers = mapOf(
                             "Referer" to data,
                             "Origin" to mainUrl,
@@ -188,13 +182,9 @@ class Doronime : MainAPI() {
 
                     when {
                         finalUrl.isValidMediaUrl() -> emitDirect(finalUrl, label)
-                        finalUrl.startsWith("http", true) -> {
+                        finalUrl.startsWith("http", true) && seen.add(finalUrl.substringBefore("#")) -> {
                             runCatching {
-                                loadExtractor(finalUrl, referer, subtitleCallback, callback)
-                            }.onSuccess { success ->
-                                if (success) emitted.add(finalUrl.substringBefore("#"))
-                            }.onFailure {
-                                Log.w("Doronime", "Extractor gagal untuk $finalUrl")
+                                loadExtractor(finalUrl, referer, subtitleCallback, trackedCallback)
                             }
                         }
                     }
@@ -229,12 +219,11 @@ class Doronime : MainAPI() {
                 if (rawUrl.isNotBlank()) resolveCandidate(rawUrl, data, element.text().cleanText().ifBlank { name })
             }
 
-        val html = response.text.decodePlayerText()
-        extractPlayerUrls(html, data).forEach { playerUrl ->
+        response.text.decodePlayerText().extractPlayerUrls(data).forEach { playerUrl ->
             resolveCandidate(playerUrl, data, name)
         }
 
-        return emitted.isNotEmpty()
+        return emitted
     }
 
     private fun parseListingCards(document: Document, pageUrl: String): List<SearchResponse> {
@@ -302,7 +291,6 @@ class Doronime : MainAPI() {
 
     private fun findFirstPlayableUrl(document: Document, pageUrl: String): String? {
         if (pageUrl.isDoronimePlayableUrl()) return pageUrl
-
         val seriesSlug = pageUrl.substringAfter("/anime/", "").substringBefore("/")
         return document.select("a[href*='/episode-'], a[href$='/movie'], a[href*='/movie']")
             .mapNotNull { it.attr("href").toAbsoluteUrl(pageUrl).substringBefore("#").takeIf { href -> href.isDoronimePlayableUrl() } }
@@ -320,7 +308,7 @@ class Doronime : MainAPI() {
             ?.takeIf { it.isNotBlank() }
             ?.let { decoded.add(it) }
 
-        Regex("""atob\((['\"])(.*?)\1\)""", RegexOption.IGNORE_CASE)
+        Regex("""atob\((['"])(.*?)\1\)""", RegexOption.IGNORE_CASE)
             .findAll(source)
             .mapNotNull { match -> runCatching { base64Decode(match.groupValues[2]) }.getOrNull() }
             .forEach { decoded.add(it.decodePlayerText()) }
@@ -347,10 +335,10 @@ class Doronime : MainAPI() {
         }
 
         val patterns = listOf(
-            Regex("""<iframe[^>]+src=[\"']([^\"']+)[\"']""", RegexOption.IGNORE_CASE),
-            Regex("""(?:file|source|src|url)\s*[:=]\s*[\"']([^\"']+(?:\.m3u8|\.mp4|\.mpd|/embed/|/videoembed/|/player/)[^\"']*)[\"']""", RegexOption.IGNORE_CASE),
-            Regex("""[\"'](https?:\\?/\\?/[^\"']+(?:\.m3u8|\.mp4|\.mpd|/embed/|/videoembed/|/player/)[^\"']*)[\"']""", RegexOption.IGNORE_CASE),
-            Regex("""[\"'](//[^\"']+(?:\.m3u8|\.mp4|\.mpd|/embed/|/videoembed/|/player/)[^\"']*)[\"']""", RegexOption.IGNORE_CASE)
+            Regex("""<iframe[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex("""(?:file|source|src|url)\s*[:=]\s*["']([^"']+(?:\.m3u8|\.mp4|\.mpd|/embed/|/videoembed/|/player/)[^"']*)["']""", RegexOption.IGNORE_CASE),
+            Regex("""["'](https?:\\?/\\?/[^"']+(?:\.m3u8|\.mp4|\.mpd|/embed/|/videoembed/|/player/)[^"']*)["']""", RegexOption.IGNORE_CASE),
+            Regex("""["'](//[^"']+(?:\.m3u8|\.mp4|\.mpd|/embed/|/videoembed/|/player/)[^"']*)["']""", RegexOption.IGNORE_CASE)
         )
 
         patterns.forEach { pattern ->
@@ -428,7 +416,7 @@ class Doronime : MainAPI() {
                 ?.let { return it.toAbsoluteUrl(pageUrl) }
         }
 
-        Regex("""url\((['\"]?)(.*?)\1\)""", RegexOption.IGNORE_CASE)
+        Regex("""url\((['"]?)(.*?)\1\)""", RegexOption.IGNORE_CASE)
             .find(element.attr("style"))
             ?.groupValues
             ?.getOrNull(2)
