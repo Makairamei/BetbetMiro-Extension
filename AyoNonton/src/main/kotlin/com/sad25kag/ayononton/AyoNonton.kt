@@ -224,12 +224,14 @@ class AyoNonton : MainAPI() {
             "a[href], option[value], [data-iframe], [data-src], [data-url], [data-link], [data-embed], [data-player], [data-file]"
         ).filterNot { element ->
             val raw = element.attr("href").ifBlank { element.attr("value") }
+            val label = element.text().trim()
             element.attr("rel").contains("download", ignoreCase = true) ||
-                raw.contains("#download", ignoreCase = true)
+                raw.contains("#download", ignoreCase = true) ||
+                label.contains("download", ignoreCase = true)
         }
 
         for (serverElement in serverElements) {
-            val playAdsUrl = serverElement.serverUrl(t21)
+            val rawPlayAdsUrl = serverElement.serverUrl(t21)
             val serverClass = serverElement.classNames().joinToString(" ").uppercase()
             val serverText = serverElement.text().trim()
             val serverName = serverText
@@ -238,7 +240,10 @@ class AyoNonton : MainAPI() {
                 .ifBlank { serverElement.attr("data-server") }
                 .ifBlank { serverClass }
                 .ifBlank { "Server" }
-            val iframeType = queryParam(playAdsUrl, "iframe").lowercase()
+            var iframeType = queryParam(rawPlayAdsUrl, "iframe").lowercase()
+            val primaryServer = isPrimaryServer(serverClass, serverName, iframeType)
+            val playAdsUrl = primaryPlayAdsUrl(slug, rawPlayAdsUrl, primaryServer)
+            iframeType = queryParam(playAdsUrl, "iframe").lowercase()
             val realEndpoint = realPlayerEndpoint(slug, serverClass, iframeType)
 
             val dynamicLoaded = resolveServerElement(
@@ -261,7 +266,7 @@ class AyoNonton : MainAPI() {
                 serverClass.contains("HYDRAX") || iframeType.contains("hydrax") ->
                     resolveHydrax(slug, realEndpoint, playAdsUrl, serverName, emitted, subtitleCallback, callback)
 
-                iframeType == "p2p" || serverClass.contains("P2P") || serverClass.contains("DRIVE") ->
+                primaryServer ->
                     resolveP2P540(slug, playAdsUrl, serverName, emitted, subtitleCallback, callback) ||
                         resolveJsPlayer(slug, realEndpoint, playAdsUrl, serverName, emitted, subtitleCallback, callback)
 
@@ -500,11 +505,12 @@ class AyoNonton : MainAPI() {
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
         val p2pReferer = "$t21/p2p.php?movie=$slug"
+        val resolvedPlayAdsUrl = playAdsUrl.ifBlank { "$t21/play-ads.php?movie=$slug&iframe=p2p" }
         val playerJson = runCatching {
             app.post(
                 "$t21/540.php?movie=$slug",
                 data = mapOf(
-                    "r" to playAdsUrl,
+                    "r" to resolvedPlayAdsUrl,
                     "d" to "t21.press",
                 ),
                 headers = ajaxJsonHeaders(p2pReferer),
@@ -656,7 +662,7 @@ class AyoNonton : MainAPI() {
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
         val stream = normalizeMediaUrl(url)
-        if (stream.isBlank() || !looksLikeMedia(stream) || !emitted.add(stream)) return false
+        if (stream.isBlank() || isBlockedPlayerUrl(stream) || !looksLikeMedia(stream) || !emitted.add(stream)) return false
 
         val headers = videoHeaders(referer)
         val quality = qualityFromLabel(linkName) ?: qualityFromLabel(stream) ?: Qualities.Unknown.value
@@ -747,6 +753,17 @@ class AyoNonton : MainAPI() {
             serverClass.contains("GDFRAME") || iframeType == "gdframe" -> "$t21/gdframe.php?movie=$slug"
             else -> "$t21/p2p.php?movie=$slug"
         }
+    }
+
+    private fun isPrimaryServer(serverClass: String, serverName: String, iframeType: String): Boolean {
+        return iframeType == "p2p" ||
+            serverClass.contains("P2P") ||
+            serverClass.contains("DRIVE") ||
+            serverName.contains("UTAMA", ignoreCase = true)
+    }
+
+    private fun primaryPlayAdsUrl(slug: String, playAdsUrl: String, primaryServer: Boolean): String {
+        return if (primaryServer && playAdsUrl.isBlank()) "$t21/play-ads.php?movie=$slug&iframe=p2p" else playAdsUrl
     }
 
     private fun Element.serverUrl(baseUrl: String): String {
