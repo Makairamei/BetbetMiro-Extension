@@ -219,7 +219,7 @@ class Doronime : MainAPI() {
                 if (rawUrl.isNotBlank()) resolveCandidate(rawUrl, data, element.text().cleanText().ifBlank { name })
             }
 
-        response.text.decodePlayerText().extractPlayerUrls(data).forEach { playerUrl ->
+        extractPlayerUrls(response.text.decodePlayerText(), data).forEach { playerUrl ->
             resolveCandidate(playerUrl, data, name)
         }
 
