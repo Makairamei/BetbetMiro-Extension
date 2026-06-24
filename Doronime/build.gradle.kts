@@ -1,4 +1,4 @@
-version = 2
+version = 3
 
 cloudstream {
     description = "Doronime provider untuk anime subtitle Indonesia dengan dynamic server/player resolver."
