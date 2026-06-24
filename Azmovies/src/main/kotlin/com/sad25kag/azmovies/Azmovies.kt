@@ -132,6 +132,18 @@ class Azmovies : MainAPI() {
         val seenSubtitles = linkedSetOf<String>()
         val servers = extractServerButtons(response.text, document)
 
+        IndonesianSubtitleResolver.collect(
+            detailUrl = data,
+            html = response.text,
+            document = document,
+            serverUrls = servers.map { it.url },
+            mainUrl = mainUrl,
+        ).forEach { subtitle ->
+            if (seenSubtitles.add(subtitle.url)) {
+                subtitleCallback(subtitle)
+            }
+        }
+
         servers.forEach { button ->
             val rawUrl = button.url.replace("&amp;", "&").trim()
             if (rawUrl.isBlank()) return@forEach
@@ -153,7 +165,7 @@ class Azmovies : MainAPI() {
 
             runCatching {
                 if (rawUrl.contains("vidsrc.xyz", true)) {
-                    val handled = loadVidsrc(rawUrl, button.quality, callback)
+                    val handled = loadVidsrc(rawUrl, button.quality, subtitleCallback, seenSubtitles, callback)
                     if (!handled) {
                         callback(
                             newExtractorLink(
@@ -210,6 +222,8 @@ class Azmovies : MainAPI() {
     private suspend fun loadVidsrc(
         url: String,
         qualityLabel: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        seenSubtitles: MutableSet<String>,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
         val embedUrl = normalizeVidsrcUrl(url)
@@ -239,7 +253,7 @@ class Azmovies : MainAPI() {
         val xpassUrl = "https://play.xpass.top/e/movie/$xpassSlug"
         val xpassResponse = app.get(xpassUrl, referer = "${getBaseUrl(xpsResponse.url)}/", headers = browserHeaders)
         val playlistUrl =
-            Regex(""""playlist":"([^"]+/playlist\.json)"""")
+            Regex(""""playlist":"([^"]+/playlist\.json)""")
                 .find(xpassResponse.text)
                 ?.groupValues
                 ?.getOrNull(1)
@@ -252,8 +266,16 @@ class Azmovies : MainAPI() {
                 referer = xpassUrl,
                 headers = mapOf("Accept" to "application/json,text/plain,*/*", "User-Agent" to USER_AGENT),
             )
+
+        IndonesianSubtitleResolver.extractFromText(playlistResponse.text, getBaseUrl(playlistResponse.url))
+            .forEach { subtitle ->
+                if (seenSubtitles.add(subtitle.url)) {
+                    subtitleCallback(subtitle)
+                }
+            }
+
         val streamUrl =
-            Regex(""""file"\s*:\s*"([^"]+)"""")
+            Regex(""""file"\s*:\s*"([^"]+)""")
                 .findAll(playlistResponse.text)
                 .mapNotNull { it.groupValues.getOrNull(1) }
                 .map { it.decodeJsonUrl() }
@@ -456,10 +478,10 @@ class Azmovies : MainAPI() {
     }
 
     private data class ServerButton(
-    val url: String,
-    val server: String,
-    val quality: String,
-)
+        val url: String,
+        val server: String,
+        val quality: String,
+    )
 
     private val headers =
         mapOf(
