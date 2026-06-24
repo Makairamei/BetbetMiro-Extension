@@ -1,7 +1,7 @@
 version = 1
 
 cloudstream {
-    description = "Moenime provider untuk anime subtitle Indonesia dari moenime.com dengan resolver player dinamis."
+    description = "Moenime provider untuk anime subtitle Indonesia dari moenime dengan resolver player dinamis."
     language = "id"
     authors = listOf("sad25kag")
 
