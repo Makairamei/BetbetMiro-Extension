@@ -611,7 +611,10 @@ class Anoboy : MainAPI() {
                 "ul li a[href*='episode'], a[href*='episode-'], a[href*='subtitle-indonesia']"
         ).filter {
             val href = normalizeAnoboyUrl(it.attr("href"))
-            isEpisodeLikeUrl(href, it.text()) && !href.equals(referer, true)
+            val title = cleanTitle(it.text().trim())
+            !isNavigationTitle(title) &&
+                isEpisodeLikeUrl(href, title) &&
+                !href.equals(referer, true)
         }
 
         return anchors
@@ -621,6 +624,8 @@ class Anoboy : MainAPI() {
                     href.trimEnd('/').substringAfterLast('/').replace("-", " ")
                 }
                 val title = cleanTitle(rawTitle)
+                if (isNavigationTitle(title)) return@mapNotNull null
+
                 val episode = parseEpisodeNumber(rawTitle) ?: parseEpisodeNumber(title) ?: parseEpisodeNumber(href)
                 if (episode == null && title.length < 2) return@mapNotNull null
 
@@ -950,11 +955,22 @@ class Anoboy : MainAPI() {
     }
 
     private fun isEpisodeLikeUrl(url: String, title: String? = null): Boolean {
-        if (!isContentUrl(url)) return false
+        val cleanTitle = cleanTitle(title.orEmpty())
+        if (cleanTitle.isNotBlank() && isNavigationTitle(cleanTitle)) return false
+
         val lower = normalizeAnoboyUrl(url).lowercase()
+        if (
+            lower.contains("replytocom") ||
+            lower.contains("comment-page") ||
+            lower.contains("cancel-comment-reply") ||
+            lower.contains("#respond") ||
+            lower.contains("#comments")
+        ) return false
+
+        if (!isContentUrl(url)) return false
         val path = runCatching { URI(lower).path.orEmpty() }.getOrDefault(lower)
         val slug = path.trimEnd('/').substringAfterLast('/')
-        val lowerTitle = title.orEmpty().lowercase()
+        val lowerTitle = cleanTitle.lowercase()
 
         return slug.contains("episode-") ||
             slug.contains("-subtitle-indonesia") ||
@@ -1203,7 +1219,15 @@ class Anoboy : MainAPI() {
             "expand",
             "turn off light",
             "prev",
+            "previous",
             "next",
+            "cancel reply",
+            "reply",
+            "leave a reply",
+            "older comments",
+            "newer comments",
+            "post comment",
+            "comments",
             "all episodes"
         )
     }
