@@ -179,7 +179,18 @@ open class ByseBase : ExtractorApi() {
     }
 
     private fun decryptPlayback(playback: Playback): String? {
-        val keyBytes = buildAesKey(playback)
+        selectKeyPartCandidates(playback).forEach { keyParts ->
+            runCatching {
+                decryptPlayback(playback, keyParts)
+            }.getOrNull()?.let { streamUrl ->
+                if (streamUrl.isNotBlank()) return streamUrl
+            }
+        }
+        return null
+    }
+
+    private fun decryptPlayback(playback: Playback, keyParts: List<String>): String? {
+        val keyBytes = buildAesKey(keyParts)
         val ivBytes = b64UrlDecode(playback.iv)
         val cipherBytes = b64UrlDecode(playback.payload)
 
@@ -195,28 +206,41 @@ open class ByseBase : ExtractorApi() {
         return tryParseJson<PlaybackDecrypt>(json)?.sources?.firstOrNull()?.url
     }
 
-    private fun buildAesKey(playback: Playback): ByteArray {
-        return selectKeyParts(playback).fold(ByteArray(0)) { key, part ->
+    private fun buildAesKey(keyParts: List<String>): ByteArray {
+        return keyParts.fold(ByteArray(0)) { key, part ->
             key + b64UrlDecode(part)
         }
     }
 
-    private fun selectKeyParts(playback: Playback): List<String> {
-        val keyParts = playback.keyParts
-        val version = playback.version?.trim()?.toIntOrNull()
+    private fun selectKeyPartCandidates(playback: Playback): List<List<String>> {
+        val candidates = mutableListOf<List<String>>()
+        selectVersionedKeyParts(playback)?.let { candidates += it }
 
-        if (version != null && version in 1..20) {
-            val first = version
-            val second = 31 - version
-            if (first in 1..keyParts.size && second in 1..keyParts.size) {
-                val selected =
-                    listOf(keyParts[first - 1], keyParts[second - 1])
-                        .filter { it.isNotBlank() }
-                if (selected.isNotEmpty()) return selected
-            }
+        val legacy = playback.keyParts.take(2).filter { it.isNotBlank() }
+        if (legacy.size == 2 && candidates.none { it == legacy }) {
+            candidates += legacy
         }
 
-        return keyParts
+        if (candidates.isEmpty()) {
+            val sourceFallback = playback.keyParts.filter { it.isNotBlank() }
+            if (sourceFallback.isNotEmpty()) candidates += sourceFallback
+        }
+
+        return candidates
+    }
+
+    private fun selectVersionedKeyParts(playback: Playback): List<String>? {
+        val keyParts = playback.keyParts
+        val version = playback.version?.trim()?.toIntOrNull() ?: return null
+        if (version !in 1..20) return null
+
+        val first = version
+        val second = 31 - version
+        if (first !in 1..keyParts.size || second !in 1..keyParts.size) return null
+
+        return listOf(keyParts[first - 1], keyParts[second - 1])
+            .filter { it.isNotBlank() }
+            .takeIf { it.size == 2 }
     }
 
     private fun b64UrlDecode(value: String): ByteArray {
