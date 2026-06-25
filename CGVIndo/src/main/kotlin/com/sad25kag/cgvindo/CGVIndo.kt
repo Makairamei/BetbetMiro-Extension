@@ -13,7 +13,6 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mainPageOf
-import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
@@ -253,6 +252,28 @@ class CGVIndo : MainAPI() {
         return found
     }
 
+
+    private fun fixUrl(raw: String?, baseUrl: String = mainUrl): String? {
+        val value = raw?.trim().orEmpty()
+            .normalizeEscapes()
+            .takeIf { it.isNotBlank() && !it.startsWith("#") && !it.startsWith("javascript:", true) }
+            ?: return null
+        return when {
+            value.startsWith("//") -> "http:$value"
+            value.startsWith("http://", true) || value.startsWith("https://", true) -> value
+            value.startsWith("/") -> mainUrl.trimEnd('/') + value
+            else -> {
+                val base = baseUrl.ifBlank { mainUrl }
+                val root = when {
+                    base.endsWith("/") -> base
+                    base.substringAfterLast('/', "").contains('.') -> base.substringBeforeLast('/') + "/"
+                    else -> base.trimEnd('/') + "/"
+                }
+                root + value
+            }
+        }
+    }
+
     private fun pageUrl(path: String, page: Int): String {
         val fixed = fixUrl(path, mainUrl) ?: mainUrl
         return if (page <= 1) fixed else fixed.trimEnd('/') + "/page/$page/"
@@ -321,10 +342,11 @@ class CGVIndo : MainAPI() {
                 val ep = Regex("""(?i)(?:episode|eps|ep)\s*[-:.]?\s*(\d{1,4})""").find("$label $href")?.groupValues?.getOrNull(1)?.toIntOrNull()
                     ?: Regex("""(?i)(?:/|-)(\d{1,4})(?:/|$)""").find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
                     ?: (index + 1)
-                episodes[href] = newEpisode(href) {
-                    name = label.ifBlank { "Episode $ep" }
+                episodes[href] = Episode(
+                    data = href,
+                    name = label.ifBlank { "Episode $ep" },
                     episode = ep
-                }
+                )
             }
         return episodes.values.sortedBy { it.episode ?: 9999 }
     }
