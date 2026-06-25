@@ -41,6 +41,10 @@ class BioskopKeren : MainAPI() {
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
     )
 
+    private fun bkLog(message: String) {
+        println("BIOSKOPKEREN-Z4 $message")
+    }
+
     override val mainPage = mainPageOf(
         "best-rating/" to "Best Rating",
         "genre/action/" to "Action",
@@ -165,6 +169,8 @@ class BioskopKeren : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val watchUrl = normalizeProviderUrl(fixUrl(data))
+        bkLog("watchUrl=$watchUrl")
+
         val document = app.get(
             watchUrl,
             headers = siteHeaders,
@@ -172,17 +178,36 @@ class BioskopKeren : MainAPI() {
             timeout = 30L
         ).document
 
-        val iframeUrls = linkedSetOf<String>()
-        collectPlayerUrls(document, watchUrl).forEach { iframeUrls.add(it) }
+        val initialPlayers = collectPlayerUrls(document, watchUrl).distinct()
+        bkLog("initialPlayers=${initialPlayers.size}")
+        initialPlayers.forEach { bkLog("initialPlayer=$it") }
 
-        collectServerPageUrls(document, watchUrl).forEach { serverPage ->
+        val serverPages = collectServerPageUrls(document, watchUrl).distinct()
+        bkLog("serverPages=${serverPages.size}")
+        serverPages.forEach { bkLog("serverPage=$it") }
+
+        val iframeUrls = linkedSetOf<String>()
+        initialPlayers.forEach { iframeUrls.add(it) }
+
+        serverPages.forEach { serverPage ->
             if (serverPage == watchUrl) return@forEach
             val serverDocument = runCatching {
                 app.get(serverPage, headers = siteHeaders, referer = watchUrl, timeout = 30L).document
-            }.getOrNull() ?: return@forEach
+            }.getOrNull()
 
-            collectPlayerUrls(serverDocument, serverPage).forEach { iframeUrls.add(it) }
+            if (serverDocument == null) {
+                bkLog("serverPageFetchFailed=$serverPage")
+                return@forEach
+            }
+
+            val serverPlayers = collectPlayerUrls(serverDocument, serverPage).distinct()
+            bkLog("serverPage=$serverPage serverPlayers=${serverPlayers.size}")
+            serverPlayers.forEach { bkLog("serverPlayer=$it") }
+            serverPlayers.forEach { iframeUrls.add(it) }
         }
+
+        bkLog("mergedIframeUrls=${iframeUrls.size}")
+        iframeUrls.forEach { bkLog("mergedIframe=$it") }
 
         var found = false
         iframeUrls
@@ -196,6 +221,7 @@ class BioskopKeren : MainAPI() {
                 ) || found
             }
 
+        bkLog("loadLinksResult=$found")
         return found
     }
 
@@ -206,6 +232,7 @@ class BioskopKeren : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val extractorReferer = getExtractorReferer(iframeUrl, pageUrl)
+        bkLog("resolveIframe url=$iframeUrl host=${safeHost(iframeUrl)} referer=$extractorReferer")
 
         if (tryLoadExtractorWithReferers(
                 iframeUrl,
@@ -214,6 +241,7 @@ class BioskopKeren : MainAPI() {
                 callback
             )
         ) {
+            bkLog("resolveIframe directExtractor=true url=$iframeUrl")
             return true
         }
 
@@ -224,9 +252,15 @@ class BioskopKeren : MainAPI() {
                 referer = extractorReferer,
                 timeout = 30L
             )
-        }.getOrNull() ?: return false
+        }.getOrNull()
+
+        if (iframeResponse == null) {
+            bkLog("iframeFetchFailed url=$iframeUrl")
+            return false
+        }
 
         val iframeHtml = iframeResponse.text.decodeEscaped()
+        bkLog("iframeFetched url=$iframeUrl htmlSize=${iframeHtml.length}")
         val iframeDocument = Jsoup.parse(iframeHtml, iframeUrl)
 
         val nestedPlayers = linkedSetOf<String>()
@@ -249,6 +283,9 @@ class BioskopKeren : MainAPI() {
 
         extractMediaUrls(iframeHtml, iframeUrl).forEach { nestedPlayers.add(it) }
 
+        bkLog("nestedPlayers=${nestedPlayers.size} parent=$iframeUrl")
+        nestedPlayers.forEach { bkLog("nestedPlayer=$it") }
+
         var found = false
         nestedPlayers.distinct().filter { it != iframeUrl }.forEach { nested ->
             found = tryLoadExtractorWithReferers(
@@ -259,6 +296,7 @@ class BioskopKeren : MainAPI() {
             ) || found
         }
 
+        bkLog("resolveIframe nestedResult=$found url=$iframeUrl")
         return found
     }
 
@@ -269,15 +307,21 @@ class BioskopKeren : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val fixed = resolveUrl(url, mainUrl) ?: return false
-        if (isBadPlaybackUrl(fixed)) return false
+        if (isBadPlaybackUrl(fixed)) {
+            bkLog("skipBadPlayback url=$fixed")
+            return false
+        }
 
         return referers
             .mapNotNull { it.takeIf { ref -> ref.isNotBlank() } }
             .distinct()
             .any { referer ->
-                runCatching {
+                bkLog("tryExtractor url=$fixed host=${safeHost(fixed)} referer=$referer")
+                val result = runCatching {
                     loadExtractor(fixed, referer, subtitleCallback, callback)
                 }.getOrDefault(false)
+                bkLog("extractorResult url=$fixed host=${safeHost(fixed)} referer=$referer result=$result")
+                result
             }
     }
 
@@ -329,6 +373,10 @@ class BioskopKeren : MainAPI() {
         } else {
             pageUrl
         }
+    }
+
+    private fun safeHost(url: String): String {
+        return runCatching { URI(url).host.orEmpty().lowercase() }.getOrDefault("")
     }
 
     private fun parseCards(document: Document): List<SearchResponse> {
