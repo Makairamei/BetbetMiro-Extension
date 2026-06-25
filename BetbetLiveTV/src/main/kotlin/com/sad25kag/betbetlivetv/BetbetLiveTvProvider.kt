@@ -40,11 +40,8 @@ class BetbetLiveTvProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
         "id" to "🇮🇩 Indonesia",
-        "my" to "🇲🇾 Malaysia",
-        "sg" to "🇸🇬 Singapore",
         "ph" to "🇵🇭 Philippines",
         "th" to "🇹🇭 Thailand",
-        "vn" to "🇻🇳 Vietnam",
         "jp" to "🇯🇵 Japan",
         "kr" to "🇰🇷 South Korea",
         "in" to "🇮🇳 India",
@@ -614,11 +611,8 @@ class BetbetLiveTvProvider : MainAPI() {
 
         private val countries = listOf(
             Country("id", "Indonesia", "🇮🇩"),
-            Country("my", "Malaysia", "🇲🇾"),
-            Country("sg", "Singapore", "🇸🇬"),
             Country("ph", "Philippines", "🇵🇭"),
             Country("th", "Thailand", "🇹🇭"),
-            Country("vn", "Vietnam", "🇻🇳"),
             Country("jp", "Japan", "🇯🇵"),
             Country("kr", "South Korea", "🇰🇷"),
             Country("in", "India", "🇮🇳"),
