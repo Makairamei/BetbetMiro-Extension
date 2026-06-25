@@ -13,6 +13,7 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mainPageOf
+import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
@@ -342,11 +343,10 @@ class CGVIndo : MainAPI() {
                 val ep = Regex("""(?i)(?:episode|eps|ep)\s*[-:.]?\s*(\d{1,4})""").find("$label $href")?.groupValues?.getOrNull(1)?.toIntOrNull()
                     ?: Regex("""(?i)(?:/|-)(\d{1,4})(?:/|$)""").find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
                     ?: (index + 1)
-                episodes[href] = Episode(
-                    data = href,
-                    name = label.ifBlank { "Episode $ep" },
+                episodes[href] = newEpisode(href) {
+                    name = label.ifBlank { "Episode $ep" }
                     episode = ep
-                )
+                }
             }
         return episodes.values.sortedBy { it.episode ?: 9999 }
     }
