@@ -206,25 +206,31 @@ class BioskopKeren : MainAPI() {
     ): Boolean {
         val extractorReferer = getExtractorReferer(iframeUrl, pageUrl)
 
-        if (runCatching {
-                loadExtractor(iframeUrl, extractorReferer, subtitleCallback, callback)
-            }.getOrDefault(false)
+        if (tryLoadExtractorWithReferers(
+                iframeUrl,
+                listOf(extractorReferer, pageUrl, iframeUrl, "$mainUrl/"),
+                subtitleCallback,
+                callback
+            )
         ) {
             return true
         }
 
-        if (extractorReferer != pageUrl && runCatching {
-                loadExtractor(iframeUrl, pageUrl, subtitleCallback, callback)
-            }.getOrDefault(false)
-        ) {
-            return true
-        }
-
-        val iframeDocument = runCatching {
-            app.get(iframeUrl, headers = siteHeaders, referer = extractorReferer, timeout = 30L).document
+        val iframeResponse = runCatching {
+            app.get(
+                iframeUrl,
+                headers = siteHeaders,
+                referer = extractorReferer,
+                timeout = 30L
+            )
         }.getOrNull() ?: return false
 
-        val nestedPlayers = collectPlayerUrls(iframeDocument, iframeUrl).toMutableList()
+        val iframeHtml = iframeResponse.text.decodeEscaped()
+        val iframeDocument = Jsoup.parse(iframeHtml, iframeUrl)
+
+        val nestedPlayers = linkedSetOf<String>()
+        collectPlayerUrls(iframeDocument, iframeUrl).forEach { nestedPlayers.add(it) }
+
         iframeDocument.select("#servers a[data-url], a[data-url*='/embed/'], form[action*='/embed/']")
             .mapNotNull { element ->
                 listOf("data-url", "action", "href")
@@ -235,15 +241,84 @@ class BioskopKeren : MainAPI() {
             .filterNot { isBadPlaybackUrl(it) }
             .forEach { nestedPlayers.add(it) }
 
+        extractWindowUrl(iframeHtml, "downloadURL")
+            ?.let { resolveUrl(it, iframeUrl) }
+            ?.filterNotBad()
+            ?.let { nestedPlayers.add(it) }
+
+        extractMediaUrls(iframeHtml, iframeUrl).forEach { nestedPlayers.add(it) }
+
         var found = false
         nestedPlayers.distinct().filter { it != iframeUrl }.forEach { nested ->
-            val nestedReferer = getExtractorReferer(nested, iframeUrl)
-            found = runCatching {
-                loadExtractor(nested, nestedReferer, subtitleCallback, callback)
-            }.getOrDefault(false) || found
+            found = tryLoadExtractorWithReferers(
+                nested,
+                listOf(getExtractorReferer(nested, iframeUrl), iframeUrl, extractorReferer, pageUrl),
+                subtitleCallback,
+                callback
+            ) || found
         }
 
         return found
+    }
+
+    private suspend fun tryLoadExtractorWithReferers(
+        url: String,
+        referers: List<String>,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val fixed = resolveUrl(url, mainUrl) ?: return false
+        if (isBadPlaybackUrl(fixed)) return false
+
+        return referers
+            .mapNotNull { it.takeIf { ref -> ref.isNotBlank() } }
+            .distinct()
+            .any { referer ->
+                runCatching {
+                    loadExtractor(fixed, referer, subtitleCallback, callback)
+                }.getOrDefault(false)
+            }
+    }
+
+    private fun extractWindowUrl(html: String, key: String): String? {
+        return Regex("""(?:window\.)?$key\s*=\s*["']([^"']+)["']""")
+            .find(html)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.decodeEscaped()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun extractMediaUrls(text: String, pageUrl: String): List<String> {
+        val cleaned = text.decodeEscaped()
+        val results = linkedSetOf<String>()
+
+        Regex("""https?://[^"'<>\s\\]+?\.(?:m3u8|mp4|webm|mkv)(?:\?[^"'<>\s\\]*)?""", RegexOption.IGNORE_CASE)
+            .findAll(cleaned)
+            .map { it.value }
+            .mapNotNull { resolveUrl(it, pageUrl) }
+            .filterNot { isBadPlaybackUrl(it) }
+            .forEach { results.add(it) }
+
+        Regex("""//[^"'<>\s\\]+?\.(?:m3u8|mp4|webm|mkv)(?:\?[^"'<>\s\\]*)?""", RegexOption.IGNORE_CASE)
+            .findAll(cleaned)
+            .map { "https:${it.value}" }
+            .mapNotNull { resolveUrl(it, pageUrl) }
+            .filterNot { isBadPlaybackUrl(it) }
+            .forEach { results.add(it) }
+
+        Regex("""(?:file|src|source|url|video|videoUrl|streamUrl|downloadURL)\s*[:=]\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+            .findAll(cleaned)
+            .mapNotNull { resolveUrl(it.groupValues[1], pageUrl) }
+            .filter { it.contains(".m3u8", true) || it.contains(".mp4", true) || it.contains(".webm", true) || it.contains(".mkv", true) }
+            .filterNot { isBadPlaybackUrl(it) }
+            .forEach { results.add(it) }
+
+        return results.toList()
+    }
+
+    private fun String.filterNotBad(): String? {
+        return takeIf { !isBadPlaybackUrl(it) }
     }
 
     private fun getExtractorReferer(iframeUrl: String, pageUrl: String): String {
