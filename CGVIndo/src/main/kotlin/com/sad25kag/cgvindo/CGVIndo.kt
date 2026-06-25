@@ -19,12 +19,8 @@ import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.newTvSeriesSearchResponse
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
-import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.loadExtractor
-import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -105,7 +101,6 @@ class CGVIndo : MainAPI() {
             return null
         }
         val document = response.document
-        val html = response.text.ifBlank { document.html() }.normalizeEscapes()
         val title = cleanTitle(
             document.selectFirst("h1.entry-title, h1.post-title, h1.title, h1, meta[property=og:title], title")
                 ?.let { if (it.tagName().equals("meta", true)) it.attr("content") else it.text() }
@@ -581,8 +576,7 @@ class CGVIndo : MainAPI() {
     private fun String.isTrailerOrSocialUrl(): Boolean {
         val lower = lowercase(Locale.ROOT)
         return listOf(
-            "youtube.com", "youtu.be", "youtube-nocookie.com", "googlevideo.com", "videoplayback",
-            "facebook.com", "twitter.com", "x.com/", "instagram.com", "tiktok.com", "telegram", "whatsapp"
+            "youtube.com", "youtu.be", "youtube-nocookie.com"
         ).any { lower.contains(it) }
     }
 
@@ -713,7 +707,7 @@ class CGVIndo : MainAPI() {
         private const val SERVER_VALUE_SELECTOR = "select option[value], .mobius option[value], .mirror option[value], .server option[value], .server-list option[value], [data-video], [data-embed], [data-url], [data-link], [data-src], [data-player], [data-iframe], [value]"
         private const val PLAYER_LINK_SELECTOR = "iframe[src], iframe[data-src], iframe[data-litespeed-src], embed[src], video[src], video source[src], source[src], a[href*='embed'], a[href*='player'], a[href*='/e/'], a[href*='/v/'], a[href*='/video'], a[href*='.m3u8'], a[href*='.mp4'], a[href*='/hls/'], a[href*='/stream/']"
         private val SERVER_VALUE_ATTRS = listOf("value", "data-video", "data-embed", "data-url", "data-link", "data-src", "data-player", "data-iframe", "src", "href")
-        private val BAD_URL_PARTS = listOf("/wp-content/", "/category/", "/genre/", "/tag/", "/author/", "/page/", "/quality/", "/country/", "/director/", "/cast/", "/actor/", "#", "javascript:", "mailto:", "api.whatsapp.com", "t.me/share")
-        private val BAD_MEDIA_PARTS = listOf("doubleclick", "googlesyndication", "google-analytics", "facebook.com", "twitter.com", "telegram", "whatsapp", "/ads", "banner")
+        private val BAD_URL_PARTS = listOf("/wp-content/", "/category/", "/genre/", "/tag/", "/author/", "/page/", "/quality/", "/country/", "/director/", "/cast/", "/actor/", "#", "javascript:", "mailto:")
+        private val BAD_MEDIA_PARTS = listOf("doubleclick", "googlesyndication", "google-analytics", "/ads", "banner")
     }
 }
