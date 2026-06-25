@@ -183,7 +183,7 @@ class BioskopKerenVidHide : ExtractorApi() {
         return runCatching { JSONObject(decrypted) }.getOrNull()
     }
 
-    private fun emitSources(
+    private suspend fun emitSources(
         json: JSONObject,
         iframeUrl: String,
         subtitleCallback: (SubtitleFile) -> Unit,
