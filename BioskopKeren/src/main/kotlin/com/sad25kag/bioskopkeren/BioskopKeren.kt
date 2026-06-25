@@ -54,6 +54,7 @@ class BioskopKeren : MainAPI() {
         "genre/fantasy/" to "Fantasy",
         "genre/history/" to "History",
         "genre/horror/" to "Horror",
+        "genre/music/" to "Music",
         "genre/mystery/" to "Mystery",
         "genre/romance/" to "Romance",
         "genre/science-fiction/" to "Science Fiction",
@@ -475,7 +476,7 @@ class BioskopKeren : MainAPI() {
     private fun hasNextPage(document: Document, page: Int): Boolean {
         return document.selectFirst(
             "a[rel=next], .pagination a:contains(Next), .pagination a:contains(Berikutnya), " +
-                ".page-numbers.next, .nav-links a[href*='/page/${page + 1}'], a[href*='/page/${page + 1}/']"
+                ".page-numbers.next, .nav-links a[href*='/page/${page + 1}'], a[href*='/page/${page + 1}/']" 
         ) != null
     }
 
@@ -536,12 +537,14 @@ class BioskopKeren : MainAPI() {
 
         val blockedPrefixes = listOf(
             "genre/", "country/", "quality/", "year/", "tag/", "director/", "cast/",
+            "author/",
             "blog/", "page/", "search", "feed", "wp-json", "wp-content", "wp-admin"
         )
 
         val blockedExact = setOf(
             "genre", "country", "quality", "year", "tag", "director", "cast",
-            "dmca", "pasang-iklan", "cara-download", "privacy", "contact", "terms", "about"
+            "dmca", "pasang-iklan", "cara-download", "privacy", "contact", "terms", "about",
+            "faq", "ads", "cara-install-vpn"
         )
 
         val lower = url.lowercase()
@@ -695,9 +698,9 @@ class BioskopKeren : MainAPI() {
             .replace("&amp;", "&")
             .replace("&#038;", "&")
             .replace("&quot;", "\"")
-            .replace("&#8217;", "’")
-            .replace("&#8211;", "–")
-            .replace("&#8212;", "—")
+            .replace("&#8217;", "'")
+            .replace("&#8211;", "\u2013")
+            .replace("&#8212;", "\u2014")
 
         return if (cleaned.contains("%3A%2F%2F", true) || cleaned.contains("%3C", true)) {
             runCatching { URLDecoder.decode(cleaned, "UTF-8") }.getOrDefault(cleaned)
@@ -719,7 +722,7 @@ class BioskopKeren : MainAPI() {
             .replace(Regex("""\s+Subtitle\s+Indonesia.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+Sub\s+Indo.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+Full\s+Movie.*$""", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("""\s+…$"""), "")
+            .replace(Regex("""\s+\u2026$"""), "")
             .replace(Regex("""\s+"""), " ")
             .trim()
     }
