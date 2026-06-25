@@ -1,7 +1,7 @@
 package com.sad25kag.bioskopkeren
 
 import android.content.Context
-import com.lagradost.cloudstream3.extractors.VidHidePro
+import com.lagradost.cloudstream3.extractors.VidhideExtractor
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 
@@ -13,7 +13,7 @@ class BioskopKerenPlugin : Plugin() {
     }
 }
 
-class BioskopKerenVidHide : VidHidePro() {
+class BioskopKerenVidHide : VidhideExtractor() {
     override var name = "VidHide"
     override var mainUrl = "https://vidhide.org"
 }

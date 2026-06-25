@@ -187,12 +187,72 @@ class BioskopKeren : MainAPI() {
         iframeUrls
             .filterNot { isBadPlaybackUrl(it) }
             .forEach { iframeUrl ->
-                found = runCatching {
-                    loadExtractor(iframeUrl, watchUrl, subtitleCallback, callback)
-                }.getOrDefault(false) || found
+                found = resolveIframeWithExtractor(
+                    iframeUrl,
+                    watchUrl,
+                    subtitleCallback,
+                    callback
+                ) || found
             }
 
         return found
+    }
+
+    private suspend fun resolveIframeWithExtractor(
+        iframeUrl: String,
+        pageUrl: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val extractorReferer = getExtractorReferer(iframeUrl, pageUrl)
+
+        if (runCatching {
+                loadExtractor(iframeUrl, extractorReferer, subtitleCallback, callback)
+            }.getOrDefault(false)
+        ) {
+            return true
+        }
+
+        if (extractorReferer != pageUrl && runCatching {
+                loadExtractor(iframeUrl, pageUrl, subtitleCallback, callback)
+            }.getOrDefault(false)
+        ) {
+            return true
+        }
+
+        val iframeDocument = runCatching {
+            app.get(iframeUrl, headers = siteHeaders, referer = extractorReferer, timeout = 30L).document
+        }.getOrNull() ?: return false
+
+        val nestedPlayers = collectPlayerUrls(iframeDocument, iframeUrl).toMutableList()
+        iframeDocument.select("#servers a[data-url], a[data-url*='/embed/'], form[action*='/embed/']")
+            .mapNotNull { element ->
+                listOf("data-url", "action", "href")
+                    .mapNotNull { attr -> element.attr(attr).takeIf { it.isNotBlank() } }
+                    .firstOrNull()
+            }
+            .mapNotNull { resolveUrl(it, iframeUrl) }
+            .filterNot { isBadPlaybackUrl(it) }
+            .forEach { nestedPlayers.add(it) }
+
+        var found = false
+        nestedPlayers.distinct().filter { it != iframeUrl }.forEach { nested ->
+            val nestedReferer = getExtractorReferer(nested, iframeUrl)
+            found = runCatching {
+                loadExtractor(nested, nestedReferer, subtitleCallback, callback)
+            }.getOrDefault(false) || found
+        }
+
+        return found
+    }
+
+    private fun getExtractorReferer(iframeUrl: String, pageUrl: String): String {
+        val host = runCatching { URI(iframeUrl).host.orEmpty().lowercase() }.getOrDefault("")
+        return if (host == "vidhide.org" || host.endsWith(".vidhide.org")) {
+            "$mainUrl/"
+        } else {
+            pageUrl
+        }
     }
 
     private fun parseCards(document: Document): List<SearchResponse> {
