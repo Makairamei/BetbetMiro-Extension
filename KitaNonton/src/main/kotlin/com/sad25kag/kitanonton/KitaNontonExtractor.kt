@@ -154,7 +154,7 @@ object KitaNontonExtractor {
         return found
     }
 
-    private fun emitDirect(
+    private suspend fun emitDirect(
         providerName: String,
         label: String,
         url: String,

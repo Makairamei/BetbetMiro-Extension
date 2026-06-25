@@ -60,7 +60,7 @@ object KitaNontonParser {
         }
     }
 
-    fun parseLoadResponse(api: MainAPI, url: String, document: Document): LoadResponse? {
+    suspend fun parseLoadResponse(api: MainAPI, url: String, document: Document): LoadResponse? {
         val title = cleanDetailTitle(
             document.selectFirst("h1.entry-title, h1.post-title, .single-title h1, .entry-header h1, h1")?.text()
                 ?: document.selectFirst("meta[property=og:title]")?.attr("content")
