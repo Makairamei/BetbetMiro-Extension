@@ -316,12 +316,17 @@ class BioskopKeren : MainAPI() {
             .mapNotNull { it.takeIf { ref -> ref.isNotBlank() } }
             .distinct()
             .any { referer ->
+                var emitted = false
+                val countingCallback: (ExtractorLink) -> Unit = { link ->
+                    emitted = true
+                    callback.invoke(link)
+                }
                 bkLog("tryExtractor url=$fixed host=${safeHost(fixed)} referer=$referer")
-                val result = runCatching {
-                    loadExtractor(fixed, referer, subtitleCallback, callback)
+                val loaded = runCatching {
+                    loadExtractor(fixed, referer, subtitleCallback, countingCallback)
                 }.getOrDefault(false)
-                bkLog("extractorResult url=$fixed host=${safeHost(fixed)} referer=$referer result=$result")
-                result
+                bkLog("extractorResult url=$fixed host=${safeHost(fixed)} referer=$referer loaded=$loaded emitted=$emitted")
+                emitted
             }
     }
 
