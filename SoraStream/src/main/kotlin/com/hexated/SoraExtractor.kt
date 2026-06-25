@@ -214,7 +214,7 @@ object SoraExtractor : SoraStream() {
             } ?: return@amap
             when {
                 source.startsWith("https://jeniusplay.com") -> {
-                    Jeniusplay2().getUrl(source, "$referer/", subtitleCallback, callback)
+                    loadExtractor(source, "$referer/", subtitleCallback, callback)
                 }
 
                 !source.contains("youtube") -> {
@@ -943,7 +943,7 @@ object SoraExtractor : SoraStream() {
         }
 
     }
-    
+
     suspend fun invokeRiveStream(
         id: Int? = null,
         season: Int? = null,
