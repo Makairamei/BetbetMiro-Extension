@@ -1,4 +1,4 @@
-package com.melongmovie
+package com.sad25kag.melongmovie
 
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
@@ -8,9 +8,8 @@ import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.extractors.loadExtractor
+import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.mainPageOf
-import com.lagradost.cloudstream3.mvvm.suspendSafeApiCall
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
@@ -111,9 +110,8 @@ class MelongMovieProvider : MainAPI() {
 
         // Evidence from HAR: detail page embeds vidhide.org/embed/* with Referer: http://139.59.189.160/.
         // CloudStream extractor resolves the encrypted vidhide -> s3.vidhide.org HLS API flow.
-        return suspendSafeApiCall {
-            loadExtractor(iframe, mainUrl, subtitleCallback, callback)
-        } ?: false
+        loadExtractor(iframe, mainUrl, subtitleCallback, callback)
+        return true
     }
 
     private fun buildPageUrl(path: String, page: Int): String {
