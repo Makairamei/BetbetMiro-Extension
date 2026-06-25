@@ -30,7 +30,7 @@ class BioskopKeren : MainAPI() {
     override var name = "BioskopKeren"
     override val hasMainPage = true
     override val hasQuickSearch = true
-    override val hasDownloadSupport = false
+    override val hasDownloadSupport = true
     override var lang = "id"
 
     override val supportedTypes = setOf(TvType.Movie)
@@ -114,9 +114,9 @@ class BioskopKeren : MainAPI() {
         val title = document.selectFirst(
             "h1.entry-title, .gmr-movie-data h1.entry-title, meta[property=og:title], meta[name=title]"
         )?.let { if (it.hasAttr("content")) it.attr("content") else it.text() }
-            ?.cleanTitle()
+            ?.cleanDetailTitle()
             ?.takeIf { it.isNotBlank() && !it.isUiText() }
-            ?: fixedUrl.slugTitle()
+            ?: fixedUrl.slugTitle().cleanDetailTitle()
 
         val poster = document.selectFirst(
             "meta[property=og:image], meta[name=twitter:image], " +
@@ -575,6 +575,7 @@ class BioskopKeren : MainAPI() {
         return decodeEscaped()
             .replace(Regex("""(?i)^\s*permalink\s+ke\s*:\s*"""), "")
             .replace(Regex("""(?i)^\s*permalink\s+to\s*:\s*"""), "")
+            .replace(Regex("""(?i)^\s*BIOSKOPKEREN\s*[-|:]\s*"""), "")
             .replace(Regex("""\s+-\s+BIOSKOPKEREN.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+\|\s+BIOSKOPKEREN.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""^Nonton\s+Film\s+""", RegexOption.IGNORE_CASE), "")
@@ -584,6 +585,13 @@ class BioskopKeren : MainAPI() {
             .replace(Regex("""\s+Sub\s+Indo.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+Full\s+Movie.*$""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s+…$"""), "")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+
+    private fun String.cleanDetailTitle(): String {
+        return cleanTitle()
+            .replace(Regex("""\s*\((?:19|20)\d{2}\)\s*$"""), "")
             .replace(Regex("""\s+"""), " ")
             .trim()
     }
