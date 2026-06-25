@@ -120,7 +120,7 @@ object SoraExtractor : SoraStream() {
         )
         val script = getAndUnpack(serverRes.text)
         val key = """key\s*="\s*(\d+)"""".toRegex().find(script)?.groupValues?.get(1) ?: return
-        serverRes.document.select("ul li").amap { el ->
+        for (el in serverRes.document.select("ul li")) {
             val server = el.attr("data-value")
             val encryptedData = app.get(
                 "$url?server=$server&_=$unixTimeMS",
@@ -179,13 +179,14 @@ object SoraExtractor : SoraStream() {
         val res = app.get(url ?: return, interceptor = if (hasCloudflare) interceptor else null)
         val referer = getBaseUrl(res.url)
         val document = res.document
-        document.select("ul#playeroptionsul > li").map {
+        val playerOptions = document.select("ul#playeroptionsul > li").map {
             Triple(
                 it.attr("data-post"),
                 it.attr("data-nume"),
                 it.attr("data-type")
             )
-        }.amap { (id, nume, type) ->
+        }
+        for ((id, nume, type) in playerOptions) {
             val json = app.post(
                 url = "$referer/wp-admin/admin-ajax.php",
                 data = mapOf(
@@ -195,37 +196,26 @@ object SoraExtractor : SoraStream() {
                 referer = url,
                 interceptor = if (hasCloudflare) interceptor else null
             ).text
-            val source = tryParseJson<ResponseHash>(json)?.let {
-                when {
-                    encrypt -> {
-                        val meta = tryParseJson<Map<String, String>>(it.embed_url)?.get("m")
-                            ?: return@amap
-                        val key = generateWpKey(it.key ?: return@amap, meta)
-                        AesHelper.cryptoAESHandler(
-                            it.embed_url,
-                            key.toByteArray(),
-                            false
-                        )?.fixUrlBloat()
-                    }
-
-                    fixIframe -> Jsoup.parse(it.embed_url).select("IFRAME").attr("SRC")
-                    else -> it.embed_url
-                }
-            } ?: return@amap
-            when {
-                source.startsWith("https://jeniusplay.com") -> {
-                    loadExtractor(source, "$referer/", subtitleCallback, callback)
+            val response = tryParseJson<ResponseHash>(json) ?: continue
+            val source = when {
+                encrypt -> {
+                    val meta = tryParseJson<Map<String, String>>(response.embed_url)?.get("m")
+                        ?: continue
+                    val key = generateWpKey(response.key ?: continue, meta)
+                    AesHelper.cryptoAESHandler(
+                        response.embed_url,
+                        key.toByteArray(),
+                        false
+                    )?.fixUrlBloat()
                 }
 
-                !source.contains("youtube") -> {
-                    loadExtractor(source, "$referer/", subtitleCallback, callback)
-                }
+                fixIframe -> Jsoup.parse(response.embed_url).select("IFRAME").attr("SRC")
+                else -> response.embed_url
+            } ?: continue
 
-                else -> {
-                    return@amap
-                }
+            if (!source.contains("youtube")) {
+                loadExtractor(source, "$referer/", subtitleCallback, callback)
             }
-
         }
     }
 
@@ -258,19 +248,19 @@ object SoraExtractor : SoraStream() {
             "$vidsrcccAPI/api/$tmdbId/servers?id=$tmdbId&type=tv&v=$v&vrf=$vrf&imdbId=$imdbId&season=$season&episode=$episode"
         }
 
-        app.get(serverUrl).parsedSafe<VidsrcccResponse>()?.data?.amap {
+        val serverData = app.get(serverUrl).parsedSafe<VidsrcccResponse>()?.data ?: return
+        for (server in serverData) {
             val sources =
-                app.get("$vidsrcccAPI/api/source/${it.hash}").parsedSafe<VidsrcccResult>()?.data
-                    ?: return@amap
+                app.get("$vidsrcccAPI/api/source/${server.hash}").parsedSafe<VidsrcccResult>()?.data
+                    ?: continue
 
             when {
-                it.name.equals("VidPlay") -> {
-
+                server.name.equals("VidPlay") -> {
                     callback.invoke(
                         newExtractorLink(
                             "VidPlay",
                             "VidPlay",
-                            sources.source ?: return@amap,
+                            sources.source ?: continue,
                             ExtractorLinkType.M3U8
                         ) {
                             this.referer = "$vidsrcccAPI/"
@@ -287,44 +277,41 @@ object SoraExtractor : SoraStream() {
                     }
                 }
 
-                it.name.equals("UpCloud") -> {
+                server.name.equals("UpCloud") -> {
+                    val sourceUrl = sources.source ?: continue
                     val scriptData = app.get(
-                        sources.source ?: return@amap,
+                        sourceUrl,
                         referer = "$vidsrcccAPI/"
                     ).document.selectFirst("script:containsData(source =)")?.data()
                     val iframe = Regex("source\\s*=\\s*\"([^\"]+)").find(
-                        scriptData ?: return@amap
-                    )?.groupValues?.get(1)?.fixUrlBloat()
+                        scriptData ?: continue
+                    )?.groupValues?.get(1)?.fixUrlBloat() ?: continue
 
                     val iframeRes =
-                        app.get(iframe ?: return@amap, referer = "https://lucky.vidbox.site/").text
+                        app.get(iframe, referer = "https://lucky.vidbox.site/").text
 
                     val id = iframe.substringAfterLast("/").substringBefore("?")
-                    val key = Regex("\\w{48}").find(iframeRes)?.groupValues?.get(0) ?: return@amap
+                    val key = Regex("\\w{48}").find(iframeRes)?.groupValues?.get(0) ?: continue
 
-                    app.get(
+                    val upcloudSources = app.get(
                         "${iframe.substringBeforeLast("/")}/getSources?id=$id&_k=$key",
                         headers = mapOf(
                             "X-Requested-With" to "XMLHttpRequest",
                         ),
                         referer = iframe
-                    ).parsedSafe<UpcloudResult>()?.sources?.amap file@{ source ->
+                    ).parsedSafe<UpcloudResult>()?.sources ?: continue
+                    for (source in upcloudSources) {
                         callback.invoke(
                             newExtractorLink(
                                 "UpCloud",
                                 "UpCloud",
-                                source.file ?: return@file,
+                                source.file ?: continue,
                                 ExtractorLinkType.M3U8
                             ) {
                                 this.referer = "$vidsrcccAPI/"
                             }
                         )
                     }
-
-                }
-
-                else -> {
-                    return@amap
                 }
             }
         }
@@ -346,36 +333,22 @@ object SoraExtractor : SoraStream() {
             "$vidSrcAPI/embed/tv?imdb=$imdbId&season=$season&episode=$episode"
         }
 
-        app.get(url).document.select(".serversList .server").amap { server ->
-            when {
-                server.text().equals("CloudStream Pro", ignoreCase = true) -> {
-                    val hash =
-                        app.get("$api/rcp/${server.attr("data-hash")}").text.substringAfter("/prorcp/")
-                            .substringBefore("'")
-                    val res = app.get("$api/prorcp/$hash").text
-                    val m3u8Link = Regex("https:.*\\.m3u8").find(res)?.value
+        for (server in app.get(url).document.select(".serversList .server")) {
+            if (server.text().equals("CloudStream Pro", ignoreCase = true)) {
+                val hash =
+                    app.get("$api/rcp/${server.attr("data-hash")}").text.substringAfter("/prorcp/")
+                        .substringBefore("'")
+                val res = app.get("$api/prorcp/$hash").text
+                val m3u8Link = Regex("https:.*\\.m3u8").find(res)?.value ?: continue
 
-                    callback.invoke(
-                        newExtractorLink(
-                            "Vidsrc",
-                            "Vidsrc",
-                            m3u8Link ?: return@amap,
-                            ExtractorLinkType.M3U8
-                        )
+                callback.invoke(
+                    newExtractorLink(
+                        "Vidsrc",
+                        "Vidsrc",
+                        m3u8Link,
+                        ExtractorLinkType.M3U8
                     )
-                }
-
-                server.text().equals("2Embed", ignoreCase = true) -> {
-                    return@amap
-                }
-
-                server.text().equals("Superembed", ignoreCase = true) -> {
-                    return@amap
-                }
-
-                else -> {
-                    return@amap
-                }
+                )
             }
         }
 
@@ -608,33 +581,33 @@ object SoraExtractor : SoraStream() {
             )
         ).text
 
-        tryParseJson<ArrayList<VidFastServers>>(res)?.filter { it.description?.contains("Original audio") == true }
-            ?.amapIndexed { index, server ->
-                val source =
-                    app.get("$vidfastAPI/$module/N8b-ENGCMKNz/${server.data}", referer = "$vidfastAPI/")
-                        .parsedSafe<VidFastSources>()
+        val vidfastServers = tryParseJson<ArrayList<VidFastServers>>(res)
+            ?.filter { it.description?.contains("Original audio") == true } ?: return
+        for ((index, server) in vidfastServers.withIndex()) {
+            val source =
+                app.get("$vidfastAPI/$module/N8b-ENGCMKNz/${server.data}", referer = "$vidfastAPI/")
+                    .parsedSafe<VidFastSources>()
 
-                callback.invoke(
-                    newExtractorLink(
-                        "Vidfast",
-                        "Vidfast [${server.name}]",
-                        source?.url ?: return@amapIndexed,
-                        INFER_TYPE
-                    )
+            callback.invoke(
+                newExtractorLink(
+                    "Vidfast",
+                    "Vidfast [${server.name}]",
+                    source?.url ?: continue,
+                    INFER_TYPE
                 )
+            )
 
-                if (index == 1) {
-                    source.tracks?.map { subtitle ->
-                        subtitleCallback.invoke(
-                            SubtitleFile(
-                                subtitle.label ?: return@map,
-                                subtitle.file ?: return@map
-                            )
+            if (index == 1) {
+                source.tracks?.map { subtitle ->
+                    subtitleCallback.invoke(
+                        SubtitleFile(
+                            subtitle.label ?: return@map,
+                            subtitle.file ?: return@map
                         )
-                    }
+                    )
                 }
-
             }
+        }
 
 
     }
