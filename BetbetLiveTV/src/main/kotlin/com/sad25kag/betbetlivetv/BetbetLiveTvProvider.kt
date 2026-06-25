@@ -669,6 +669,17 @@ class BetbetLiveTvProvider : MainAPI() {
                 }
             }
 
+
+            // Curated refinement: direct channel-logo sources for entries that previously fell back to text tiles.
+            // Scope: logo aliases only. Category/search/loadLinks are intentionally untouched.
+            putLogo("https://en.wikipedia.org/wiki/Special:Redirect/file/SelangorTVlogo.png", "SelangorTV.my", "Selangor TV", "SelangorTV")
+            putLogo("https://en.wikipedia.org/wiki/Special:Redirect/file/Mediacorp_Channel_U_2023.svg", "ChannelU.sg", "Channel U", "Mediacorp Channel U")
+            putLogo("https://en.wikipedia.org/wiki/Special:Redirect/file/BilyonaryoNewsChannel_Logo_-_Black_%282024%29.png", "BilyonaryoNewsChannel.ph", "Bilyonaryo News Channel", "Bilyonaryo News", "BNC")
+            putLogo("https://en.wikipedia.org/wiki/Special:Redirect/file/ALTV_Logo.png", "ALTV.th", "ALTV", "ALT TV")
+            putLogo("https://logo.clearbit.com/bnc.ph", "BNC.ph", "Bilyonaryo TV")
+            putLogo("https://logo.clearbit.com/dltv.ac.th", "DLTV.th", "DLTV", "DLTV 1", "DLTV1")
+            putLogo("https://logo.clearbit.com/filamtv.com", "FilAmTV.ph", "FilAmTV", "FilAmTV Network", "FilAm TV Network")
+
             // Curated official-domain logo fallbacks. These are only used when IPTV-org metadata has no logo.
             // They intentionally use channel/owner official domains, not CDN stream host favicons.
             putLogo("https://logo.clearbit.com/antvklik.com", "ANTV.id", "ANTV", "ANTV HD")
