@@ -72,7 +72,7 @@ internal object IndonesianSubtitleResolver {
         val seen = linkedSetOf<String>()
 
         fun add(label: String, rawUrl: String?) {
-            val url = rawUrl.decodeJsonUrl().toAbsoluteUrl(baseUrl) ?: return
+            val url = rawUrl.decodeJsonUrlOrNull().toAbsoluteUrl(baseUrl) ?: return
             if (!isSubtitleUrl(url) || !isIndonesianLabel(label)) return
             if (seen.add(url)) subtitles += SubtitleFile(INDONESIAN_LABEL, url)
         }
@@ -147,7 +147,7 @@ internal object IndonesianSubtitleResolver {
         return "$cleanUrl${joiner}autoplay=1"
     }
 
-    private fun String?.decodeJsonUrl(): String? {
+    private fun String?.decodeJsonUrlOrNull(): String? {
         val value = this?.trim().takeIf { !it.isNullOrBlank() } ?: return null
         return value
             .replace("\\/", "/")
