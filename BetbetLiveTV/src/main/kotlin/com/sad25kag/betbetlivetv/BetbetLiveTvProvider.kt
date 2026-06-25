@@ -333,7 +333,7 @@ class BetbetLiveTvProvider : MainAPI() {
                             name = cleanName,
                             rawName = rawName,
                             tvgId = tvgId,
-                            tvgLogo = logo.orEmpty(),
+                            tvgLogo = logo,
                             groupTitle = currentAttrs["group-title"].orEmpty(),
                             stream = LiveStream(
                                 streamUrl = line,
@@ -380,8 +380,10 @@ class BetbetLiveTvProvider : MainAPI() {
         cleanName: String,
         rawName: String,
         logoMap: Map<String, String>
-    ): String? {
-        explicitLogo.toSafePosterUrl()?.let { return it }
+    ): String {
+        val fallbackName = cleanName.ifBlank { rawName.cleanChannelName() }.ifBlank { tvgId.baseTvgId() }.ifBlank { "Live TV" }
+
+        explicitLogo.toLogoPosterUrl(fallbackName)?.let { return it }
 
         val candidates = buildList {
             add(tvgId)
@@ -396,11 +398,13 @@ class BetbetLiveTvProvider : MainAPI() {
             .distinct()
 
         for (candidate in candidates) {
-            logoMap[candidate]?.toSafePosterUrl()?.let { return it }
-            CURATED_LOGOS[candidate]?.toSafePosterUrl()?.let { return it }
+            logoMap[candidate]?.toLogoPosterUrl(fallbackName)?.let { return it }
+            CURATED_LOGOS[candidate]?.toLogoPosterUrl(fallbackName)?.let { return it }
         }
 
-        return null
+        // Last-resort poster is still channel-specific: a generated card with the channel name.
+        // This keeps every card visual non-blank without using random favicons or unrelated brand logos.
+        return fallbackLogoTile(fallbackName)
     }
 
     private fun parseAttributes(line: String): Map<String, String> {
@@ -466,7 +470,7 @@ class BetbetLiveTvProvider : MainAPI() {
         }
 
         val posterUrl: String? by lazy {
-            tvgLogo.toSafePosterUrl()
+            tvgLogo.toSafePosterUrl() ?: fallbackLogoTile(name)
         }
 
         fun safeStreams(): List<LiveStream> {
@@ -674,6 +678,8 @@ class BetbetLiveTvProvider : MainAPI() {
             putLogo("https://logo.clearbit.com/trans7.co.id", "Trans7.id", "Trans7")
             putLogo("https://logo.clearbit.com/transtv.co.id", "TransTV.id", "Trans TV")
             putLogo("https://logo.clearbit.com/cnbcindonesia.com", "CNBCIndonesia.id", "CNBC Indonesia")
+            putLogo("https://logo.clearbit.com/theindonesiachannel.com", "TheIndonesiaChannel.id", "The Indonesia Channel", "Indonesia Channel")
+            putLogo("https://logo.clearbit.com/garudatv.id", "GarudaTV.id", "Garuda TV")
             putLogo("https://logo.clearbit.com/daaitv.co.id", "DAAITV.id", "DAAI TV")
             putLogo("https://logo.clearbit.com/beritasatu.com", "BeritaSatu.id", "BeritaSatu", "BTV.id", "BTV")
             putLogo("https://logo.clearbit.com/tvonenews.com", "tvOne.id", "tvOne", "TV One")
@@ -693,6 +699,8 @@ class BetbetLiveTvProvider : MainAPI() {
             putLogo("https://logo.clearbit.com/tonton.com.my", "TV9.my", "TV9")
             putLogo("https://logo.clearbit.com/astroawani.com", "AstroAwani.my", "Astro Awani")
             putLogo("https://logo.clearbit.com/bernama.com", "BernamaTV.my", "Bernama TV")
+            putLogo("https://logo.clearbit.com/selangortv.my", "SelangorTV.my", "Selangor TV", "SelangorTV")
+            putLogo("https://logo.clearbit.com/maah.tv", "MaahTV.my", "Maah TV")
 
             putLogo("https://logo.clearbit.com/mediacorp.sg", "Channel8.sg", "Channel 8", "ChannelU.sg", "Channel U", "CNA.sg", "CNA")
             putLogo("https://logo.clearbit.com/meWatch.sg", "Channel5.sg", "Channel 5")
@@ -748,6 +756,32 @@ private fun String.toSafePosterUrl(): String? {
         clean.startsWith("http://", ignoreCase = true) || clean.startsWith("https://", ignoreCase = true) -> clean
         else -> null
     }
+}
+
+private fun String.toLogoPosterUrl(fallbackName: String): String? {
+    val clean = toSafePosterUrl() ?: return null
+    if (clean.contains("placehold.co", ignoreCase = true)) return clean
+
+    val source = clean
+        .removePrefix("https://")
+        .removePrefix("http://")
+        .trim()
+    if (source.isBlank()) return fallbackLogoTile(fallbackName)
+
+    val fallbackSource = fallbackLogoTile(fallbackName)
+        .removePrefix("https://")
+        .removePrefix("http://")
+
+    // Pad logos into a 16:9 canvas to avoid CloudStream card center-crop cutting large/wide TV logos.
+    // The default parameter gives a channel-name tile if the upstream logo URL fails.
+    return "https://images.weserv.nl/?url=${source.encodeUrl()}&w=640&h=360&fit=contain&output=png&bg=00000000&default=${fallbackSource.encodeUrl()}"
+}
+
+private fun fallbackLogoTile(channelName: String): String {
+    val label = channelName.cleanChannelName()
+        .ifBlank { "Live TV" }
+        .take(40)
+    return "https://placehold.co/640x360/111111/FFFFFF/png?text=${label.encodeUrl()}"
 }
 
 private fun String.extractBracketLabels(): String {
