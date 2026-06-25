@@ -1,4 +1,4 @@
-package com.movieku
+package com.sad25kag.movieku
 
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin

@@ -1,4 +1,4 @@
-package com.movieku
+package com.sad25kag.movieku
 
 import com.lagradost.cloudstream3.Episode
 import com.lagradost.cloudstream3.HomePageList
@@ -278,7 +278,7 @@ class MovieKuProvider : MainAPI() {
         return found
     }
 
-    private fun collectSubtitles(pageUrl: String, document: Document, subtitleCallback: (SubtitleFile) -> Unit) {
+    private suspend fun collectSubtitles(pageUrl: String, document: Document, subtitleCallback: (SubtitleFile) -> Unit) {
         document.select("track[src], a[href$=.srt], a[href$=.vtt]").forEach { el ->
             val url = absoluteUrl(el.attr("src").ifBlank { el.attr("href") }, pageUrl) ?: return@forEach
             val label = cleanText(el.attr("label").ifBlank { el.text().ifBlank { "Subtitle" } })
