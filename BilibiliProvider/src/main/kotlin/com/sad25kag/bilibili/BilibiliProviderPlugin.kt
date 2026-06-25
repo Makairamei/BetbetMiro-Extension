@@ -1,13 +1,13 @@
 package com.sad25kag.bilibili
 
+import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
-import android.content.Context
 
 @CloudstreamPlugin
 class BilibiliProviderPlugin: Plugin() {
     override fun load(context: Context) {
         BilibiliProvider.context = context
-        registerMainAPI(BilibiliProvider())
+        registerMainAPI(BilibiliIndonesiaProvider())
     }
 }
