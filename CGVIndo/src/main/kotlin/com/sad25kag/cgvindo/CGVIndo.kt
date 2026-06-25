@@ -23,6 +23,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -167,7 +168,7 @@ class CGVIndo : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val detailUrl = fixUrl(data, mainUrl) ?: return false
+        val startUrl = fixUrl(data, mainUrl) ?: return false
         val emitted = linkedSetOf<String>()
         val visited = linkedSetOf<String>()
         val queue = ArrayDeque<Pair<String, String>>()
@@ -175,7 +176,7 @@ class CGVIndo : MainAPI() {
 
         suspend fun emitDirect(url: String, referer: String, source: String = name): Boolean {
             val fixed = fixUrl(url, referer) ?: return false
-            if (!fixed.isPlayableMedia()) return false
+            if (!fixed.isPlayableMedia() || fixed.isTrailerOrSocialUrl()) return false
             val key = fixed.substringBefore("#")
             if (!emitted.add(key)) return false
             val headers = sourceHeaders(fixed, referer)
@@ -195,13 +196,33 @@ class CGVIndo : MainAPI() {
             return true
         }
 
-        suspend fun inspectPlayer(url: String, referer: String): List<String> {
+        suspend fun emitExtractor(url: String, referer: String): Boolean {
+            val fixed = fixUrl(url, referer) ?: return false
+            if (!fixed.isPlaybackCandidate()) return false
+            if (fixed.isPlayableMedia()) return emitDirect(fixed, referer, playerSourceName(fixed))
+            var localFound = false
+            try {
+                loadExtractor(fixed, referer, subtitleCallback) { link ->
+                    val key = link.url.substringBefore("#")
+                    if (emitted.add(key)) {
+                        localFound = true
+                        callback(link)
+                    }
+                }
+            } catch (_: Throwable) {
+            }
+            return localFound
+        }
+
+        suspend fun inspectPlayerPage(url: String, referer: String): List<String> {
             val fixed = fixUrl(url, referer) ?: return emptyList()
-            if (!visited.add(fixed)) return emptyList()
+            if (!fixed.isPlaybackCandidate() || !visited.add(fixed)) return emptyList()
             if (fixed.isPlayableMedia()) {
                 if (emitDirect(fixed, referer, playerSourceName(fixed))) found = true
                 return emptyList()
             }
+
+            if (emitExtractor(fixed, referer)) found = true
 
             val response = try {
                 app.get(fixed, headers = defaultHeaders + mapOf("Referer" to referer), referer = referer)
@@ -213,45 +234,54 @@ class CGVIndo : MainAPI() {
             collectSubtitles(document, fixed, subtitleCallback)
 
             val links = linkedSetOf<String>()
+            collectDynamicPlayerLinks(document, html, fixed).forEach { links.add(it) }
             collectByseEmbed(document, html, fixed).forEach { links.add(it) }
-            collectLinksFromHtml(html, fixed).forEach { links.add(it) }
-            return links.filter { it.isMuviproPlayerCandidate() || it.isPlayableMedia() }
+            return links.filter { it.isPlaybackCandidate() }
         }
 
-        // Evidence-based root: CGVIndo/Muvipro playback starts from AJAX
-        // action=muvipro_player_content. Do not scan the whole detail page as a
-        // generic media source because that path picks up trailer links.
-        val detailResponse = try {
-            app.get(detailUrl, headers = defaultHeaders, referer = mainUrl)
+        val response = try {
+            app.get(startUrl, headers = defaultHeaders, referer = mainUrl)
         } catch (_: Throwable) {
             return false
         }
-        val detailDocument = detailResponse.document
-        val detailHtml = detailResponse.text.ifBlank { detailDocument.html() }.normalizeEscapes()
-        collectSubtitles(detailDocument, detailUrl, subtitleCallback)
+        val document = response.document
+        val html = response.text.ifBlank { document.html() }.normalizeEscapes()
+        collectSubtitles(document, startUrl, subtitleCallback)
 
-        collectMuviproPlayers(detailDocument, detailUrl).forEach { queue.add(it to detailUrl) }
+        // Root source only: player/server blocks and Muvipro AJAX content.
+        // This intentionally avoids global detail-page URL scraping so trailer
+        // links never become playback candidates.
+        collectMuviproPlayers(document, startUrl).forEach { queue.add(it to startUrl) }
+        collectPlayerContainerLinks(document, startUrl).forEach { queue.add(it to startUrl) }
         if (queue.isEmpty()) {
-            collectByseEmbed(detailDocument, detailHtml, detailUrl).forEach { queue.add(it to detailUrl) }
+            collectByseEmbed(document, html, startUrl).forEach { queue.add(it to startUrl) }
         }
 
         var rounds = 0
-        while (queue.isNotEmpty() && rounds < 24) {
+        while (queue.isNotEmpty() && rounds < 42) {
             rounds++
             val (url, referer) = queue.removeFirst()
+            val fixed = fixUrl(url, referer) ?: continue
+            if (!fixed.isPlaybackCandidate()) continue
             when {
-                url.isPlayableMedia() -> if (emitDirect(url, referer, playerSourceName(url))) found = true
-                shouldFollow(url) -> inspectPlayer(url, referer).forEach { next ->
-                    when {
-                        next.isPlayableMedia() -> if (emitDirect(next, url, playerSourceName(next))) found = true
-                        shouldFollow(next) -> queue.add(next to url)
+                fixed.isPlayableMedia() -> if (emitDirect(fixed, referer, playerSourceName(fixed))) found = true
+                else -> {
+                    if (emitExtractor(fixed, referer)) found = true
+                    if (shouldFollow(fixed)) {
+                        inspectPlayerPage(fixed, referer).forEach { next ->
+                            val nextFixed = fixUrl(next, fixed) ?: return@forEach
+                            when {
+                                nextFixed.isPlayableMedia() -> if (emitDirect(nextFixed, fixed, playerSourceName(nextFixed))) found = true
+                                shouldFollow(nextFixed) -> queue.add(nextFixed to fixed)
+                                else -> if (emitExtractor(nextFixed, fixed)) found = true
+                            }
+                        }
                     }
                 }
             }
         }
         return found
     }
-
 
     private fun fixUrl(raw: String?, baseUrl: String = mainUrl): String? {
         val value = raw?.trim().orEmpty()
@@ -360,38 +390,56 @@ class CGVIndo : MainAPI() {
 
     private suspend fun collectMuviproPlayers(document: Document, pageUrl: String): List<String> {
         val links = linkedSetOf<String>()
-        val postId = document.selectFirst("article[id^=post-]")?.id()?.substringAfter("post-")
-            ?: Regex("""(?i)post[_-]?id['"]?\s*[:=]\s*['"]?(\d{2,})""").find(document.html())?.groupValues?.getOrNull(1)
+        val pageHtml = document.html().normalizeEscapes()
+        val postId = document.selectFirst("[data-post-id], [data-post_id], [data-post]")?.let { element ->
+            element.attr("data-post-id").ifBlank { element.attr("data-post_id").ifBlank { element.attr("data-post") } }
+        }?.takeIf { it.isNotBlank() }
+            ?: document.selectFirst("article[id^=post-]")?.id()?.substringAfter("post-")
+            ?: Regex("""(?i)(?:postid-|post-)(\d{2,})""").find(pageHtml)?.groupValues?.getOrNull(1)
+            ?: Regex("""(?i)(?:post[_-]?id|postId|post)['"]?\s*[:=]\s*['"]?(\d{2,})""").find(pageHtml)?.groupValues?.getOrNull(1)
             ?: return emptyList()
-        val tabs = document.select("a[href^=\"#p\"], button[href^=\"#p\"], [data-tab^=\"p\"]")
+
+        val tabs = document.select("a[href^='#p'], button[href^='#p'], [data-tab^='p'], [data-target^='#p']")
             .mapNotNull { element ->
-                element.attr("href").ifBlank { element.attr("data-tab") }.trim().removePrefix("#").takeIf { it.matches(Regex("""p\d+""")) }
+                element.attr("href")
+                    .ifBlank { element.attr("data-tab") }
+                    .ifBlank { element.attr("data-target") }
+                    .trim()
+                    .removePrefix("#")
+                    .takeIf { it.matches(Regex("""p\d+""")) }
             }
-            .ifEmpty { listOf("p1") }
+            .ifEmpty { (1..5).map { "p$it" } }
             .distinct()
+
         tabs.forEach { tab ->
             val body = try {
                 app.post(
                     "$mainUrl/wp-admin/admin-ajax.php",
                     data = mapOf("action" to "muvipro_player_content", "tab" to tab, "post_id" to postId),
-                    headers = defaultHeaders + mapOf("X-Requested-With" to "XMLHttpRequest", "Referer" to pageUrl),
+                    headers = defaultHeaders + mapOf(
+                        "X-Requested-With" to "XMLHttpRequest",
+                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                        "Accept" to "text/html, */*; q=0.01",
+                        "Referer" to pageUrl
+                    ),
                     referer = pageUrl
                 ).text
             } catch (_: Throwable) {
                 ""
             }
-            collectLinksFromHtml(body, pageUrl).forEach { links.add(it) }
+            collectDynamicPlayerLinks(Jsoup.parse(body.normalizeEscapes(), pageUrl), body, pageUrl).forEach { links.add(it) }
+            collectByseEmbed(Jsoup.parse(body.normalizeEscapes(), pageUrl), body, pageUrl).forEach { links.add(it) }
         }
-        return links.toList()
+        return links.filter { it.isPlaybackCandidate() }
     }
 
     private suspend fun collectByseEmbed(document: Document, html: String, baseUrl: String): List<String> {
         val links = linkedSetOf<String>()
         val embeds = linkedSetOf<String>()
-        document.select("iframe[src*='byseqekaho.com/e/'], a[href*='byseqekaho.com/e/']").forEach { element ->
-            fixUrl(element.attr("src").ifBlank { element.attr("href") }, baseUrl)?.let { embeds.add(it) }
+        document.select("iframe[src*='byseqekaho.com/e/'], iframe[data-src*='byseqekaho.com/e/'], a[href*='byseqekaho.com/e/']").forEach { element ->
+            fixUrl(element.attr("src").ifBlank { element.attr("data-src").ifBlank { element.attr("href") } }, baseUrl)?.let { embeds.add(it) }
         }
-        Regex("""https?://byseqekaho\.com/e/([A-Za-z0-9_-]+)[^'"\s<]*""").findAll(html).map { it.value }.forEach { embeds.add(it) }
+        Regex("""https?://byseqekaho\.com/e/([A-Za-z0-9_-]+)[^'"\s<]*""").findAll(html.normalizeEscapes()).map { it.value }.forEach { embeds.add(it) }
         embeds.forEach { embed ->
             val code = Regex("""/e/([A-Za-z0-9_-]+)""").find(embed)?.groupValues?.getOrNull(1) ?: return@forEach
             val details = try {
@@ -408,45 +456,82 @@ class CGVIndo : MainAPI() {
                 ?.let { links.add(it) }
             links.add(embed)
         }
-        return links.toList()
+        return links.filter { it.isPlaybackCandidate() }
     }
 
-    private fun collectLinksFromHtml(html: String, baseUrl: String): List<String> {
-        val normalized = html.normalizeEscapes()
+    private fun collectPlayerContainerLinks(document: Document, baseUrl: String): List<String> {
         val links = linkedSetOf<String>()
-        val parsed = runCatching { Jsoup.parse(normalized, baseUrl) }.getOrNull()
-        parsed?.let { collectLinks(it, normalized, baseUrl).forEach { link -> links.add(link) } }
-        Regex("""(?i)<(?:iframe|embed)[^>]+(?:src|data-src)=['"]([^'"]*(?:byseqekaho\.com|q8y5z)[^'"]*)['"]""").findAll(normalized)
-            .mapNotNull { fixUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
-        Regex("""(?i)['"]((?:https?:)?//[^'"]+?(?:\.m3u8|\.mp4|\.webm|/hls/[^'"]+|/stream/[^'"]+)(?:\?[^'"]*)?)['"]""").findAll(normalized)
-            .mapNotNull { fixUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
-        return links.filterNot { it.isNoiseUrl() }
-    }
-
-    private fun collectLinks(document: Document, html: String, baseUrl: String): List<String> {
-        val links = linkedSetOf<String>()
-        document.select(
-            "iframe[src*='byseqekaho.com'], iframe[data-src*='byseqekaho.com'], " +
-                "iframe[src*='q8y5z'], iframe[data-src*='q8y5z'], " +
-                "video[src], video source[src], source[src], " +
-                "a[href*='byseqekaho.com/e/'], a[href*='q8y5z'], " +
-                "a[href*='.m3u8'], a[href*='.mp4'], a[href*='/hls/'], a[href*='/stream/']"
-        ).forEach { element ->
-            val raw = element.attr("src").ifBlank { element.attr("data-src").ifBlank { element.attr("href") } }
-            fixUrl(raw, baseUrl)?.let { if (!it.isNoiseUrl()) links.add(it) }
+        document.select(PLAYER_CONTAINER_SELECTOR).forEach { container ->
+            val html = container.outerHtml().normalizeEscapes()
+            collectDynamicPlayerLinks(Jsoup.parse(html, baseUrl), html, baseUrl).forEach { links.add(it) }
         }
-        Regex("""(?i)<(?:iframe|embed)[^>]+(?:src|data-src)=['"]([^'"]*(?:byseqekaho\.com|q8y5z)[^'"]*)['"]""").findAll(html)
-            .mapNotNull { fixUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
-        Regex("""(?i)['"]((?:https?:)?//[^'"]+?(?:\.m3u8|\.mp4|\.webm|/hls/[^'"]+|/stream/[^'"]+)(?:\?[^'"]*)?)['"]""").findAll(html)
-            .mapNotNull { fixUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
-        Regex("""(?i)(?:file|source|src|url|link|hls|m3u8)\s*[:=]\s*['"]([^'"]+)['"]""").findAll(html)
+        return links.filter { it.isPlaybackCandidate() }
+    }
+
+    private fun collectDynamicPlayerLinks(document: Document, html: String, baseUrl: String): List<String> {
+        val links = linkedSetOf<String>()
+        val normalized = html.normalizeEscapes()
+
+        document.select(SERVER_VALUE_SELECTOR).forEach { element ->
+            SERVER_VALUE_ATTRS.forEach { attr ->
+                element.attr(attr).takeIf { it.isNotBlank() }?.let { value ->
+                    decodeServerValue(value, baseUrl).forEach { links.add(it) }
+                }
+            }
+        }
+
+        document.select(PLAYER_LINK_SELECTOR).forEach { element ->
+            val raw = element.attr("src")
+                .ifBlank { element.attr("data-src") }
+                .ifBlank { element.attr("data-litespeed-src") }
+                .ifBlank { element.attr("href") }
+            fixUrl(raw, baseUrl)?.let { if (it.isPlaybackCandidate()) links.add(it) }
+        }
+
+        Regex("""(?i)(?:file|source|src|url|link|hls|m3u8|embed_url|iframe_url|player_url)\s*[:=]\s*['"]([^'"]+)['"]""").findAll(normalized)
             .mapNotNull { decodePossibleUrl(it.groupValues[1], baseUrl) }
-            .filter { it.isMuviproPlayerCandidate() || it.isPlayableMedia() }
+            .filter { it.isPlaybackCandidate() }
             .forEach { links.add(it) }
-        Regex("""(?i)atob\(['"]([^'"]+)['"]\)""").findAll(html)
+
+        Regex("""(?i)['"]((?:https?:)?//[^'"]+?(?:\.m3u8|\.mp4|\.webm|/hls/[^'"]+|/stream/[^'"]+)(?:\?[^'"]*)?)['"]""").findAll(normalized)
+            .mapNotNull { fixUrl(it.groupValues[1], baseUrl) }
+            .filter { it.isPlaybackCandidate() }
+            .forEach { links.add(it) }
+
+        Regex("""(?i)atob\(['"]([^'"]+)['"]\)""").findAll(normalized)
             .mapNotNull { decodeBase64(it.groupValues[1]) }
-            .forEach { decoded -> collectLinks(Jsoup.parse(decoded, baseUrl), decoded, baseUrl).forEach { links.add(it) } }
-        return links.filterNot { it.isNoiseUrl() }.toList()
+            .forEach { decoded -> decodeServerValue(decoded, baseUrl).forEach { links.add(it) } }
+
+        return links.filter { it.isPlaybackCandidate() }.toList()
+    }
+
+    private fun decodeServerValue(raw: String, baseUrl: String): List<String> {
+        val links = linkedSetOf<String>()
+        val values = linkedSetOf<String>()
+
+        fun addValue(value: String?) {
+            val normalized = value?.trim().orEmpty().normalizeEscapes()
+            if (normalized.isNotBlank()) values.add(normalized)
+        }
+
+        addValue(raw)
+        addValue(runCatching { URLDecoder.decode(raw.normalizeEscapes(), "UTF-8") }.getOrNull())
+        addValue(decodeBase64(raw))
+        addValue(decodeBase64Url(raw))
+
+        values.toList().forEach { value ->
+            fixUrl(value, baseUrl)?.let { if (it.isPlaybackCandidate()) links.add(it) }
+            Regex("""(?i)(?:https?:)?//[^'"<>\s]+""").findAll(value)
+                .mapNotNull { fixUrl(it.value, baseUrl) }
+                .filter { it.isPlaybackCandidate() }
+                .forEach { links.add(it) }
+            if (value.contains("<iframe", true) || value.contains("<source", true) || value.contains("<video", true) || value.contains("<a ", true)) {
+                val parsed = runCatching { Jsoup.parse(value, baseUrl) }.getOrNull()
+                parsed?.let { collectDynamicPlayerLinks(it, value, baseUrl).forEach { link -> links.add(link) } }
+            }
+        }
+
+        return links.filter { it.isPlaybackCandidate() }.toList()
     }
 
     private fun collectSubtitles(document: Document, baseUrl: String, subtitleCallback: (SubtitleFile) -> Unit) {
@@ -476,14 +561,29 @@ class CGVIndo : MainAPI() {
     }
 
     private fun shouldFollow(url: String): Boolean {
-        val host = runCatching { URI(url).host.orEmpty().lowercase(Locale.ROOT).removePrefix("www.") }.getOrDefault("")
-        val ownHost = URI(mainUrl).host.orEmpty().lowercase(Locale.ROOT).removePrefix("www.")
-        return host == ownHost || host == "byseqekaho.com" || host.contains("q8y5z") || host.endsWith("owphbf24.com")
+        if (!url.isPlaybackCandidate() || url.isPlayableMedia()) return false
+        val lower = url.lowercase(Locale.ROOT)
+        return lower.startsWith("http://") || lower.startsWith("https://")
     }
 
-    private fun String.isMuviproPlayerCandidate(): Boolean {
+    private fun String.isPlaybackCandidate(): Boolean {
+        val lower = trim().lowercase(Locale.ROOT)
+        if (lower.isBlank() || isNoiseUrl() || isTrailerOrSocialUrl()) return false
+        return lower.startsWith("http://") ||
+            lower.startsWith("https://") ||
+            lower.startsWith("//") ||
+            lower.startsWith("/") ||
+            isPlayableMedia() ||
+            lower.contains("<iframe") ||
+            lower.contains("<video")
+    }
+
+    private fun String.isTrailerOrSocialUrl(): Boolean {
         val lower = lowercase(Locale.ROOT)
-        return lower.contains("byseqekaho.com/e/") || lower.contains("q8y5z") || lower.contains("owphbf24.com")
+        return listOf(
+            "youtube.com", "youtu.be", "youtube-nocookie.com", "googlevideo.com", "videoplayback",
+            "facebook.com", "twitter.com", "x.com/", "instagram.com", "tiktok.com", "telegram", "whatsapp"
+        ).any { lower.contains(it) }
     }
 
     private fun playerSourceName(url: String): String {
@@ -516,8 +616,18 @@ class CGVIndo : MainAPI() {
     }
 
     private fun decodeBase64(value: String): String? = runCatching {
-        String(Base64.getDecoder().decode(value), Charsets.UTF_8)
+        String(Base64.getDecoder().decode(value.padBase64()), Charsets.UTF_8)
     }.getOrNull()
+
+    private fun decodeBase64Url(value: String): String? = runCatching {
+        String(Base64.getUrlDecoder().decode(value.padBase64()), Charsets.UTF_8)
+    }.getOrNull()
+
+    private fun String.padBase64(): String {
+        val clean = trim().substringBefore("?").substringBefore("&")
+        val pad = (4 - clean.length % 4) % 4
+        return clean + "=".repeat(pad)
+    }
 
     private fun Element.imageUrl(baseUrl: String): String? {
         val raw = attr("data-src").ifBlank { attr("data-original").ifBlank { attr("data-lazy-src").ifBlank { attr("src") } } }
@@ -599,6 +709,10 @@ class CGVIndo : MainAPI() {
 
     companion object {
         private const val CARD_SELECTOR = "article.item-infinite, article.item, article.has-post-thumbnail, .gmr-box-content, .post, .movie, .film, .item, .card, .result, .thumbnail, .ml-item, .grid-item"
+        private const val PLAYER_CONTAINER_SELECTOR = "#player, #player2, #pembed, #video, .player, .muvipro-player, .movieplay, .gmr-player, .video-content, .embed-responsive, .server, .server-list, .mirror, .mobius, .tab-content, [id^=p], [class*=player], [class*=server], [class*=mirror]"
+        private const val SERVER_VALUE_SELECTOR = "select option[value], .mobius option[value], .mirror option[value], .server option[value], .server-list option[value], [data-video], [data-embed], [data-url], [data-link], [data-src], [data-player], [data-iframe], [value]"
+        private const val PLAYER_LINK_SELECTOR = "iframe[src], iframe[data-src], iframe[data-litespeed-src], embed[src], video[src], video source[src], source[src], a[href*='embed'], a[href*='player'], a[href*='/e/'], a[href*='/v/'], a[href*='/video'], a[href*='.m3u8'], a[href*='.mp4'], a[href*='/hls/'], a[href*='/stream/']"
+        private val SERVER_VALUE_ATTRS = listOf("value", "data-video", "data-embed", "data-url", "data-link", "data-src", "data-player", "data-iframe", "src", "href")
         private val BAD_URL_PARTS = listOf("/wp-content/", "/category/", "/genre/", "/tag/", "/author/", "/page/", "/quality/", "/country/", "/director/", "/cast/", "/actor/", "#", "javascript:", "mailto:", "api.whatsapp.com", "t.me/share")
         private val BAD_MEDIA_PARTS = listOf("doubleclick", "googlesyndication", "google-analytics", "facebook.com", "twitter.com", "telegram", "whatsapp", "/ads", "banner")
     }
