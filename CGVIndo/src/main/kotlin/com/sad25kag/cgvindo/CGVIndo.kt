@@ -39,7 +39,7 @@ class CGVIndo : MainAPI() {
     override var name = "CGVIndo"
     override val hasMainPage = true
     override val hasQuickSearch = true
-    override val hasDownloadSupport = false
+    override val hasDownloadSupport = true
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
@@ -118,9 +118,9 @@ class CGVIndo : MainAPI() {
             document.selectFirst("meta[property=og:description], meta[name=description], .entry-content p, .post-content p, .content p, .sinopsis, .synopsis, .description, .desc, [itemprop=description]")
                 ?.let { if (it.tagName().equals("meta", true)) it.attr("content") else it.text() }
         )
-        val tags = document.select("a[href*='/genre/'], a[href*='/category/'], a[href*='/tag/']")
+        val tags = document.select("a[href*='/genre/']")
             .map { cleanText(it.text()).substringBefore("(").trim() }
-            .filter { it.length in 2..40 }
+            .filter { it.length in 2..40 && !it.equals("Home", true) && !it.equals("Nonton", true) && !it.equals("Download", true) }
             .distinct()
             .take(20)
         val actors = document.select("a[href*='/cast/'], a[href*='/actor/'], a[href*='/stars/']")
