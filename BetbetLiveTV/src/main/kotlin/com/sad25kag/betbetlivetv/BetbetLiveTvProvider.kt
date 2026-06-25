@@ -120,16 +120,7 @@ class BetbetLiveTvProvider : MainAPI() {
             dataUrl = channel.toJson()
         ).apply {
             posterUrl = channel.posterUrl
-            plot = buildString {
-                append(channel.country.flag).append(" ").append(channel.country.name)
-                if (channel.groupTitle.isNotBlank()) append(" • ").append(channel.groupTitle)
-                append("\n")
-                append("Public live TV entry parsed at runtime from IPTV-org stream data.")
-                append("\n")
-                append("Available public HLS mirror(s): ").append(safeStreamCount)
-                append("\n\n")
-                append("No login, account sharing, private cookie, token bypass, DRM bypass, proxy, or restreaming is used.")
-            }
+            plot = "Public Live TV"
         }
     }
 
