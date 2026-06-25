@@ -1,33 +1,14 @@
 package com.sad25kag.cgvindo
 
-import com.lagradost.cloudstream3.Episode
-import com.lagradost.cloudstream3.HomePageResponse
-import com.lagradost.cloudstream3.LoadResponse
+import android.util.Base64
+import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
-import com.lagradost.cloudstream3.MainAPI
-import com.lagradost.cloudstream3.MainPageRequest
-import com.lagradost.cloudstream3.Score
-import com.lagradost.cloudstream3.SearchResponse
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.USER_AGENT
-import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.mainPageOf
-import com.lagradost.cloudstream3.newEpisode
-import com.lagradost.cloudstream3.newHomePageResponse
-import com.lagradost.cloudstream3.newMovieLoadResponse
-import com.lagradost.cloudstream3.newMovieSearchResponse
-import com.lagradost.cloudstream3.newTvSeriesLoadResponse
-import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
-import java.util.Base64
 import java.util.Locale
 
 class CGVIndo : MainAPI() {
@@ -39,11 +20,10 @@ class CGVIndo : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    private val defaultHeaders = mapOf(
+    private val headers = mapOf(
         "User-Agent" to USER_AGENT,
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control" to "no-cache",
         "Referer" to "$mainUrl/"
     )
 
@@ -58,13 +38,10 @@ class CGVIndo : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = pageUrl(request.data, page)
-        val document = try {
-            app.get(url, headers = defaultHeaders, referer = mainUrl).document
-        } catch (_: Throwable) {
-            return newHomePageResponse(request.name, emptyList(), hasNext = false)
-        }
-        val results = parseCards(document)
-        return newHomePageResponse(request.name, results, hasNext = hasNextPage(document, page))
+        val document = runCatching { app.get(url, headers = headers, referer = mainUrl).document }.getOrNull()
+            ?: return newHomePageResponse(request.name, emptyList(), hasNext = false)
+        val items = parseCards(document)
+        return newHomePageResponse(request.name, items, hasNext = hasNextPage(document, page))
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
@@ -73,34 +50,22 @@ class CGVIndo : MainAPI() {
         val keyword = query.trim()
         if (keyword.isBlank()) return emptyList()
         val encoded = URLEncoder.encode(keyword, "UTF-8")
-        val urls = listOf(
-            "$mainUrl/?s=$encoded",
-            "$mainUrl/search/$encoded/",
-            "$mainUrl/page/1/?s=$encoded"
-        )
-        val out = linkedMapOf<String, SearchResponse>()
-        urls.forEach { url ->
-            val document = try {
-                app.get(url, headers = defaultHeaders, referer = mainUrl).document
-            } catch (_: Throwable) {
-                return@forEach
-            }
+        val results = linkedMapOf<String, SearchResponse>()
+        listOf("$mainUrl/?s=$encoded", "$mainUrl/search/$encoded/", "$mainUrl/page/1/?s=$encoded").forEach { url ->
+            val document = runCatching { app.get(url, headers = headers, referer = mainUrl).document }.getOrNull() ?: return@forEach
             parseCards(document)
-                .filter { it.name.contains(keyword, ignoreCase = true) || it.url.contains(keyword.slug(), ignoreCase = true) }
-                .forEach { out[it.url.normalKey()] = it }
-            if (out.isNotEmpty()) return out.values.take(60)
+                .filter { it.name.contains(keyword, true) || it.url.contains(keyword.slug(), true) }
+                .forEach { results[it.url.normalKey()] = it }
+            if (results.isNotEmpty()) return results.values.take(60)
         }
-        return out.values.take(60)
+        return results.values.take(60)
     }
 
     override suspend fun load(url: String): LoadResponse? {
         val pageUrl = fixUrl(url, mainUrl) ?: return null
-        val response = try {
-            app.get(pageUrl, headers = defaultHeaders, referer = mainUrl)
-        } catch (_: Throwable) {
-            return null
-        }
+        val response = runCatching { app.get(pageUrl, headers = headers, referer = mainUrl) }.getOrNull() ?: return null
         val document = response.document
+        val text = cleanText(document.text())
         val title = cleanTitle(
             document.selectFirst("h1.entry-title, h1.post-title, h1.title, h1, meta[property=og:title], title")
                 ?.let { if (it.tagName().equals("meta", true)) it.attr("content") else it.text() }
@@ -108,12 +73,11 @@ class CGVIndo : MainAPI() {
         if (title.isBlank()) return null
 
         val poster = findPoster(document, pageUrl)
-        val text = cleanText(document.text())
-        val description = cleanDescription(
+        val plot = cleanDescription(
             document.selectFirst("meta[property=og:description], meta[name=description], .entry-content p, .post-content p, .content p, .sinopsis, .synopsis, .description, .desc, [itemprop=description]")
                 ?.let { if (it.tagName().equals("meta", true)) it.attr("content") else it.text() }
         )
-        val tags = document.select("a[href*='/genre/']")
+        val genres = document.select("a[href*='/genre/']")
             .map { cleanText(it.text()).substringBefore("(").trim() }
             .filter { it.length in 2..40 && !it.equals("Home", true) && !it.equals("Nonton", true) && !it.equals("Download", true) }
             .distinct()
@@ -136,10 +100,10 @@ class CGVIndo : MainAPI() {
             newTvSeriesLoadResponse(title, pageUrl, TvType.TvSeries, episodes) {
                 posterUrl = poster
                 this.year = year
-                plot = description
-                this.tags = tags
+                this.tags = genres
                 this.duration = duration ?: 0
                 this.recommendations = recommendations
+                this.plot = plot
                 addActors(actors)
                 rating?.let { this.score = Score.from10(it) }
             }
@@ -147,10 +111,10 @@ class CGVIndo : MainAPI() {
             newMovieLoadResponse(title, pageUrl, type, pageUrl) {
                 posterUrl = poster
                 this.year = year
-                plot = description
-                this.tags = tags
+                this.tags = genres
                 this.duration = duration ?: 0
                 this.recommendations = recommendations
+                this.plot = plot
                 addActors(actors)
                 rating?.let { this.score = Score.from10(it) }
             }
@@ -164,138 +128,174 @@ class CGVIndo : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val startUrl = fixUrl(data, mainUrl) ?: return false
-        val emitted = linkedSetOf<String>()
-        val visited = linkedSetOf<String>()
+        val startResponse = runCatching { app.get(startUrl, headers = headers, referer = mainUrl) }.getOrNull() ?: return false
+        val startDocument = startResponse.document
+        val startHtml = startResponse.text.ifBlank { startDocument.html() }.normalizeEscapes()
         val queue = ArrayDeque<Pair<String, String>>()
+        val seen = linkedSetOf<String>()
         var found = false
 
-        suspend fun emitDirect(url: String, referer: String, source: String = name): Boolean {
-            val fixed = fixUrl(url, referer) ?: return false
-            if (!fixed.isPlayableMedia() || fixed.isTrailerOrSocialUrl()) return false
-            val key = fixed.substringBefore("#")
-            if (!emitted.add(key)) return false
-            val headers = sourceHeaders(fixed, referer)
-            if (fixed.isM3u8()) {
-                val links = try { generateM3u8(source, fixed, referer, headers = headers) } catch (_: Throwable) { emptyList() }
-                links.forEach { link ->
-                    val linkKey = link.url.substringBefore("#")
-                    if (emitted.add(linkKey)) callback(link)
+        collectSubtitles(startDocument, startUrl, subtitleCallback)
+        collectMuviproPlayers(startDocument, startUrl).forEach { queue.add(it to startUrl) }
+        collectPlayerContainerLinks(startDocument, startUrl).forEach { queue.add(it to startUrl) }
+        if (queue.isEmpty()) collectKnownEmbeds(startDocument, startHtml, startUrl).forEach { queue.add(it to startUrl) }
+
+        var guard = 0
+        while (queue.isNotEmpty() && guard < 60) {
+            guard++
+            val (raw, referer) = queue.removeFirst()
+            val url = normalizeCandidate(raw, referer) ?: continue
+            if (!seen.add(url.normalKey()) || url.isTrailerUrl() || url.isNoiseUrl()) continue
+
+            if (url.startsWith(mainUrl, true)) {
+                val response = runCatching { app.get(url, headers = headers + mapOf("Referer" to referer), referer = referer) }.getOrNull() ?: continue
+                val document = response.document
+                val html = response.text.ifBlank { document.html() }.normalizeEscapes()
+                collectSubtitles(document, url, subtitleCallback)
+                collectPlayerLinks(document, html, url).forEach { queue.add(it to url) }
+                collectMuviproPlayers(document, url).forEach { queue.add(it to url) }
+            } else {
+                runCatching {
+                    loadExtractor(url, referer, subtitleCallback, callback)
+                    found = true
                 }
-                if (links.isNotEmpty()) return true
-            }
-            callback(newExtractorLink(source, source, fixed, if (fixed.isM3u8()) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
-                this.referer = referer
-                this.quality = qualityFromUrl(fixed)
-                this.headers = headers
-            })
-            return true
-        }
-
-        suspend fun emitExtractor(url: String, referer: String): Boolean {
-            val fixed = fixUrl(url, referer) ?: return false
-            if (!fixed.isPlaybackCandidate()) return false
-            if (fixed.isPlayableMedia()) return emitDirect(fixed, referer, playerSourceName(fixed))
-            var localFound = false
-            try {
-                loadExtractor(fixed, referer, subtitleCallback) { link ->
-                    val key = link.url.substringBefore("#")
-                    if (emitted.add(key)) {
-                        localFound = true
-                        callback(link)
-                    }
-                }
-            } catch (_: Throwable) {
-            }
-            return localFound
-        }
-
-        suspend fun inspectPlayerPage(url: String, referer: String): List<String> {
-            val fixed = fixUrl(url, referer) ?: return emptyList()
-            if (!fixed.isPlaybackCandidate() || !visited.add(fixed)) return emptyList()
-            if (fixed.isPlayableMedia()) {
-                if (emitDirect(fixed, referer, playerSourceName(fixed))) found = true
-                return emptyList()
-            }
-
-            if (emitExtractor(fixed, referer)) found = true
-
-            val response = try {
-                app.get(fixed, headers = defaultHeaders + mapOf("Referer" to referer), referer = referer)
-            } catch (_: Throwable) {
-                return emptyList()
-            }
-            val document = response.document
-            val html = response.text.ifBlank { document.html() }.normalizeEscapes()
-            collectSubtitles(document, fixed, subtitleCallback)
-
-            val links = linkedSetOf<String>()
-            collectDynamicPlayerLinks(document, html, fixed).forEach { links.add(it) }
-            collectByseEmbed(document, html, fixed).forEach { links.add(it) }
-            return links.filter { it.isPlaybackCandidate() }
-        }
-
-        val response = try {
-            app.get(startUrl, headers = defaultHeaders, referer = mainUrl)
-        } catch (_: Throwable) {
-            return false
-        }
-        val document = response.document
-        val html = response.text.ifBlank { document.html() }.normalizeEscapes()
-        collectSubtitles(document, startUrl, subtitleCallback)
-
-        // Root source only: player/server blocks and Muvipro AJAX content.
-        // This intentionally avoids global detail-page URL scraping so trailer
-        // links never become playback candidates.
-        collectMuviproPlayers(document, startUrl).forEach { queue.add(it to startUrl) }
-        collectPlayerContainerLinks(document, startUrl).forEach { queue.add(it to startUrl) }
-        if (queue.isEmpty()) {
-            collectByseEmbed(document, html, startUrl).forEach { queue.add(it to startUrl) }
-        }
-
-        var rounds = 0
-        while (queue.isNotEmpty() && rounds < 42) {
-            rounds++
-            val (url, referer) = queue.removeFirst()
-            val fixed = fixUrl(url, referer) ?: continue
-            if (!fixed.isPlaybackCandidate()) continue
-            when {
-                fixed.isPlayableMedia() -> if (emitDirect(fixed, referer, playerSourceName(fixed))) found = true
-                else -> {
-                    if (emitExtractor(fixed, referer)) found = true
-                    if (shouldFollow(fixed)) {
-                        inspectPlayerPage(fixed, referer).forEach { next ->
-                            val nextFixed = fixUrl(next, fixed) ?: return@forEach
-                            when {
-                                nextFixed.isPlayableMedia() -> if (emitDirect(nextFixed, fixed, playerSourceName(nextFixed))) found = true
-                                shouldFollow(nextFixed) -> queue.add(nextFixed to fixed)
-                                else -> if (emitExtractor(nextFixed, fixed)) found = true
-                            }
-                        }
-                    }
+                if (url.shouldFetchEmbedPage()) {
+                    val response = runCatching { app.get(url, headers = headers + mapOf("Referer" to referer), referer = referer) }.getOrNull()
+                    val document = response?.document
+                    val html = response?.text?.ifBlank { document?.html().orEmpty() }?.normalizeEscapes().orEmpty()
+                    if (document != null) collectPlayerLinks(document, html, url).forEach { queue.add(it to url) }
                 }
             }
         }
         return found
     }
 
+    private suspend fun collectMuviproPlayers(document: Document, pageUrl: String): List<String> {
+        val pageHtml = document.html().normalizeEscapes()
+        val postId = document.selectFirst("[data-post-id], [data-post_id], [data-post]")?.let {
+            it.attr("data-post-id").ifBlank { it.attr("data-post_id").ifBlank { it.attr("data-post") } }
+        }?.takeIf { it.isNotBlank() }
+            ?: document.selectFirst("article[id^=post-]")?.id()?.substringAfter("post-")
+            ?: Regex("""(?i)(?:postid-|post-)(\d{2,})""").find(pageHtml)?.groupValues?.getOrNull(1)
+            ?: Regex("""(?i)(?:post[_-]?id|postId|post)['"]?\s*[:=]\s*['"]?(\d{2,})""").find(pageHtml)?.groupValues?.getOrNull(1)
+            ?: return emptyList()
+
+        val tabs = document.select("a[href^='#p'], button[href^='#p'], [data-tab^='p'], [data-target^='#p']")
+            .mapNotNull { element ->
+                element.attr("href").ifBlank { element.attr("data-tab") }.ifBlank { element.attr("data-target") }
+                    .trim().removePrefix("#").takeIf { it.matches(Regex("""p\d+""")) }
+            }
+            .ifEmpty { (1..6).map { "p$it" } }
+            .distinct()
+
+        val links = linkedSetOf<String>()
+        tabs.forEach { tab ->
+            val body = runCatching {
+                app.post(
+                    "$mainUrl/wp-admin/admin-ajax.php",
+                    data = mapOf("action" to "muvipro_player_content", "tab" to tab, "post_id" to postId),
+                    headers = headers + mapOf(
+                        "X-Requested-With" to "XMLHttpRequest",
+                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                        "Accept" to "text/html, */*; q=0.01",
+                        "Referer" to pageUrl
+                    ),
+                    referer = pageUrl
+                ).text
+            }.getOrDefault("")
+            collectPlayerLinks(Jsoup.parse(body.normalizeEscapes(), pageUrl), body, pageUrl).forEach { links.add(it) }
+        }
+        return links.toList()
+    }
+
+    private fun collectPlayerContainerLinks(document: Document, baseUrl: String): List<String> {
+        val links = linkedSetOf<String>()
+        document.select(PLAYER_CONTAINER_SELECTOR).forEach { container ->
+            val html = container.outerHtml().normalizeEscapes()
+            collectPlayerLinks(Jsoup.parse(html, baseUrl), html, baseUrl).forEach { links.add(it) }
+        }
+        return links.toList()
+    }
+
+    private fun collectPlayerLinks(document: Document, html: String, baseUrl: String): List<String> {
+        val links = linkedSetOf<String>()
+        document.select(SERVER_VALUE_SELECTOR).forEach { element ->
+            SERVER_VALUE_ATTRS.forEach { attr ->
+                element.attr(attr).takeIf { it.isNotBlank() }?.let { value -> decodeServerValue(value, baseUrl).forEach { links.add(it) } }
+            }
+        }
+        document.select(PLAYER_LINK_SELECTOR).forEach { element ->
+            val raw = element.attr("src").ifBlank { element.attr("data-src") }.ifBlank { element.attr("data-litespeed-src") }.ifBlank { element.attr("href") }
+            normalizeCandidate(raw, baseUrl)?.let { links.add(it) }
+        }
+        Regex("""(?i)(?:file|source|src|url|link|hls|m3u8|embed_url|iframe_url|player_url)\s*[:=]\s*['"]([^'"]+)['"]""").findAll(html.normalizeEscapes())
+            .mapNotNull { normalizeCandidate(it.groupValues[1], baseUrl) }
+            .forEach { links.add(it) }
+        Regex("""(?i)atob\(['"]([^'"]+)['"]\)""").findAll(html.normalizeEscapes())
+            .mapNotNull { decodeBase64(it.groupValues[1]) }
+            .forEach { decoded -> decodeServerValue(decoded, baseUrl).forEach { links.add(it) } }
+        collectKnownEmbeds(document, html, baseUrl).forEach { links.add(it) }
+        return links.filterNot { it.isTrailerUrl() || it.isNoiseUrl() }.toList()
+    }
+
+    private fun collectKnownEmbeds(document: Document, html: String, baseUrl: String): List<String> {
+        val links = linkedSetOf<String>()
+        document.select("iframe[src], iframe[data-src], embed[src], video[src], source[src]").forEach { element ->
+            normalizeCandidate(element.attr("src").ifBlank { element.attr("data-src") }, baseUrl)?.let { links.add(it) }
+        }
+        Regex("""(?i)(?:https?:)?//[^'"<>\s]+""").findAll(html.normalizeEscapes())
+            .mapNotNull { normalizeCandidate(it.value, baseUrl) }
+            .filter { it.looksLikePlayerUrl() }
+            .forEach { links.add(it) }
+        return links.filterNot { it.isTrailerUrl() || it.isNoiseUrl() }.toList()
+    }
+
+    private fun decodeServerValue(raw: String, baseUrl: String): List<String> {
+        val values = linkedSetOf<String>()
+        fun add(value: String?) {
+            val v = value?.trim().orEmpty().normalizeEscapes()
+            if (v.isNotBlank()) values.add(v)
+        }
+        add(raw)
+        add(runCatching { URLDecoder.decode(raw.normalizeEscapes(), "UTF-8") }.getOrNull())
+        add(decodeBase64(raw))
+        val links = linkedSetOf<String>()
+        values.forEach { value ->
+            normalizeCandidate(value, baseUrl)?.let { links.add(it) }
+            Regex("""(?i)(?:https?:)?//[^'"<>\s]+""").findAll(value)
+                .mapNotNull { normalizeCandidate(it.value, baseUrl) }
+                .forEach { links.add(it) }
+            if (value.contains("<iframe", true) || value.contains("<video", true) || value.contains("<source", true)) {
+                collectPlayerLinks(Jsoup.parse(value, baseUrl), value, baseUrl).forEach { links.add(it) }
+            }
+        }
+        return links.filterNot { it.isTrailerUrl() || it.isNoiseUrl() }.toList()
+    }
+
+    private fun normalizeCandidate(raw: String?, baseUrl: String): String? {
+        val value = raw?.trim().orEmpty().normalizeEscapes()
+        if (value.isBlank() || value.startsWith("#") || value.startsWith("javascript:", true)) return null
+        if (value.contains("<iframe", true) || value.contains("<video", true) || value.contains("<source", true)) {
+            return Jsoup.parse(value, baseUrl).selectFirst("iframe[src], video[src], source[src]")
+                ?.let { normalizeCandidate(it.attr("src"), baseUrl) }
+        }
+        return fixUrl(value, baseUrl)
+    }
+
+    private fun decodeBase64(value: String): String? = runCatching {
+        val clean = value.trim().substringBefore("?").substringBefore("&")
+        val padded = clean + "=".repeat((4 - clean.length % 4) % 4)
+        String(Base64.decode(padded, Base64.DEFAULT), Charsets.UTF_8)
+    }.getOrNull()
+
     private fun fixUrl(raw: String?, baseUrl: String = mainUrl): String? {
-        val value = raw?.trim().orEmpty()
-            .normalizeEscapes()
-            .takeIf { it.isNotBlank() && !it.startsWith("#") && !it.startsWith("javascript:", true) }
-            ?: return null
+        val value = raw?.trim().orEmpty().normalizeEscapes()
+        if (value.isBlank() || value.startsWith("#") || value.startsWith("javascript:", true)) return null
         return when {
             value.startsWith("//") -> "http:$value"
             value.startsWith("http://", true) || value.startsWith("https://", true) -> value
             value.startsWith("/") -> mainUrl.trimEnd('/') + value
-            else -> {
-                val base = baseUrl.ifBlank { mainUrl }
-                val root = when {
-                    base.endsWith("/") -> base
-                    base.substringAfterLast('/', "").contains('.') -> base.substringBeforeLast('/') + "/"
-                    else -> base.trimEnd('/') + "/"
-                }
-                root + value
-            }
+            else -> baseUrl.substringBeforeLast('/', baseUrl).trimEnd('/') + "/" + value
         }
     }
 
@@ -306,34 +306,22 @@ class CGVIndo : MainAPI() {
 
     private fun parseCards(document: Document): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
-
-        // Evidence HAR: archive/category pages use Muvipro article.item-infinite cards.
-        document.select("article.item-infinite, article.item, article.has-post-thumbnail").forEach {
-            it.toSearchResult()?.let { item -> results[item.url.normalKey()] = item }
-        }
-
-        if (results.size < 4) {
-            document.select(CARD_SELECTOR).forEach { it.toSearchResult()?.let { item -> results[item.url.normalKey()] = item } }
-        }
-
+        document.select(CARD_SELECTOR).forEach { it.toSearchResult()?.let { item -> results[item.url.normalKey()] = item } }
         return results.values.take(80)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val anchor = if (`is`("a[href]")) this else selectFirst("h1 a[href], h2 a[href], h3 a[href], .entry-title a[href], .title a[href], .name a[href], a[href][title], a[href]") ?: return null
+        val anchor = if (tagName().equals("a", true) && hasAttr("href")) this else selectFirst("h1 a[href], h2 a[href], h3 a[href], .entry-title a[href], .title a[href], .name a[href], a[href][title], a[href]") ?: return null
         val href = fixUrl(anchor.attr("href"), mainUrl) ?: return null
         if (!isContentUrl(href)) return null
         val container = anchor.closest("article.item-infinite, article.item, article.has-post-thumbnail, article, .post, .movie, .film, .item, .card, .result, .thumbnail, li, div") ?: this
-        val mainAnchor = container.selectFirst("h1.entry-title a[href], h2.entry-title a[href], h3.entry-title a[href], a[rel=bookmark][href], .content-thumbnail a[href]") ?: anchor
-        val contentHref = fixUrl(mainAnchor.attr("href"), mainUrl) ?: href
-        if (!isContentUrl(contentHref)) return null
-        val image = container.selectFirst(".content-thumbnail img[data-src], .content-thumbnail img[src], img[data-src], img[data-original], img[data-lazy-src], img[src], img[srcset]") ?: mainAnchor.selectFirst("img")
+        val image = container.selectFirst(".content-thumbnail img[data-src], .content-thumbnail img[src], img[data-src], img[data-original], img[data-lazy-src], img[src], img[srcset]") ?: anchor.selectFirst("img")
         val title = listOf(
             container.selectFirst("h1.entry-title, h2.entry-title, h3.entry-title, h1, h2, h3, .post-title, .title, .name")?.text(),
-            mainAnchor.attr("title").substringAfter("Permalink ke:").trim(),
+            anchor.attr("title").substringAfter("Permalink ke:").trim(),
             image?.attr("alt"),
-            mainAnchor.text(),
-            titleFromUrl(contentHref)
+            anchor.text(),
+            titleFromUrl(href)
         ).firstOrNull { isUsefulTitle(it) }?.let { cleanTitle(it) } ?: return null
         val poster = image?.imageUrl(mainUrl) ?: container.styleImage(mainUrl)
         val text = cleanText(container.text())
@@ -343,13 +331,13 @@ class CGVIndo : MainAPI() {
         val score = container.selectFirst(".rating, .score, .imdb, .vote")?.text()?.replace(",", ".")
             ?.let { Regex("""\d+(?:\.\d+)?""").find(it)?.value?.toDoubleOrNull() }
         return if (type == TvType.TvSeries) {
-            newTvSeriesSearchResponse(title, contentHref, TvType.TvSeries) {
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 posterUrl = poster
                 this.year = year
                 score?.let { this.score = Score.from10(it) }
             }
         } else {
-            newMovieSearchResponse(title, contentHref, type) {
+            newMovieSearchResponse(title, href, type) {
                 posterUrl = poster
                 this.year = year
                 score?.let { this.score = Score.from10(it) }
@@ -362,11 +350,8 @@ class CGVIndo : MainAPI() {
         document.select(".episode-list a[href], .episodes a[href], .episodios a[href], .season a[href], .seasons a[href], [class*=episode] a[href], [id*=episode] a[href]")
             .forEachIndexed { index, element ->
                 val href = fixUrl(element.attr("href"), baseUrl) ?: return@forEachIndexed
-                if (!isContentUrl(href) && !href.contains("episode", true) && !href.contains("eps", true)) return@forEachIndexed
                 val label = cleanText(element.text()).ifBlank { titleFromUrl(href) }
-                val ep = Regex("""(?i)(?:episode|eps|ep)\s*[-:.]?\s*(\d{1,4})""").find("$label $href")?.groupValues?.getOrNull(1)?.toIntOrNull()
-                    ?: Regex("""(?i)(?:/|-)(\d{1,4})(?:/|$)""").find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                    ?: (index + 1)
+                val ep = Regex("""(?i)(?:episode|eps|ep)\s*[-:.]?\s*(\d{1,4})""").find("$label $href")?.groupValues?.getOrNull(1)?.toIntOrNull() ?: (index + 1)
                 episodes[href] = newEpisode(href) {
                     name = label.ifBlank { "Episode $ep" }
                     episode = ep
@@ -382,153 +367,6 @@ class CGVIndo : MainAPI() {
             .filterNot { it.url.normalKey() == currentUrl.normalKey() }
             .take(16)
 
-
-    private suspend fun collectMuviproPlayers(document: Document, pageUrl: String): List<String> {
-        val links = linkedSetOf<String>()
-        val pageHtml = document.html().normalizeEscapes()
-        val postId = document.selectFirst("[data-post-id], [data-post_id], [data-post]")?.let { element ->
-            element.attr("data-post-id").ifBlank { element.attr("data-post_id").ifBlank { element.attr("data-post") } }
-        }?.takeIf { it.isNotBlank() }
-            ?: document.selectFirst("article[id^=post-]")?.id()?.substringAfter("post-")
-            ?: Regex("""(?i)(?:postid-|post-)(\d{2,})""").find(pageHtml)?.groupValues?.getOrNull(1)
-            ?: Regex("""(?i)(?:post[_-]?id|postId|post)['"]?\s*[:=]\s*['"]?(\d{2,})""").find(pageHtml)?.groupValues?.getOrNull(1)
-            ?: return emptyList()
-
-        val tabs = document.select("a[href^='#p'], button[href^='#p'], [data-tab^='p'], [data-target^='#p']")
-            .mapNotNull { element ->
-                element.attr("href")
-                    .ifBlank { element.attr("data-tab") }
-                    .ifBlank { element.attr("data-target") }
-                    .trim()
-                    .removePrefix("#")
-                    .takeIf { it.matches(Regex("""p\d+""")) }
-            }
-            .ifEmpty { (1..5).map { "p$it" } }
-            .distinct()
-
-        tabs.forEach { tab ->
-            val body = try {
-                app.post(
-                    "$mainUrl/wp-admin/admin-ajax.php",
-                    data = mapOf("action" to "muvipro_player_content", "tab" to tab, "post_id" to postId),
-                    headers = defaultHeaders + mapOf(
-                        "X-Requested-With" to "XMLHttpRequest",
-                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
-                        "Accept" to "text/html, */*; q=0.01",
-                        "Referer" to pageUrl
-                    ),
-                    referer = pageUrl
-                ).text
-            } catch (_: Throwable) {
-                ""
-            }
-            collectDynamicPlayerLinks(Jsoup.parse(body.normalizeEscapes(), pageUrl), body, pageUrl).forEach { links.add(it) }
-            collectByseEmbed(Jsoup.parse(body.normalizeEscapes(), pageUrl), body, pageUrl).forEach { links.add(it) }
-        }
-        return links.filter { it.isPlaybackCandidate() }
-    }
-
-    private suspend fun collectByseEmbed(document: Document, html: String, baseUrl: String): List<String> {
-        val links = linkedSetOf<String>()
-        val embeds = linkedSetOf<String>()
-        document.select("iframe[src*='byseqekaho.com/e/'], iframe[data-src*='byseqekaho.com/e/'], a[href*='byseqekaho.com/e/']").forEach { element ->
-            fixUrl(element.attr("src").ifBlank { element.attr("data-src").ifBlank { element.attr("href") } }, baseUrl)?.let { embeds.add(it) }
-        }
-        Regex("""https?://byseqekaho\.com/e/([A-Za-z0-9_-]+)[^'"\s<]*""").findAll(html.normalizeEscapes()).map { it.value }.forEach { embeds.add(it) }
-        embeds.forEach { embed ->
-            val code = Regex("""/e/([A-Za-z0-9_-]+)""").find(embed)?.groupValues?.getOrNull(1) ?: return@forEach
-            val details = try {
-                app.get(
-                    "https://byseqekaho.com/api/videos/$code/embed/details",
-                    headers = mapOf("User-Agent" to USER_AGENT, "Accept" to "application/json", "Referer" to embed),
-                    referer = embed
-                ).text
-            } catch (_: Throwable) {
-                ""
-            }
-            Regex("""\"embed_frame_url\"\s*:\s*\"([^\"]+)\"""").find(details)?.groupValues?.getOrNull(1)
-                ?.normalizeEscapes()
-                ?.let { links.add(it) }
-            links.add(embed)
-        }
-        return links.filter { it.isPlaybackCandidate() }
-    }
-
-    private fun collectPlayerContainerLinks(document: Document, baseUrl: String): List<String> {
-        val links = linkedSetOf<String>()
-        document.select(PLAYER_CONTAINER_SELECTOR).forEach { container ->
-            val html = container.outerHtml().normalizeEscapes()
-            collectDynamicPlayerLinks(Jsoup.parse(html, baseUrl), html, baseUrl).forEach { links.add(it) }
-        }
-        return links.filter { it.isPlaybackCandidate() }
-    }
-
-    private fun collectDynamicPlayerLinks(document: Document, html: String, baseUrl: String): List<String> {
-        val links = linkedSetOf<String>()
-        val normalized = html.normalizeEscapes()
-
-        document.select(SERVER_VALUE_SELECTOR).forEach { element ->
-            SERVER_VALUE_ATTRS.forEach { attr ->
-                element.attr(attr).takeIf { it.isNotBlank() }?.let { value ->
-                    decodeServerValue(value, baseUrl).forEach { links.add(it) }
-                }
-            }
-        }
-
-        document.select(PLAYER_LINK_SELECTOR).forEach { element ->
-            val raw = element.attr("src")
-                .ifBlank { element.attr("data-src") }
-                .ifBlank { element.attr("data-litespeed-src") }
-                .ifBlank { element.attr("href") }
-            fixUrl(raw, baseUrl)?.let { if (it.isPlaybackCandidate()) links.add(it) }
-        }
-
-        Regex("""(?i)(?:file|source|src|url|link|hls|m3u8|embed_url|iframe_url|player_url)\s*[:=]\s*['"]([^'"]+)['"]""").findAll(normalized)
-            .mapNotNull { decodePossibleUrl(it.groupValues[1], baseUrl) }
-            .filter { it.isPlaybackCandidate() }
-            .forEach { links.add(it) }
-
-        Regex("""(?i)['"]((?:https?:)?//[^'"]+?(?:\.m3u8|\.mp4|\.webm|/hls/[^'"]+|/stream/[^'"]+)(?:\?[^'"]*)?)['"]""").findAll(normalized)
-            .mapNotNull { fixUrl(it.groupValues[1], baseUrl) }
-            .filter { it.isPlaybackCandidate() }
-            .forEach { links.add(it) }
-
-        Regex("""(?i)atob\(['"]([^'"]+)['"]\)""").findAll(normalized)
-            .mapNotNull { decodeBase64(it.groupValues[1]) }
-            .forEach { decoded -> decodeServerValue(decoded, baseUrl).forEach { links.add(it) } }
-
-        return links.filter { it.isPlaybackCandidate() }.toList()
-    }
-
-    private fun decodeServerValue(raw: String, baseUrl: String): List<String> {
-        val links = linkedSetOf<String>()
-        val values = linkedSetOf<String>()
-
-        fun addValue(value: String?) {
-            val normalized = value?.trim().orEmpty().normalizeEscapes()
-            if (normalized.isNotBlank()) values.add(normalized)
-        }
-
-        addValue(raw)
-        addValue(runCatching { URLDecoder.decode(raw.normalizeEscapes(), "UTF-8") }.getOrNull())
-        addValue(decodeBase64(raw))
-        addValue(decodeBase64Url(raw))
-
-        values.toList().forEach { value ->
-            fixUrl(value, baseUrl)?.let { if (it.isPlaybackCandidate()) links.add(it) }
-            Regex("""(?i)(?:https?:)?//[^'"<>\s]+""").findAll(value)
-                .mapNotNull { fixUrl(it.value, baseUrl) }
-                .filter { it.isPlaybackCandidate() }
-                .forEach { links.add(it) }
-            if (value.contains("<iframe", true) || value.contains("<source", true) || value.contains("<video", true) || value.contains("<a ", true)) {
-                val parsed = runCatching { Jsoup.parse(value, baseUrl) }.getOrNull()
-                parsed?.let { collectDynamicPlayerLinks(it, value, baseUrl).forEach { link -> links.add(link) } }
-            }
-        }
-
-        return links.filter { it.isPlaybackCandidate() }.toList()
-    }
-
     private fun collectSubtitles(document: Document, baseUrl: String, subtitleCallback: (SubtitleFile) -> Unit) {
         document.select("track[src], a[href$=.srt], a[href$=.vtt]").forEach { element ->
             val url = fixUrl(element.attr("src").ifBlank { element.attr("href") }, baseUrl) ?: return@forEach
@@ -543,8 +381,7 @@ class CGVIndo : MainAPI() {
             ?: document.body()?.styleImage(baseUrl)
 
     private fun hasNextPage(document: Document, page: Int): Boolean =
-        document.select("a.next, .next a, a[rel=next], .pagination a, .nav-links a")
-            .any { link -> cleanText(link.text()).contains("next", true) || link.attr("href").contains("/page/${page + 1}") }
+        document.select("a.next, .next a, a[rel=next], .pagination a, .nav-links a").any { it.attr("href").contains("/page/${page + 1}") || cleanText(it.text()).contains("next", true) }
 
     private fun inferType(url: String, title: String, text: String, episodeCount: Int): TvType {
         val haystack = "$url $title $text".lowercase(Locale.ROOT)
@@ -555,82 +392,19 @@ class CGVIndo : MainAPI() {
         }
     }
 
-    private fun shouldFollow(url: String): Boolean {
-        if (!url.isPlaybackCandidate() || url.isPlayableMedia()) return false
-        val lower = url.lowercase(Locale.ROOT)
-        return lower.startsWith("http://") || lower.startsWith("https://")
-    }
+    private fun String.looksLikePlayerUrl(): Boolean = contains("/embed", true) || contains("/e/", true) || contains("/video", true) || contains(".m3u8", true) || contains(".mp4", true)
 
-    private fun String.isPlaybackCandidate(): Boolean {
-        val lower = trim().lowercase(Locale.ROOT)
-        if (lower.isBlank() || isNoiseUrl() || isTrailerOrSocialUrl()) return false
-        return lower.startsWith("http://") ||
-            lower.startsWith("https://") ||
-            lower.startsWith("//") ||
-            lower.startsWith("/") ||
-            isPlayableMedia() ||
-            lower.contains("<iframe") ||
-            lower.contains("<video")
-    }
+    private fun String.shouldFetchEmbedPage(): Boolean = contains("byseqekaho", true) || contains("q8y5z", true) || contains("/embed", true) || contains("/e/", true)
 
-    private fun String.isTrailerOrSocialUrl(): Boolean {
+    private fun String.isTrailerUrl(): Boolean {
         val lower = lowercase(Locale.ROOT)
-        return listOf(
-            "youtube.com", "youtu.be", "youtube-nocookie.com"
-        ).any { lower.contains(it) }
+        return lower.contains("youtube.com") || lower.contains("youtu.be") || lower.contains("youtube-nocookie.com")
     }
 
-    private fun playerSourceName(url: String): String {
-        val host = runCatching { URI(url).host.orEmpty().removePrefix("www.") }.getOrDefault("")
-        return when {
-            host.contains("byseqekaho", true) -> "Byse"
-            host.contains("q8y5z", true) -> "q8y5z"
-            host.contains("sprintcdn", true) || host.contains("owphbf24", true) -> "Byse HLS"
-            else -> name
-        }
+    private fun String.isNoiseUrl(): Boolean {
+        val lower = lowercase(Locale.ROOT)
+        return BAD_MEDIA_PARTS.any { lower.contains(it) } || lower.endsWith(".css") || lower.endsWith(".js") || lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".gif") || lower.endsWith(".webp")
     }
-
-    private fun sourceHeaders(url: String, referer: String): Map<String, String> = buildMap {
-        put("User-Agent", USER_AGENT)
-        put("Accept", "*/*")
-        put("Referer", referer)
-        put("Origin", originOf(referer))
-        if (url.contains("167.71.211.231")) put("Host", "167.71.211.231")
-    }
-
-    private fun originOf(url: String): String = runCatching {
-        val uri = URI(url)
-        "${uri.scheme}://${uri.host}${if (uri.port > 0) ":${uri.port}" else ""}"
-    }.getOrDefault(mainUrl)
-
-    private fun decodePossibleUrl(raw: String, baseUrl: String): String? {
-        val unescaped = raw.normalizeEscapes()
-        val candidates = listOf(unescaped, runCatching { URLDecoder.decode(unescaped, "UTF-8") }.getOrDefault(unescaped))
-        return candidates.firstNotNullOfOrNull { fixUrl(it, baseUrl) }
-    }
-
-    private fun decodeBase64(value: String): String? = runCatching {
-        String(Base64.getDecoder().decode(value.padBase64()), Charsets.UTF_8)
-    }.getOrNull()
-
-    private fun decodeBase64Url(value: String): String? = runCatching {
-        String(Base64.getUrlDecoder().decode(value.padBase64()), Charsets.UTF_8)
-    }.getOrNull()
-
-    private fun String.padBase64(): String {
-        val clean = trim().substringBefore("?").substringBefore("&")
-        val pad = (4 - clean.length % 4) % 4
-        return clean + "=".repeat(pad)
-    }
-
-    private fun Element.imageUrl(baseUrl: String): String? {
-        val raw = attr("data-src").ifBlank { attr("data-original").ifBlank { attr("data-lazy-src").ifBlank { attr("src") } } }
-            .ifBlank { attr("srcset").substringBefore(" ") }
-        return fixUrl(raw, baseUrl)
-    }
-
-    private fun Element.styleImage(baseUrl: String): String? =
-        Regex("""url\(['"]?([^'")]+)['"]?\)""").find(attr("style"))?.groupValues?.getOrNull(1)?.let { fixUrl(it, baseUrl) }
 
     private fun isContentUrl(url: String): Boolean {
         val lower = url.lowercase(Locale.ROOT)
@@ -642,64 +416,30 @@ class CGVIndo : MainAPI() {
     private fun isUsefulTitle(value: String?): Boolean {
         val title = cleanText(value)
         if (title.length < 2) return false
-        val lower = title.lowercase(Locale.ROOT)
-        return lower !in setOf("home", "beranda", "nonton", "download", "play", "trailer", "more", "selengkapnya")
+        return title.lowercase(Locale.ROOT) !in setOf("home", "beranda", "nonton", "download", "play", "trailer", "more", "selengkapnya")
     }
 
-    private fun titleFromUrl(url: String): String = url.substringBeforeLast('/').substringAfterLast('/')
-        .replace('-', ' ')
-        .replace('_', ' ')
-        .trim()
-        .split(" ")
-        .joinToString(" ") { word -> word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() } }
+    private fun Element.imageUrl(baseUrl: String): String? {
+        val raw = attr("data-src").ifBlank { attr("data-original").ifBlank { attr("data-lazy-src").ifBlank { attr("src") } } }
+            .ifBlank { attr("srcset").substringBefore(" ") }
+        return fixUrl(raw, baseUrl)
+    }
 
-    private fun cleanTitle(value: String?): String = cleanText(value)
-        .replace(Regex("""(?i)\s*[-|]\s*(CGVIndo|Nonton|Streaming).*$"""), "")
-        .replace(Regex("""(?i)^nonton\s+"""), "")
-        .trim()
+    private fun Element.styleImage(baseUrl: String): String? = Regex("""url\(['"]?([^'")]+)['"]?\)""").find(attr("style"))?.groupValues?.getOrNull(1)?.let { fixUrl(it, baseUrl) }
 
-    private fun cleanDescription(value: String?): String? = cleanText(value)
-        .takeIf { it.length >= 12 }
+    private fun titleFromUrl(url: String): String = url.substringBeforeLast('/').substringAfterLast('/').replace('-', ' ').replace('_', ' ').trim().split(" ").joinToString(" ") { it.replaceFirstChar { c -> if (c.isLowerCase()) c.titlecase(Locale.ROOT) else c.toString() } }
 
-    private fun cleanText(value: String?): String = value.orEmpty()
-        .replace('\u00a0', ' ')
-        .replace(Regex("""\s+"""), " ")
-        .trim()
+    private fun cleanTitle(value: String?): String = cleanText(value).replace(Regex("""(?i)\s*[-|]\s*(CGVIndo|Nonton|Streaming).*$"""), "").replace(Regex("""(?i)^nonton\s+"""), "").trim()
 
-    private fun String.slug(): String = lowercase(Locale.ROOT)
-        .replace(Regex("""[^a-z0-9]+"""), "-")
-        .trim('-')
+    private fun cleanDescription(value: String?): String? = cleanText(value).takeIf { it.length >= 12 }
+
+    private fun cleanText(value: String?): String = value.orEmpty().replace('\u00a0', ' ').replace(Regex("""\s+"""), " ").trim()
+
+    private fun String.slug(): String = lowercase(Locale.ROOT).replace(Regex("""[^a-z0-9]+"""), "-").trim('-')
 
     private fun String.normalKey(): String = trim().trimEnd('/').lowercase(Locale.ROOT)
 
-    private fun String.normalizeEscapes(): String = this
-        .replace("\\/", "/")
-        .replace("&amp;", "&")
-        .replace("&#038;", "&")
-        .replace("&quot;", "\"")
-        .replace("&#039;", "'")
-
-    private fun String.isM3u8(): Boolean = contains(".m3u8", ignoreCase = true)
-
-    private fun String.isPlayableMedia(): Boolean {
-        val lower = lowercase(Locale.ROOT)
-        return lower.contains(".m3u8") || lower.contains(".mp4") || lower.contains(".webm") || lower.contains("/hls/") || lower.contains("/stream/")
-    }
-
-    private fun String.isNoiseUrl(): Boolean {
-        val lower = lowercase(Locale.ROOT)
-        return BAD_MEDIA_PARTS.any { lower.contains(it) } || lower.endsWith(".css") || lower.endsWith(".js") || lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".gif") || lower.endsWith(".webp")
-    }
-
-    private fun qualityFromUrl(url: String): Int = when {
-        url.contains("2160") || url.contains("4k", true) -> Qualities.P2160.value
-        url.contains("1440") -> Qualities.P1440.value
-        url.contains("1080") -> Qualities.P1080.value
-        url.contains("720") -> Qualities.P720.value
-        url.contains("480") -> Qualities.P480.value
-        url.contains("360") -> Qualities.P360.value
-        else -> Qualities.Unknown.value
-    }
+    private fun String.normalizeEscapes(): String = replace("\\/", "/").replace("&amp;", "&").replace("&#038;", "&").replace("&quot;", "\"").replace("&#039;", "'")
 
     companion object {
         private const val CARD_SELECTOR = "article.item-infinite, article.item, article.has-post-thumbnail, .gmr-box-content, .post, .movie, .film, .item, .card, .result, .thumbnail, .ml-item, .grid-item"
