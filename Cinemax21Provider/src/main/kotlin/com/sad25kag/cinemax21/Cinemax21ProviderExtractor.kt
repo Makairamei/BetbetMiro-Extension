@@ -14,7 +14,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.net.URLEncoder
 import org.json.JSONObject 
@@ -76,8 +75,12 @@ object Cinemax21ProviderExtractor : Cinemax21Provider() {
 
                 val metrix = parseCinemaxJson<AesData>(json.embed_url)?.m ?: return@amap
                 val password = createIdlixKey(json.key, metrix)
-                val decrypted = AesHelper.cryptoAESHandler(json.embed_url, password.toByteArray(), false)
-                    ?.fixUrlBloat() ?: return@amap
+                val decrypted = AesHelper.cryptoAESHandler(
+                    json.embed_url,
+                    password.toByteArray(),
+                    false,
+                    "AES/CBC/PKCS5Padding"
+                )?.fixUrlBloat() ?: return@amap
 
                 when {
                     decrypted.contains("jeniusplay", true) -> {
@@ -250,11 +253,14 @@ object Cinemax21ProviderExtractor : Cinemax21Provider() {
             }
         }
     }
+
+
     suspend fun invokeGomovies(
         title: String? = null, year: Int? = null, season: Int? = null, episode: Int? = null, callback: (ExtractorLink) -> Unit,
     ) {
         invokeGpress(title, year, season, episode, callback, Cinemax21Provider.gomoviesAPI, "Gomovies", base64Decode("X3NtUWFtQlFzRVRi"), base64Decode("X3NCV2NxYlRCTWFU"))
     }
+
     private suspend fun invokeGpress(
         title: String? = null, year: Int? = null, season: Int? = null, episode: Int? = null,
         callback: (ExtractorLink) -> Unit, api: String, name: String, mediaSelector: String, episodeSelector: String,
@@ -275,7 +281,7 @@ object Cinemax21ProviderExtractor : Cinemax21Provider() {
         val (serverId, episodeId) = if (season == null) url.substringAfterLast("/") to "0" else url.substringBeforeLast("/").substringAfterLast("/") to url.substringAfterLast("/").substringBefore("-")
         val serverRes = app.get("$api/user/servers/$serverId?ep=$episodeId", cookies = cookies, headers = headers)
         val script = getAndUnpack(serverRes.text)
-        val key = """key\s*="\s*(\d+)"""".toRegex().find(script)?.groupValues?.get(1) ?: return
+        val key = """key\s*=\"\s*(\d+)\""".toRegex().find(script)?.groupValues?.get(1) ?: return
         serverRes.document.select("ul li").amap { el ->
             val server = el.attr("data-value")
             val encryptedData = app.get("$url?server=$server&_=$unixTimeMS", cookies = cookies, referer = url, headers = headers).text
@@ -286,8 +292,7 @@ object Cinemax21ProviderExtractor : Cinemax21Provider() {
             }
         }
     }
-    
-    
+
     suspend fun invokeVidsrccc(
         tmdbId: Int?, imdbId: String?, season: Int?, episode: Int?,
         subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit,
@@ -333,6 +338,7 @@ object Cinemax21ProviderExtractor : Cinemax21Provider() {
         }
     }
 
+
     suspend fun invokeXprime(
         tmdbId: Int?, title: String? = null, year: Int? = null, season: Int?, episode: Int?,
         subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit,
@@ -376,6 +382,7 @@ object Cinemax21ProviderExtractor : Cinemax21Provider() {
         val subRes = app.get("${Cinemax21Provider.mappleAPI}/api/subtitles?id=$tmdbId&mediaType=$mediaType${if (season == null) "" else "&season=1&episode=1"}", referer = "${Cinemax21Provider.mappleAPI}/").text
         parseCinemaxJson<ArrayList<MappleSubtitle>>(subRes)?.map { subtitle -> subtitleCallback.invoke(newSubtitleFile(subtitle.display ?: "", fixUrl(subtitle.url ?: return@map, Cinemax21Provider.mappleAPI))) }
     }
+
     suspend fun invokeVidlink(
         tmdbId: Int?, season: Int?, episode: Int?, callback: (ExtractorLink) -> Unit,
     ) {
@@ -445,6 +452,7 @@ object Cinemax21ProviderExtractor : Cinemax21Provider() {
         }
     }
 
+
     suspend fun invokeVidrock(
         tmdbId: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit, subAPI: String = "https://sub.vdrk.site"
     ) {
@@ -467,7 +475,7 @@ object Cinemax21ProviderExtractor : Cinemax21Provider() {
             subtitleCallback.invoke(newSubtitleFile(subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim() ?: return@map, subtitle.file ?: return@map))
         }
     }
-   
+
     suspend fun invokeCinemaOS(
         imdbId: String? = null, tmdbId: Int? = null, title: String? = null, season: Int? = null, episode: Int? = null, year: Int? = null,
         callback: (ExtractorLink) -> Unit, subtitleCallback: (SubtitleFile) -> Unit,
