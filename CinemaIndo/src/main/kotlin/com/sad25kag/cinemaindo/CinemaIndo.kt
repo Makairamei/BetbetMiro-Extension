@@ -30,6 +30,7 @@ import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.mozilla.javascript.Context
 import org.json.JSONObject
 import java.net.URI
 import java.net.URLDecoder
@@ -58,6 +59,9 @@ class CinemaIndo : MainAPI() {
         "Cache-Control" to "no-cache"
     )
 
+    private var securePathScriptSource: String? = null
+    private var cryptoJsSource: String? = null
+
     override val mainPage = mainPageOf(
         "$mainUrl/latest" to "Film Terbaru",
         "$mainUrl/series/top-series-today" to "Top Series Today",
@@ -70,8 +74,7 @@ class CinemaIndo : MainAPI() {
         "$mainUrl/genre/comedy" to "Comedy",
         "$mainUrl/country/south-korea" to "South Korea",
         "$mainUrl/country/thailand" to "Thailand",
-        "$mainUrl/country/india" to "India",
-        "$mainUrl/release" to "Release"
+        "$mainUrl/country/india" to "India"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -307,25 +310,33 @@ class CinemaIndo : MainAPI() {
 
     private val knownCategoryApiTokens = mapOf(
         "/api/movies/list/latest" to "OUdYQjdQUWM0MENjT2ZWTFF0Sm1CQTM4TGtBMno3U21RenBDUnRDT20wbz06OmNjOTYwOTIxZWQxM2VhMzlkNjM2MTA1NTgwYjU0Mzg4",
-        "/api/movies/list/release" to "OUdYQjdQUWM0MENjT2ZWTFF0Sm1CQTM4TGtBMno3U21RenBDUnRDT20wbz06OmNjOTYwOTIxZWQxM2VhMzlkNjM2MTA1NTgwYjU0Mzg4",
         "/api/series/list/top-series-today" to "Tk80TjM3bWtjQU5ENitIdTJMKzlVeGtza3VEMzQ3TUI1ajJBbkJoNTg4N0RYeThxN0xvQTE3cXhoTHpVc0o1azo6ZjRhZDNjOTE2MmQzYmYyNjIwZDkzMTU5Yjc5OWJhMTc",
+        "/api/series/list/latest" to "UUdjK3d6Umc3MnVJTjF1SlVQeGZ5U2JpUHdFMmZzQ29ualJrNndvMFFzUT06OmJhMTQ4NmUzNDE3YjE4OWZlNzAxYTA1N2MyYTNhOTQw",
         "/api/series/list/latest-series" to "UUdjK3d6Umc3MnVJTjF1SlVQeGZ5U2JpUHdFMmZzQ29ualJrNndvMFFzUT06OmJhMTQ4NmUzNDE3YjE4OWZlNzAxYTA1N2MyYTNhOTQw",
         "/api/series/status/complete" to "UVVRNURFL0hocXh2T0UwZzVlNlpSQjM3ZmRMaXY3ZWw0VXBaYkV0MnBlUT06Ojc1MTYxODJiZWI0MzdiNjI2YzBjZDViMmZmOTcxMWMz"
     )
 
     private suspend fun fetchCategoryApi(document: Document, pageUrl: String, page: Int): CategoryApiPage? {
         val apiPath = categoryApiPath(document, pageUrl) ?: return null
-        val token = knownCategoryApiTokens[apiPath] ?: return null
-        val apiUrl = "$mainUrl/api/v1/${token}/${page.coerceAtLeast(1)}"
+        val token = resolveCategoryToken(apiPath) ?: return null
+        val apiUrl = "$mainUrl/api/v1/${urlEncodePath(token)}/${page.coerceAtLeast(1)}"
         val body = runCatching {
-            app.get(apiUrl, headers = headers + mapOf("Referer" to pageUrl), referer = pageUrl).text
+            app.get(
+                apiUrl,
+                headers = headers + mapOf(
+                    "Accept" to "application/json, text/plain, */*",
+                    "X-Requested-With" to "XMLHttpRequest",
+                    "Referer" to pageUrl
+                ),
+                referer = pageUrl
+            ).text
         }.getOrNull().orEmpty()
 
         val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
         if (!json.optString("status").equals("success", true)) return null
 
         val items = mutableListOf<SearchResponse>()
-        val results = json.optJSONArray("results") ?: return CategoryApiPage(emptyList(), hasNext = false)
+        val results = json.optJSONArray("results") ?: json.optJSONArray("data") ?: return CategoryApiPage(emptyList(), hasNext = false)
         for (index in 0 until results.length()) {
             val item = results.optJSONObject(index) ?: continue
             apiItemToSearchResult(item)?.let { items.add(it) }
@@ -334,6 +345,81 @@ class CinemaIndo : MainAPI() {
         val currentPage = json.optInt("current_page", page)
         val maxPage = json.optInt("max_page", currentPage)
         return CategoryApiPage(items.distinctBy { it.url }, hasNext = currentPage < maxPage)
+    }
+
+    private suspend fun resolveCategoryToken(apiPath: String): String? {
+        knownCategoryApiTokens[apiPath]?.let { return it }
+        return generateCategoryToken(apiPath)
+    }
+
+    private suspend fun generateCategoryToken(apiPath: String): String? {
+        val crypto = cryptoJsSource ?: runCatching {
+            app.get(
+                "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js",
+                headers = headers + mapOf("Referer" to "$mainUrl/"),
+                referer = mainUrl
+            ).text
+        }.getOrNull()?.also { cryptoJsSource = it } ?: return null
+
+        val script = securePathScriptSource ?: runCatching {
+            app.get(
+                "$mainUrl/assets/js/script.min.js?v=1.1.7",
+                headers = headers + mapOf("Referer" to "$mainUrl/"),
+                referer = mainUrl
+            ).text
+        }.getOrNull()?.also { securePathScriptSource = it } ?: return null
+
+        return runCatching {
+            val context = Context.enter()
+            try {
+                context.optimizationLevel = -1
+                val scope = context.initStandardObjects()
+                val bootstrap = """
+                    var window = this;
+                    var navigator = {};
+                    var location = { href: '$mainUrl/' };
+                    var localStorage = { getItem:function(){return null;}, setItem:function(){}, removeItem:function(){} };
+                    var __noopEl = {
+                        addEventListener:function(){},
+                        removeEventListener:function(){},
+                        contains:function(){return false;},
+                        appendChild:function(){},
+                        insertAdjacentHTML:function(){},
+                        setAttribute:function(){},
+                        getAttribute:function(){return '';},
+                        querySelector:function(){return __noopEl;},
+                        querySelectorAll:function(){return [];},
+                        classList:{ add:function(){}, remove:function(){}, toggle:function(){} },
+                        style:{}, innerHTML:'', textContent:'', value:''
+                    };
+                    var document = {
+                        addEventListener:function(){},
+                        querySelector:function(){return __noopEl;},
+                        querySelectorAll:function(){return [];},
+                        getElementById:function(){return __noopEl;},
+                        body:__noopEl,
+                        documentElement:__noopEl
+                    };
+                """.trimIndent()
+                context.evaluateString(scope, bootstrap, "cinemaindo-bootstrap", 1, null)
+                context.evaluateString(scope, crypto, "crypto-js", 1, null)
+                context.evaluateString(scope, script, "cinemaindo-script", 1, null)
+                val result = context.evaluateString(
+                    scope,
+                    "typeof securePath === 'function' ? securePath(${JSONObject.quote(apiPath)}) : null;",
+                    "cinemaindo-securePath",
+                    1,
+                    null
+                )
+                Context.toString(result).takeIf { it.isNotBlank() && !it.equals("null", true) && !it.equals("undefined", true) }
+            } finally {
+                Context.exit()
+            }
+        }.getOrNull()
+    }
+
+    private fun urlEncodePath(value: String): String {
+        return URLEncoder.encode(value, "UTF-8").replace("+", "%20")
     }
 
     private fun categoryApiPath(document: Document, pageUrl: String): String? {
@@ -359,7 +445,7 @@ class CinemaIndo : MainAPI() {
             path == "latest" -> "/api/movies/list/latest"
             path == "release" -> "/api/movies/list/release"
             path == "series/top-series-today" -> "/api/series/list/top-series-today"
-            path == "series/latest" -> "/api/series/list/latest-series"
+            path == "series/latest" -> "/api/series/list/latest"
             path == "series/complete" -> "/api/series/status/complete"
             path.startsWith("genre/") -> "/api/movies/filter/genre/${path.substringAfter("genre/")}"
             path.startsWith("country/") -> "/api/movies/filter/country/${path.substringAfter("country/")}"
