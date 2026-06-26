@@ -434,7 +434,8 @@ class CGVIndo : MainAPI() {
             } catch (_: Throwable) {
                 ""
             }
-            val normalized = body.normalizeEscapes()
+            val normalized = body.unwrapAjaxHtml()
+            if (normalized.isBlank()) return@forEach
             val parsed = Jsoup.parse(normalized, pageUrl)
             collectLinksFromHtml(normalized, pageUrl).forEach { links.add(it) }
             collectByseEmbed(parsed, normalized, pageUrl).forEach { links.add(it) }
@@ -486,8 +487,10 @@ class CGVIndo : MainAPI() {
             .mapNotNull { decodePossibleUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
         Regex("""(?i)['"]((?:https?:)?//[^'"]+?(?:\.m3u8|\.mp4|\.webm|/hls/[^'"]+|/stream/[^'"]+|/embed/[^'"]+|/player/[^'"]+|/e/[^'"]+|/v/[^'"]+)(?:\?[^'"]*)?)['"]""").findAll(normalized)
             .mapNotNull { decodePossibleUrl(it.groupValues[1], baseUrl) }.forEach { links.add(it) }
-        Regex("""(?i)(?:file|source|src|url|link|hls|m3u8|embed|player)\s*[:=]\s*['"]([^'"]+)['"]""").findAll(normalized)
+        Regex("""(?i)(?:file|source|src|url|link|hls|m3u8|embed|iframe|player)\s*[:=]\s*['"]([^'"]+)['"]""").findAll(normalized)
             .forEach { match -> decodePossibleUrls(match.groupValues[1], baseUrl).forEach { links.add(it) } }
+        Regex("""(?i)(?:https?:)?//[^\s'"<>]+""").findAll(normalized)
+            .forEach { match -> decodePossibleUrls(match.value, baseUrl).forEach { links.add(it) } }
         Regex("""(?i)atob\(['"]([^'"]+)['"]\)""").findAll(normalized)
             .mapNotNull { decodeBase64(it.groupValues[1]) }
             .forEach { decoded -> collectLinks(Jsoup.parse(decoded, baseUrl), decoded, baseUrl).forEach { links.add(it) } }
@@ -514,8 +517,10 @@ class CGVIndo : MainAPI() {
             .forEach { match -> decodePossibleUrls(match.groupValues[1], baseUrl).forEach { links.add(it) } }
         Regex("""(?i)['"]((?:https?:)?//[^'"]+?(?:\.m3u8|\.mp4|\.webm|/hls/[^'"]+|/stream/[^'"]+|/embed/[^'"]+|/player/[^'"]+|/e/[^'"]+|/v/[^'"]+)(?:\?[^'"]*)?)['"]""").findAll(html)
             .forEach { match -> decodePossibleUrls(match.groupValues[1], baseUrl).forEach { links.add(it) } }
-        Regex("""(?i)(?:file|source|src|url|link|hls|m3u8|embed|player)\s*[:=]\s*['"]([^'"]+)['"]""").findAll(html)
+        Regex("""(?i)(?:file|source|src|url|link|hls|m3u8|embed|iframe|player)\s*[:=]\s*['"]([^'"]+)['"]""").findAll(html)
             .forEach { match -> decodePossibleUrls(match.groupValues[1], baseUrl).forEach { links.add(it) } }
+        Regex("""(?i)(?:https?:)?//[^\s'"<>]+""").findAll(html)
+            .forEach { match -> decodePossibleUrls(match.value, baseUrl).forEach { links.add(it) } }
         Regex("""(?i)atob\(['"]([^'"]+)['"]\)""").findAll(html)
             .mapNotNull { decodeBase64(it.groupValues[1]) }
             .forEach { decoded -> collectLinks(Jsoup.parse(decoded, baseUrl), decoded, baseUrl).forEach { links.add(it) } }
@@ -567,22 +572,42 @@ class CGVIndo : MainAPI() {
     private fun String.isPlaybackCandidate(): Boolean {
         val lower = lowercase(Locale.ROOT)
         if (isNoiseUrl() || isTrailerOrSocialUrl()) return false
+        if (!lower.startsWith("http://") && !lower.startsWith("https://") && !lower.startsWith("//")) return false
         return isPlayableMedia() ||
             isMuviproPlayerCandidate() ||
+            lower.contains("drive.google.com") ||
+            lower.contains("docs.google.com") ||
+            lower.contains("googleusercontent.com") ||
             lower.contains("/embed/") ||
             lower.contains("/player/") ||
             lower.contains("/e/") ||
             lower.contains("/v/") ||
-            lower.contains("/video")
+            lower.contains("/video") ||
+            lower.contains("/watch") ||
+            lower.contains("/play") ||
+            lower.contains("/stream") ||
+            lower.contains("/file") ||
+            lower.contains("/iframe") ||
+            lower.contains("/d/")
     }
 
     private fun String.shouldFetchEmbedPage(): Boolean {
+        if (isExtractorTerminalHost()) return false
         val lower = lowercase(Locale.ROOT)
+        val host = runCatching { URI(this).host.orEmpty().lowercase(Locale.ROOT).removePrefix("www.") }.getOrDefault("")
+        val ownHost = URI(mainUrl).host.orEmpty().lowercase(Locale.ROOT).removePrefix("www.")
         return lower.contains("/embed/") ||
             lower.contains("/player/") ||
             lower.contains("/e/") ||
             lower.contains("/v/") ||
-            lower.contains("/video")
+            lower.contains("/video") ||
+            lower.contains("/watch") ||
+            lower.contains("/play") ||
+            lower.contains("/stream") ||
+            lower.contains("/file") ||
+            lower.contains("/iframe") ||
+            lower.contains("/d/") ||
+            (host.isNotBlank() && host != ownHost)
     }
 
     private fun String.isTrailerOrSocialUrl(): Boolean {
@@ -618,6 +643,20 @@ class CGVIndo : MainAPI() {
         "${uri.scheme}://${uri.host}${if (uri.port > 0) ":${uri.port}" else ""}"
     }.getOrDefault(mainUrl)
 
+    private fun String.unwrapAjaxHtml(): String {
+        val raw = trim().normalizeEscapes()
+        if (raw.isBlank() || raw == "0" || raw.equals("false", true) || raw.equals("null", true)) return ""
+        val chunks = linkedSetOf(raw)
+        Regex("""(?i)\"(?:html|data|content|player|embed|iframe|url)\"\s*:\s*\"((?:\\.|[^\"\\])*)\"""").findAll(raw)
+            .map { it.groupValues[1].normalizeEscapes() }
+            .filter { it.isNotBlank() && it != "0" }
+            .forEach { chunks.add(it) }
+        Regex("""(?i)<iframe[^>]+src=['"]([^'"]+)['"]""").findAll(raw)
+            .map { it.value.normalizeEscapes() }
+            .forEach { chunks.add(it) }
+        return chunks.joinToString("\n")
+    }
+
     private fun decodePossibleUrl(raw: String, baseUrl: String): String? =
         decodePossibleUrls(raw, baseUrl).firstOrNull()
 
@@ -638,9 +677,13 @@ class CGVIndo : MainAPI() {
         return links.toList()
     }
 
-    private fun decodeBase64(value: String): String? = runCatching {
-        String(Base64.getDecoder().decode(value), Charsets.UTF_8)
-    }.getOrNull()
+    private fun decodeBase64(value: String): String? {
+        val clean = value.trim().replace(Regex("""\s+"""), "")
+        if (clean.length < 8 || clean.any { it == '<' || it == '>' }) return null
+        val padded = clean + "=".repeat((4 - clean.length % 4) % 4)
+        return runCatching { String(Base64.getDecoder().decode(padded), Charsets.UTF_8) }
+            .getOrElse { runCatching { String(Base64.getUrlDecoder().decode(padded), Charsets.UTF_8) }.getOrNull() }
+    }
 
     private fun Element.imageUrl(baseUrl: String): String? {
         val raw = attr("data-src").ifBlank { attr("data-original").ifBlank { attr("data-lazy-src").ifBlank { attr("src") } } }
@@ -691,18 +734,29 @@ class CGVIndo : MainAPI() {
 
     private fun String.normalKey(): String = trim().trimEnd('/').lowercase(Locale.ROOT)
 
-    private fun String.normalizeEscapes(): String = this
-        .replace("\\/", "/")
-        .replace("&amp;", "&")
-        .replace("&#038;", "&")
-        .replace("&quot;", "\"")
-        .replace("&#039;", "'")
+    private fun String.normalizeEscapes(): String {
+        val basic = this
+            .replace("\\/", "/")
+            .replace("&amp;", "&")
+            .replace("&#038;", "&")
+            .replace("&quot;", "\"")
+            .replace("\\\"", "\"")
+            .replace("&#039;", "'")
+        return Regex("""\\u([0-9a-fA-F]{4})""").replace(basic) { match ->
+            match.groupValues[1].toInt(16).toChar().toString()
+        }
+    }
 
     private fun String.isM3u8(): Boolean = contains(".m3u8", ignoreCase = true)
 
     private fun String.isPlayableMedia(): Boolean {
         val lower = lowercase(Locale.ROOT)
-        return lower.contains(".m3u8") || lower.contains(".mp4") || lower.contains(".webm") || lower.contains("/hls/") || lower.contains("/stream/")
+        return lower.contains(".m3u8") ||
+            lower.contains(".mp4") ||
+            lower.contains(".webm") ||
+            lower.contains(".m4v") ||
+            lower.contains(".mov") ||
+            lower.contains("/hls/")
     }
 
     private fun String.isNoiseUrl(): Boolean {
