@@ -4,7 +4,6 @@ import android.content.Context
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
@@ -150,43 +149,41 @@ open class Donghuastream : MainAPI() {
             .mapNotNull { it.toRecommendResult() }
             .distinctBy { it.url }
 
-        val description = document.extractSynopsis()
+        val description = document.extractSynopsis(title)
 
         val infoText = document.selectFirst(".spe, .info-content, .infotable")
             ?.text()
             .orEmpty()
 
-        val tags = document.extractDetailGenres()
+        val detailGenres = document.extractDetailGenres()
 
-        val tvTag = if (infoText.contains("Movie", true) || tags.any { it.equals("Movie", true) }) {
+        val tvTag = if (infoText.contains("Movie", true) || detailGenres.any { it.equals("Movie", true) }) {
             TvType.AnimeMovie
         } else {
             TvType.Anime
+        }
+
+        val firstEpisodePage = document.selectFirst(".eplister li > a[href], .episodelist li > a[href], .bixbox.bxcl li a[href]")
+            ?.attr("href")
+            ?.absoluteUrl(url)
+
+        val episodePageLinks = if (!firstEpisodePage.isNullOrBlank()) {
+            runCatching {
+                app.get(firstEpisodePage, headers = defaultHeaders, referer = url)
+                    .document
+                    .select("div.episodelist > ul > li, .episodelist li, .eplister li")
+                    .mapNotNull { item -> item.selectFirst("a[href]")?.toEpisodeOrNull() }
+                    .distinctBy { it.data }
+            }.getOrDefault(emptyList())
+        } else {
+            emptyList()
         }
 
         val directEpisodeLinks = document.select(".eplister li > a[href], .episodelist li > a[href], .bixbox.bxcl li a[href]")
             .mapNotNull { it.toEpisodeOrNull() }
             .distinctBy { it.data }
 
-        val episodes = if (directEpisodeLinks.isNotEmpty()) {
-            directEpisodeLinks
-        } else {
-            val firstEpisodePage = document.selectFirst(".eplister li > a[href], .episodelist li > a[href]")
-                ?.attr("href")
-                ?.absoluteUrl(url)
-
-            if (!firstEpisodePage.isNullOrBlank()) {
-                runCatching {
-                    app.get(firstEpisodePage, headers = defaultHeaders, referer = url)
-                        .document
-                        .select("div.episodelist > ul > li, .episodelist li, .eplister li")
-                        .mapNotNull { it.selectFirst("a[href]")?.toEpisodeOrNull() }
-                        .distinctBy { it.data }
-                }.getOrDefault(emptyList())
-            } else {
-                emptyList()
-            }
-        }
+        val episodes = episodePageLinks.ifEmpty { directEpisodeLinks }
 
         if (poster.isNullOrBlank()) {
             poster = findPoster(document.body(), url)
@@ -201,7 +198,6 @@ open class Donghuastream : MainAPI() {
             ) {
                 this.posterUrl = poster
                 this.plot = description
-                this.tags = tags
                 this.recommendations = recommendations
             }
         } else {
@@ -214,13 +210,38 @@ open class Donghuastream : MainAPI() {
             ) {
                 this.posterUrl = poster
                 this.plot = description
-                this.tags = tags
                 this.recommendations = recommendations
             }
         }
     }
 
-    private fun Element.extractSynopsis(): String? {
+    private fun Element.extractSynopsis(title: String): String? {
+        val content = selectFirst("div.entry-content, .entry-content-single")
+
+        content?.collectSynopsisAfterHeading()
+            ?.let { return it }
+
+        content?.text()
+            ?.replace(Regex("""\s+"""), " ")
+            ?.trim()
+            ?.extractAfterSynopsisTitle(title)
+            ?.cleanSynopsisNoise()
+            ?.takeIf { it.isNotBlank() && !it.isDetailSeoBoundary() }
+            ?.let { return it }
+
+        collectSynopsisAfterHeading()
+            ?.let { return it }
+
+        return selectFirst(".synopsis, .desc")
+            ?.text()
+            ?.replace(Regex("""\s+"""), " ")
+            ?.trim()
+            ?.extractAfterSynopsisTitle(title)
+            ?.cleanSynopsisNoise()
+            ?.takeIf { it.isNotBlank() && !it.isDetailSeoBoundary() }
+    }
+
+    private fun Element.collectSynopsisAfterHeading(): String? {
         val synopsisHeading = select("h2, h3, h4, strong, b")
             .firstOrNull { node ->
                 node.text()
@@ -228,39 +249,31 @@ open class Donghuastream : MainAPI() {
                     .trim()
                     .startsWith("Synopsis", ignoreCase = true)
             }
+            ?: return null
 
-        if (synopsisHeading != null) {
-            val synopsisParts = mutableListOf<String>()
-            var sibling = synopsisHeading.nextElementSibling()
+        val synopsisParts = mutableListOf<String>()
+        var sibling = synopsisHeading.nextElementSibling()
 
-            while (sibling != null) {
-                val rawText = sibling.text()
-                    .replace(Regex("""\s+"""), " ")
-                    .trim()
+        while (sibling != null) {
+            val rawText = sibling.text()
+                .replace(Regex("""\s+"""), " ")
+                .trim()
 
-                if (rawText.isNotBlank()) {
-                    if (rawText.isDetailSeoBoundary()) break
+            if (rawText.isNotBlank()) {
+                if (rawText.isDetailSeoBoundary()) break
 
-                    val cleaned = rawText.cleanSynopsisNoise()
-                    if (cleaned.isNotBlank() && !cleaned.isDetailSeoBoundary()) {
-                        synopsisParts.add(cleaned)
-                    }
+                val cleaned = rawText.cleanSynopsisNoise()
+                if (cleaned.isNotBlank() && !cleaned.isDetailSeoBoundary()) {
+                    synopsisParts.add(cleaned)
                 }
-
-                sibling = sibling.nextElementSibling()
             }
 
-            synopsisParts.joinToString("\n\n")
-                .cleanSynopsisNoise()
-                .takeIf { it.isNotBlank() }
-                ?.let { return it }
+            sibling = sibling.nextElementSibling()
         }
 
-        return selectFirst(".synopsis, .desc, div.entry-content, .entry-content-single")
-            ?.text()
-            ?.substringAfter("Synopsis", "")
-            ?.cleanSynopsisNoise()
-            ?.takeIf { it.isNotBlank() && !it.isDetailSeoBoundary() }
+        return synopsisParts.joinToString("\n\n")
+            .cleanSynopsisNoise()
+            .takeIf { it.isNotBlank() && !it.isDetailSeoBoundary() }
     }
 
     private fun Element.extractDetailGenres(): List<String> {
@@ -269,8 +282,7 @@ open class Donghuastream : MainAPI() {
             ".spe a[href*='/genres/']",
             ".infotable a[href*='/genres/']",
             ".genxed a[href*='/genres/']",
-            ".mgen a[href*='/genres/']",
-            ".bigcontent a[href*='/genres/']"
+            ".mgen a[href*='/genres/']"
         )
 
         return detailGenreSelectors
@@ -281,8 +293,43 @@ open class Donghuastream : MainAPI() {
             .distinct()
     }
 
+    private fun String.extractAfterSynopsisTitle(title: String): String {
+        val normalized = replace(Regex("""\s+"""), " ").trim()
+        val cleanTitle = title.replace(Regex("""\s+"""), " ").trim()
+        val marker = "Synopsis $cleanTitle"
+        val lower = normalized.lowercase()
+        val markerIndex = lower.indexOf(marker.lowercase())
+
+        if (markerIndex >= 0) {
+            return normalized.substring(markerIndex + marker.length).trim()
+        }
+
+        val synopsisIndex = lower.indexOf("synopsis")
+        if (synopsisIndex >= 0) {
+            return normalized.substring(synopsisIndex + "synopsis".length)
+                .removeLeadingTitle(title)
+                .trim()
+        }
+
+        return normalized.removeLeadingTitle(title).trim()
+    }
+
+    private fun String.removeLeadingTitle(title: String): String {
+        val cleanTitle = title.replace(Regex("""\s+"""), " ").trim()
+        val value = trim()
+        return if (cleanTitle.isNotBlank() && value.startsWith(cleanTitle, ignoreCase = true)) {
+            value.substring(cleanTitle.length).trim()
+        } else {
+            value
+        }
+    }
+
     private fun String.cleanSynopsisNoise(): String {
-        return replace(Regex("""(?i)\bNEW chinese anime[\s\S]*"""), "")
+        return replace(Regex("""(?i)\bWatch\s+[^.]{0,160}\s+First Episode[\s\S]*"""), "")
+            .replace(Regex("""(?i)\bWatch\s+[^.]{0,160}\s+Episode\s+Episode Title\s+Release Date[\s\S]*"""), "")
+            .replace(Regex("""(?i)\bFirst Episode[\s\S]*"""), "")
+            .replace(Regex("""(?i)\bEpisode\s+Episode Title\s+Release Date[\s\S]*"""), "")
+            .replace(Regex("""(?i)\bNEW chinese anime[\s\S]*"""), "")
             .replace(Regex("""(?i)\bWATCH ALL EPISODES NOW[\s\S]*"""), "")
             .replace(Regex("""(?i)\bDiscover the exciting world[\s\S]*"""), "")
             .replace(Regex("""(?i)\bAlternative Name[:-][\s\S]*"""), "")
@@ -298,6 +345,8 @@ open class Donghuastream : MainAPI() {
             value.startsWith("Alternative Name", ignoreCase = true) ||
             value.startsWith("WATCH ALL EPISODES", ignoreCase = true) ||
             value.startsWith("Discover the exciting world", ignoreCase = true) ||
+            value.startsWith("First Episode", ignoreCase = true) ||
+            value.startsWith("Episode", ignoreCase = true) ||
             value.startsWith("Watch ", ignoreCase = true)
     }
 
