@@ -1,4 +1,4 @@
-version = 12
+version = 13
 
 cloudstream {
     description = "Donghub untuk donghua dan anime subtitle Indonesia."
