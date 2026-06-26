@@ -45,15 +45,8 @@ class DonghuaZone : MainAPI() {
 
     override val mainPage = mainPageOf(
         "$mainUrl/" to "Latest Episode",
-        "$mainUrl/search/label/Episode?max-results=10" to "Episode",
         "$mainUrl/search/label/Series?max-results=10" to "Series",
-        "$mainUrl/search/label/Movie?max-results=10" to "Movie",
-        "$mainUrl/search/label/Action?max-results=10" to "Action",
-        "$mainUrl/search/label/Adventure?max-results=10" to "Adventure",
-        "$mainUrl/search/label/Fantasy?max-results=10" to "Fantasy",
-        "$mainUrl/search/label/Romance?max-results=10" to "Romance",
-        "$mainUrl/search/label/Ongoing?max-results=10" to "Ongoing",
-        "$mainUrl/search/label/Completed?max-results=10" to "Completed"
+        "$mainUrl/search/label/Movie?max-results=10" to "Movie"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
