@@ -82,6 +82,15 @@ class CinemaIndo : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = normalizeUrl(request.data, mainUrl)
+
+        // Zona 2: CinemaIndo category pages are skeleton-first. Try the
+        // HAR-backed API route from the URL before depending on HTML.
+        fetchCategoryApiByPath(categoryApiPathFromUrl(url), url, page)?.let { apiPage ->
+            if (apiPage.items.isNotEmpty()) {
+                return newHomePageResponse(request.name, apiPage.items, hasNext = apiPage.hasNext)
+            }
+        }
+
         val document = runCatching {
             app.get(url, headers = categoryPageHeaders("$mainUrl/"), referer = mainUrl).document
         }.getOrNull() ?: return newHomePageResponse(request.name, emptyList(), hasNext = false)
@@ -337,7 +346,11 @@ class CinemaIndo : MainAPI() {
     )
 
     private suspend fun fetchCategoryApi(document: Document, pageUrl: String, page: Int): CategoryApiPage? {
-        val apiPath = categoryApiPath(document, pageUrl) ?: return null
+        return fetchCategoryApiByPath(categoryApiPath(document, pageUrl), pageUrl, page)
+    }
+
+    private suspend fun fetchCategoryApiByPath(apiPath: String?, pageUrl: String, page: Int): CategoryApiPage? {
+        if (apiPath.isNullOrBlank()) return null
         val tokens = resolveCategoryTokens(apiPath)
         for (token in tokens) {
             val apiPage = fetchCategoryApiByToken(token, pageUrl, page)
@@ -484,6 +497,19 @@ class CinemaIndo : MainAPI() {
 
     private fun urlEncodePath(value: String): String {
         return URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+    }
+
+    private fun categoryApiPathFromUrl(pageUrl: String): String? {
+        val path = runCatching { URI(pageUrl).path.trim('/') }.getOrDefault("")
+        return when {
+            path == "latest" -> "/api/movies/list/latest"
+            path == "series/top-series-today" -> "/api/series/list/top-series-today"
+            path == "series/latest" -> "/api/series/list/latest"
+            path == "series/complete" -> "/api/series/status/complete"
+            path.startsWith("genre/") -> "/api/movies/filter/genre/${path.substringAfter("genre/")}"
+            path.startsWith("country/") -> "/api/movies/filter/country/${path.substringAfter("country/")}"
+            else -> null
+        }
     }
 
     private fun categoryApiPath(document: Document, pageUrl: String): String? {
