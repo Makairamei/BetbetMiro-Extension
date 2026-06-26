@@ -406,127 +406,47 @@ open class Donghuastream : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val response = app.get(data, headers = defaultHeaders, referer = "$mainUrl/")
-        val document = response.document
-        val emittedLinks = linkedSetOf<String>()
-        val visitedPlayers = linkedSetOf<String>()
+        val html = app.get(data).document
+        val options = html.select("option[data-index]")
 
-        val trackedCallback: (ExtractorLink) -> Unit = { link ->
-            val linkUrl = link.url.trim()
-            if (linkUrl.isBlank() || emittedLinks.add(linkUrl)) {
-                callback.invoke(link)
+        options.amap { option ->
+            val base64 = option.attr("value")
+            if (base64.isBlank()) return@amap
+            val label = option.text().trim()
+            val decodedHtml = try {
+                base64Decode(base64)
+            } catch (_: Exception) {
+                Log.w("Error", "Base64 decode failed: $base64")
+                return@amap
             }
-        }
 
-        suspend fun emitDirect(rawUrl: String?, label: String = name) {
-            val finalUrl = rawUrl
-                ?.decodeEscaped()
-                ?.absoluteUrl(data)
-                ?.takeIf { it.isNotBlank() }
-                ?: return
-
-            if (!emittedLinks.add(finalUrl)) return
-
-            callback.invoke(
-                newExtractorLink(
-                    source = name,
-                    name = label,
-                    url = finalUrl,
-                    type = inferType(finalUrl)
-                ) {
-                    this.referer = data
-                    this.quality = getQualityFromName(label)
-                    this.headers = mapOf(
-                        "Referer" to data,
-                        "Origin" to mainUrl,
-                        "User-Agent" to USER_AGENT
+            val iframeUrl = Jsoup.parse(decodedHtml).selectFirst("iframe")?.attr("src")?.let(::httpsify)
+            if (iframeUrl.isNullOrEmpty()) return@amap
+            when {
+                "vidmoly" in iframeUrl -> {
+                    val cleanedUrl = "http:" + iframeUrl.substringAfter("=\"").substringBefore("\"")
+                    loadExtractor(cleanedUrl, referer = iframeUrl, subtitleCallback, callback)
+                }
+                iframeUrl.endsWith(".mp4") -> {
+                    callback(
+                        newExtractorLink(
+                            label,
+                            label,
+                            url = iframeUrl,
+                            INFER_TYPE
+                        ) {
+                            this.referer = ""
+                            this.quality = getQualityFromName(label)
+                        }
                     )
                 }
-            )
-        }
-
-        suspend fun resolvePlayer(rawPlayerUrl: String?, label: String = name) {
-            val playerUrl = rawPlayerUrl
-                ?.decodeEscaped()
-                ?.absoluteUrl(data)
-                ?.takeIf { it.isNotBlank() }
-                ?: return
-
-            if (!visitedPlayers.add(playerUrl)) return
-
-            when {
-                playerUrl.contains(".mp4", true) || playerUrl.contains(".m3u8", true) -> {
-                    emitDirect(playerUrl, label)
-                }
-                playerUrl.contains("vidmoly", true) -> {
-                    val cleanedUrl = playerUrl.cleanEmbedUrl().absoluteUrl(data)
-                    runCatching {
-                        loadExtractor(cleanedUrl, cleanedUrl, subtitleCallback, trackedCallback)
-                    }.onFailure {
-                        Log.w("Donghuastream", "Extractor failed: $cleanedUrl")
-                    }
-                }
                 else -> {
-                    runCatching {
-                        loadExtractor(playerUrl, playerUrl, subtitleCallback, trackedCallback)
-                    }.onFailure {
-                        Log.w("Donghuastream", "Extractor failed: $playerUrl")
-                    }
+                    loadExtractor(iframeUrl, referer = iframeUrl, subtitleCallback, callback)
                 }
             }
         }
 
-        document.select(".mobius option, option[data-index], select option").forEach { option ->
-            val base64 = option.attr("value")
-            if (base64.isBlank()) return@forEach
-
-            val decodedHtml = runCatching { base64Decode(base64) }.getOrElse {
-                Log.w("Donghuastream", "Base64 decode failed")
-                return@forEach
-            }
-
-            val parsed = Jsoup.parse(decodedHtml)
-            val playerUrl = parsed.extractPlayerUrl(data) ?: return@forEach
-            val label = option.text().trim().ifBlank { playerUrl.hostName() }
-            resolvePlayer(playerUrl, label)
-        }
-
-        val html = response.text
-        val patterns = listOf(
-            Regex("""file\s*[:=]\s*['\"]([^'\"]+\.(?:m3u8|mp4)[^'\"]*)['\"]""", RegexOption.IGNORE_CASE),
-            Regex("""source\s*[:=]\s*['\"]([^'\"]+\.(?:m3u8|mp4)[^'\"]*)['\"]""", RegexOption.IGNORE_CASE),
-            Regex("""['\"](https?://[^'\"]+\.(?:m3u8|mp4)[^'\"]*)['\"]""", RegexOption.IGNORE_CASE)
-        )
-
-        patterns.forEach { pattern ->
-            pattern.findAll(html).forEach { match ->
-                emitDirect(match.groupValues.getOrNull(1), "$name - Direct")
-            }
-        }
-
-        return emittedLinks.isNotEmpty()
-    }
-
-    private fun Element.extractPlayerUrl(pageUrl: String): String? {
-        val rawUrl = selectFirst("iframe[src]")?.attr("src")
-            ?: selectFirst("iframe")?.attr("src")
-            ?: selectFirst("meta[itemprop=embedUrl]")?.attr("content")
-            ?: selectFirst("a[href]")?.attr("href")
-
-        return rawUrl
-            ?.cleanEmbedUrl()
-            ?.absoluteUrl(pageUrl)
-            ?.takeIf { it.isNotBlank() }
-    }
-
-    private fun String.cleanEmbedUrl(): String {
-        val decoded = decodeEscaped().trim()
-        return decoded
-            .substringAfter("src=\"", decoded)
-            .substringAfter("src='", decoded)
-            .substringBefore("\"")
-            .substringBefore("'")
-            .trim()
+        return true
     }
 
     private fun findPoster(element: Element, pageUrl: String): String? {
