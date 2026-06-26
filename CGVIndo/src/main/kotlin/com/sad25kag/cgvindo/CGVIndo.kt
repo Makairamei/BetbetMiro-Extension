@@ -13,7 +13,6 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mainPageOf
-import com.lagradost.cloudstream3.network.WebViewResolver
 import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
@@ -26,7 +25,6 @@ import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -198,57 +196,10 @@ class CGVIndo : MainAPI() {
             return true
         }
 
-        fun webViewReferer(request: Request, fallback: String): String {
-            val requestUrl = request.url.toString()
-            val requestReferer = request.header("Referer") ?: request.header("referer")
-            return when {
-                requestReferer?.contains("q8y5z.com", true) == true -> requestReferer
-                requestReferer?.contains("byseqekaho.com", true) == true && !requestUrl.isSprintCdnUrl() -> requestReferer
-                requestUrl.isSprintCdnUrl() -> "https://q8y5z.com/"
-                else -> requestReferer ?: fallback
-            }
-        }
-
-        suspend fun emitByseWebView(url: String, referer: String): Boolean {
-            val fixed = fixUrl(url, referer) ?: return false
-            if (!fixed.isByseWebViewCandidate()) return false
-            val requests = arrayListOf<Request>()
-            val resolver = WebViewResolver(
-                interceptUrl = Regex("""(?i)(?:sprintcdn|r66nv9ed|\.m3u8)"""),
-                additionalUrls = listOf(Regex("""(?i)(?:sprintcdn|r66nv9ed|\.m3u8)""")),
-                userAgent = null,
-                useOkhttp = false,
-                timeout = 60000L
-            )
-            try {
-                val resolved = resolver.resolveUsingWebView(
-                    fixed,
-                    referer = referer,
-                    headers = mapOf("Referer" to referer, "Origin" to originOf(referer))
-                ) { request ->
-                    val requestUrl = request.url.toString()
-                    if (requestUrl.isPlayableMedia() || requestUrl.isSprintCdnUrl()) requests.add(request)
-                    requestUrl.isM3u8()
-                }
-                resolved.first?.let { requests.add(it) }
-                resolved.second.forEach { requests.add(it) }
-            } catch (_: Throwable) {
-            }
-
-            var localFound = false
-            requests.distinctBy { it.url.toString().substringBefore("#") }.forEach { request ->
-                val requestUrl = request.url.toString()
-                val requestReferer = webViewReferer(request, referer)
-                if (requestUrl.isPlayableMedia() && emitDirect(requestUrl, requestReferer, playerSourceName(requestUrl))) localFound = true
-            }
-            return localFound
-        }
-
         suspend fun emitExtractor(url: String, referer: String): Boolean {
             val fixed = fixUrl(url, referer) ?: return false
             if (!fixed.isPlaybackCandidate()) return false
             if (fixed.isPlayableMedia()) return emitDirect(fixed, referer, playerSourceName(fixed))
-            if (fixed.isByseWebViewCandidate() && emitByseWebView(fixed, referer)) return true
             var localFound = false
             try {
                 loadExtractor(fixed, referer, subtitleCallback) { link ->
@@ -271,8 +222,14 @@ class CGVIndo : MainAPI() {
                 return emptyList()
             }
 
-            if (fixed.isByseWebViewCandidate() && emitByseWebView(fixed, referer)) found = true
-            if (emitExtractor(fixed, referer)) found = true
+            if (emitExtractor(fixed, referer)) {
+                found = true
+                return emptyList()
+            }
+
+            // q8y5z should be handed to CloudStream extractor only.
+            // Manually following it inside the provider can cause infinite loading.
+            if (fixed.isExtractorTerminalHost()) return emptyList()
             if (!shouldFollow(fixed) && !fixed.shouldFetchEmbedPage()) return emptyList()
 
             val response = try {
@@ -290,9 +247,9 @@ class CGVIndo : MainAPI() {
             return links.filter { it.isPlaybackCandidate() }
         }
 
-        // Evidence-based root from HAR: detail -> Muvipro AJAX -> byseqekaho embed
-        // -> q8y5z frontend -> WebView-generated sprintcdn HLS request. Do not scan
-        // the whole detail page as a generic media source because that path picks up trailers.
+        // Muvipro playback: detail/player data -> AJAX action=muvipro_player_content
+        // -> decode server option/iframe -> pass iframe/player URL to loadExtractor.
+        // Do not run q8y5z WebView in this provider path.
         val detailResponse = try {
             app.get(detailUrl, headers = defaultHeaders, referer = mainUrl)
         } catch (_: Throwable) {
@@ -317,13 +274,14 @@ class CGVIndo : MainAPI() {
             when {
                 url.isPlayableMedia() -> if (emitDirect(url, referer, playerSourceName(url))) found = true
                 else -> {
-                    if (url.isByseWebViewCandidate() && emitByseWebView(url, referer)) found = true
                     if (emitExtractor(url, referer)) found = true
-                    inspectPlayer(url, referer).forEach { next ->
-                        val nextFixed = fixUrl(next, url) ?: return@forEach
-                        when {
-                            nextFixed.isPlayableMedia() -> if (emitDirect(nextFixed, url, playerSourceName(nextFixed))) found = true
-                            nextFixed.isPlaybackCandidate() && !visited.contains(nextFixed.normalKey()) -> queue.add(nextFixed to url)
+                    if (!url.isExtractorTerminalHost()) {
+                        inspectPlayer(url, referer).forEach { next ->
+                            val nextFixed = fixUrl(next, url) ?: return@forEach
+                            when {
+                                nextFixed.isPlayableMedia() -> if (emitDirect(nextFixed, url, playerSourceName(nextFixed))) found = true
+                                nextFixed.isPlaybackCandidate() && !visited.contains(nextFixed.normalKey()) -> queue.add(nextFixed to url)
+                            }
                         }
                     }
                 }
@@ -593,7 +551,7 @@ class CGVIndo : MainAPI() {
     private fun shouldFollow(url: String): Boolean {
         val host = runCatching { URI(url).host.orEmpty().lowercase(Locale.ROOT).removePrefix("www.") }.getOrDefault("")
         val ownHost = URI(mainUrl).host.orEmpty().lowercase(Locale.ROOT).removePrefix("www.")
-        return host == ownHost || host == "byseqekaho.com" || host.contains("q8y5z") || host.endsWith("owphbf24.com") || url.shouldFetchEmbedPage()
+        return host == ownHost || host == "byseqekaho.com" || host.endsWith("owphbf24.com") || url.shouldFetchEmbedPage()
     }
 
     private fun String.isMuviproPlayerCandidate(): Boolean {
@@ -601,14 +559,9 @@ class CGVIndo : MainAPI() {
         return lower.contains("byseqekaho.com/e/") || lower.contains("q8y5z") || lower.contains("owphbf24.com")
     }
 
-    private fun String.isByseWebViewCandidate(): Boolean {
+    private fun String.isExtractorTerminalHost(): Boolean {
         val host = runCatching { URI(this).host.orEmpty().lowercase(Locale.ROOT).removePrefix("www.") }.getOrDefault("")
-        return host == "byseqekaho.com" || host == "q8y5z.com" || host.contains("r66nv9ed") || host.contains("sprintcdn")
-    }
-
-    private fun String.isSprintCdnUrl(): Boolean {
-        val lower = lowercase(Locale.ROOT)
-        return lower.contains("sprintcdn") || lower.contains("r66nv9ed")
+        return host.contains("q8y5z")
     }
 
     private fun String.isPlaybackCandidate(): Boolean {
@@ -646,7 +599,7 @@ class CGVIndo : MainAPI() {
         return when {
             host.contains("byseqekaho", true) -> "Byse"
             host.contains("q8y5z", true) -> "q8y5z"
-            host.contains("sprintcdn", true) || host.contains("r66nv9ed", true) || host.contains("owphbf24", true) -> "Byse HLS"
+            host.contains("sprintcdn", true) || host.contains("owphbf24", true) -> "Byse HLS"
             host.isNotBlank() -> host
             else -> name
         }
