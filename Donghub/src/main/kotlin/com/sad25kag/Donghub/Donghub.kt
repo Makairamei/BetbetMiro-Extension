@@ -121,16 +121,16 @@ class Donghub : MainAPI() {
             ?.takeIf { it.isNotBlank() }
             ?: throw ErrorLoadingException("Judul Donghub tidak ditemukan")
 
-        val description = extractSynopsis(document, title)
+        val detailRoot = findDetailRoot(document, title)
+        val description = extractSynopsis(document, detailRoot, title)
 
-        val infoText = document.selectFirst(".spe, .info-content, .infotable")
+        val infoText = detailRoot.selectFirst(".spe, .info-content, .infotable")
             ?.text()
-            .orEmpty()
+            ?: document.selectFirst(".spe, .info-content, .infotable")
+                ?.text()
+            ?: detailRoot.text()
 
-        val tags = document.select("a[href*='/genres/']")
-            .map { it.text().trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
+        val tags = extractDetailTags(document, detailRoot, title)
 
         var poster = document.selectFirst("div.ime > img, .thumb img, .bigcontent img")
             ?.let { findPoster(it, url) }
@@ -226,7 +226,91 @@ class Donghub : MainAPI() {
         }
     }
 
-    private fun extractSynopsis(document: Element, title: String): String? {
+    private fun findDetailRoot(document: Element, title: String): Element {
+        val candidates = document.select(
+            ".bigcontent, .info-content, .entry-content-single, .entry-content, article, .postbody, .bixbox, main"
+        )
+            .filter { box ->
+                val text = box.text()
+                text.contains(title, true) &&
+                    box.select("a[href*='/genres/']").isNotEmpty() &&
+                    (
+                        text.contains("Status:", true) ||
+                            text.contains("Studio:", true) ||
+                            text.contains("Type:", true) ||
+                            text.contains("Episodes:", true)
+                    )
+            }
+            .filterNot { it.tagName().equals("body", true) }
+
+        candidates
+            .filter { it.select("a[href*='/genres/']").size <= 8 }
+            .minByOrNull { it.text().length }
+            ?.let { return it }
+
+        candidates
+            .minByOrNull { it.text().length }
+            ?.let { return it }
+
+        val titleNode = document.select("h1.entry-title, h1")
+            .firstOrNull { it.text().trim().equals(title, true) || it.text().contains(title, true) }
+
+        var current = titleNode?.parent()
+        while (current != null && !current.tagName().equals("body", true)) {
+            val text = current.text()
+            if (current.select("a[href*='/genres/']").isNotEmpty() &&
+                (
+                    text.contains("Status:", true) ||
+                        text.contains("Studio:", true) ||
+                        text.contains("Type:", true) ||
+                        text.contains("Episodes:", true)
+                )
+            ) {
+                return current
+            }
+            current = current.parent()
+        }
+
+        return document.body()
+    }
+
+    private fun extractDetailTags(document: Element, detailRoot: Element, title: String): List<String> {
+        fun List<Element>.cleanTags(): List<String> {
+            return map { it.text().trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+        }
+
+        val scoped = detailRoot.select("a[href*='/genres/']").cleanTags()
+        if (scoped.isNotEmpty() && scoped.size <= 8) return scoped
+
+        val titleNode = document.select("h1.entry-title, h1")
+            .firstOrNull { it.text().trim().equals(title, true) || it.text().contains(title, true) }
+
+        if (titleNode != null) {
+            val candidates = mutableListOf<Element>()
+            var item = titleNode.nextElementSibling()
+            while (item != null) {
+                val text = item.text().trim()
+                if (text.startsWith("Watch streaming", true) ||
+                    text.startsWith("Synopsis", true) ||
+                    text.startsWith("History", true) ||
+                    text.startsWith("Watch ", true)
+                ) break
+
+                if (item.select("a[href*='/genres/']").isNotEmpty()) {
+                    candidates.addAll(item.select("a[href*='/genres/']"))
+                }
+                item = item.nextElementSibling()
+            }
+
+            candidates.cleanTags().takeIf { it.isNotEmpty() }?.let { return it }
+        }
+
+        return scoped.take(8)
+    }
+
+    private fun extractSynopsis(document: Element, detailRoot: Element, title: String): String? {
         val synopsisHeading = document.select("h2, h3, h4")
             .firstOrNull { it.text().trim().startsWith("Synopsis", true) }
 
@@ -253,9 +337,33 @@ class Donghub : MainAPI() {
                 ?.let { return it }
         }
 
-        return document.select(".synopsis, .sinopsis, .entry-content-single .synopsis, .desc")
+        detailRoot.select("p, .synopsis, .sinopsis, .desc")
             .asSequence()
             .mapNotNull { it.text().cleanSynopsisText(title) }
+            .firstOrNull()
+            ?.let { return it }
+
+        val markers = listOf("$title –", "$title -", "$title —")
+        return listOf(detailRoot.text(), document.text())
+            .asSequence()
+            .mapNotNull { raw ->
+                val marker = markers.firstOrNull { raw.contains(it, ignoreCase = true) }
+                    ?: return@mapNotNull null
+                val start = raw.indexOf(marker, ignoreCase = true)
+                if (start < 0) return@mapNotNull null
+
+                raw.substring(start)
+                    .substringBeforeAny(
+                        listOf(
+                            " History",
+                            " Watch $title",
+                            " Related Episodes",
+                            " Comment",
+                            " Recommended Series"
+                        )
+                    )
+                    .cleanSynopsisText(title)
+            }
             .firstOrNull()
     }
 
@@ -263,6 +371,9 @@ class Donghub : MainAPI() {
         val value = replace(Regex("""\s+"""), " ")
             .trim()
             .removePrefix("Synopsis $title")
+            .removePrefix("$title –")
+            .removePrefix("$title -")
+            .removePrefix("$title —")
             .trim()
 
         if (value.isBlank()) return null
@@ -271,6 +382,17 @@ class Donghub : MainAPI() {
         if (value.contains("download free", true) && value.contains("Donghub", true)) return null
 
         return value
+    }
+
+    private fun String.substringBeforeAny(markers: List<String>): String {
+        var result = this
+        markers.forEach { marker ->
+            val index = result.indexOf(marker, ignoreCase = true)
+            if (index > 0) {
+                result = result.substring(0, index)
+            }
+        }
+        return result
     }
 
     override suspend fun loadLinks(
