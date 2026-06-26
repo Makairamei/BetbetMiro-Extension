@@ -71,17 +71,12 @@ class DonghuaZone : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         if (query.isBlank()) return emptyList()
-        val encoded = query.urlEncoded()
-        val urls = listOf(
-            "$mainUrl/search?q=$encoded",
-            "$mainUrl/search/label/Episode?max-results=10&q=$encoded"
-        )
+        val encoded = "label:Series $query".urlEncoded()
+        val url = "$mainUrl/search?q=$encoded&max-results=10"
 
-        return urls.flatMap { url ->
-            runCatching {
-                app.get(url, headers = defaultHeaders, referer = mainUrl).document.toSearchResults(url)
-            }.getOrDefault(emptyList())
-        }.distinctBy { it.url }
+        return runCatching {
+            app.get(url, headers = defaultHeaders, referer = mainUrl).document.toSearchResults(url)
+        }.getOrDefault(emptyList()).distinctBy { it.url }
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -388,8 +383,8 @@ class DonghuaZone : MainAPI() {
             .substringBefore("&")
             .replace("-", "+")
             .replace("_", "/")
-            .replace("\n", "")
-            .replace("\r", "")
+            .replace("\\n", "")
+            .replace("\\r", "")
             .replace(" ", "")
 
         if (!cleaned.looksLikeBase64()) return

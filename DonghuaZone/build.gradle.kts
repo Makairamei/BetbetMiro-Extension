@@ -1,4 +1,4 @@
-version = 1
+version = 2
 
 cloudstream {
     description = "DonghuaZone - Watch donghua anime with English & Indonesian subtitles."
