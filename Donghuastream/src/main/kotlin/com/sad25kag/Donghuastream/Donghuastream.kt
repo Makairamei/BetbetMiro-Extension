@@ -408,7 +408,15 @@ open class Donghuastream : MainAPI() {
     ): Boolean {
         val response = app.get(data, headers = defaultHeaders, referer = "$mainUrl/")
         val document = response.document
-        val emitted = linkedSetOf<String>()
+        val emittedLinks = linkedSetOf<String>()
+        val visitedPlayers = linkedSetOf<String>()
+
+        val trackedCallback: (ExtractorLink) -> Unit = { link ->
+            val linkUrl = link.url.trim()
+            if (linkUrl.isBlank() || emittedLinks.add(linkUrl)) {
+                callback.invoke(link)
+            }
+        }
 
         suspend fun emitDirect(rawUrl: String?, label: String = name) {
             val finalUrl = rawUrl
@@ -417,7 +425,7 @@ open class Donghuastream : MainAPI() {
                 ?.takeIf { it.isNotBlank() }
                 ?: return
 
-            if (!emitted.add(finalUrl)) return
+            if (!emittedLinks.add(finalUrl)) return
 
             callback.invoke(
                 newExtractorLink(
@@ -437,7 +445,38 @@ open class Donghuastream : MainAPI() {
             )
         }
 
-        document.select("option[data-index], .mobius option, select option").forEach { option ->
+        suspend fun resolvePlayer(rawPlayerUrl: String?, label: String = name) {
+            val playerUrl = rawPlayerUrl
+                ?.decodeEscaped()
+                ?.absoluteUrl(data)
+                ?.takeIf { it.isNotBlank() }
+                ?: return
+
+            if (!visitedPlayers.add(playerUrl)) return
+
+            when {
+                playerUrl.contains(".mp4", true) || playerUrl.contains(".m3u8", true) -> {
+                    emitDirect(playerUrl, label)
+                }
+                playerUrl.contains("vidmoly", true) -> {
+                    val cleanedUrl = playerUrl.cleanEmbedUrl().absoluteUrl(data)
+                    runCatching {
+                        loadExtractor(cleanedUrl, cleanedUrl, subtitleCallback, trackedCallback)
+                    }.onFailure {
+                        Log.w("Donghuastream", "Extractor failed: $cleanedUrl")
+                    }
+                }
+                else -> {
+                    runCatching {
+                        loadExtractor(playerUrl, playerUrl, subtitleCallback, trackedCallback)
+                    }.onFailure {
+                        Log.w("Donghuastream", "Extractor failed: $playerUrl")
+                    }
+                }
+            }
+        }
+
+        document.select(".mobius option, option[data-index], select option").forEach { option ->
             val base64 = option.attr("value")
             if (base64.isBlank()) return@forEach
 
@@ -447,37 +486,16 @@ open class Donghuastream : MainAPI() {
             }
 
             val parsed = Jsoup.parse(decodedHtml)
-            val iframeUrl = parsed.selectFirst("iframe[src]")?.attr("src")
-                ?: parsed.selectFirst("meta[itemprop=embedUrl]")?.attr("content")
-                ?: parsed.selectFirst("a[href]")?.attr("href")
-
-            val finalUrl = iframeUrl
-                ?.decodeEscaped()
-                ?.absoluteUrl(data)
-                ?.takeIf { it.isNotBlank() }
-                ?: return@forEach
-
-            val label = option.text().trim().ifBlank { finalUrl.hostName() }
-
-            when {
-                finalUrl.contains(".mp4", true) || finalUrl.contains(".m3u8", true) -> {
-                    emitDirect(finalUrl, label)
-                }
-                else -> {
-                    runCatching {
-                        loadExtractor(finalUrl, data, subtitleCallback, callback)
-                    }.onSuccess { success ->
-                        if (success) emitted.add(finalUrl)
-                    }
-                }
-            }
+            val playerUrl = parsed.extractPlayerUrl(data) ?: return@forEach
+            val label = option.text().trim().ifBlank { playerUrl.hostName() }
+            resolvePlayer(playerUrl, label)
         }
 
         val html = response.text
         val patterns = listOf(
-            Regex("""file\s*[:=]\s*['"]([^'"]+\.(?:m3u8|mp4)[^'"]*)['"]""", RegexOption.IGNORE_CASE),
-            Regex("""source\s*[:=]\s*['"]([^'"]+\.(?:m3u8|mp4)[^'"]*)['"]""", RegexOption.IGNORE_CASE),
-            Regex("""['"](https?://[^'"]+\.(?:m3u8|mp4)[^'"]*)['"]""", RegexOption.IGNORE_CASE)
+            Regex("""file\s*[:=]\s*['\"]([^'\"]+\.(?:m3u8|mp4)[^'\"]*)['\"]""", RegexOption.IGNORE_CASE),
+            Regex("""source\s*[:=]\s*['\"]([^'\"]+\.(?:m3u8|mp4)[^'\"]*)['\"]""", RegexOption.IGNORE_CASE),
+            Regex("""['\"](https?://[^'\"]+\.(?:m3u8|mp4)[^'\"]*)['\"]""", RegexOption.IGNORE_CASE)
         )
 
         patterns.forEach { pattern ->
@@ -486,7 +504,29 @@ open class Donghuastream : MainAPI() {
             }
         }
 
-        return emitted.isNotEmpty()
+        return emittedLinks.isNotEmpty()
+    }
+
+    private fun Element.extractPlayerUrl(pageUrl: String): String? {
+        val rawUrl = selectFirst("iframe[src]")?.attr("src")
+            ?: selectFirst("iframe")?.attr("src")
+            ?: selectFirst("meta[itemprop=embedUrl]")?.attr("content")
+            ?: selectFirst("a[href]")?.attr("href")
+
+        return rawUrl
+            ?.cleanEmbedUrl()
+            ?.absoluteUrl(pageUrl)
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun String.cleanEmbedUrl(): String {
+        val decoded = decodeEscaped().trim()
+        return decoded
+            .substringAfter("src=\"", decoded)
+            .substringAfter("src='", decoded)
+            .substringBefore("\"")
+            .substringBefore("'")
+            .trim()
     }
 
     private fun findPoster(element: Element, pageUrl: String): String? {
