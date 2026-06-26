@@ -59,6 +59,9 @@ class CinemaIndo : MainAPI() {
         "Cache-Control" to "no-cache"
     )
 
+    private val categoryUserAgent =
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36"
+
     private var securePathScriptSource: String? = null
     private var cryptoJsSource: String? = null
 
@@ -80,7 +83,7 @@ class CinemaIndo : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = normalizeUrl(request.data, mainUrl)
         val document = runCatching {
-            app.get(url, headers = headers + mapOf("Referer" to "$mainUrl/"), referer = mainUrl).document
+            app.get(url, headers = categoryPageHeaders("$mainUrl/"), referer = mainUrl).document
         }.getOrNull() ?: return newHomePageResponse(request.name, emptyList(), hasNext = false)
 
         fetchCategoryApi(document, url, page)?.let { apiPage ->
@@ -94,7 +97,7 @@ class CinemaIndo : MainAPI() {
             document
         } else {
             runCatching {
-                app.get(fallbackUrl, headers = headers + mapOf("Referer" to "$mainUrl/"), referer = mainUrl).document
+                app.get(fallbackUrl, headers = categoryPageHeaders("$mainUrl/"), referer = mainUrl).document
             }.getOrNull() ?: document
         }
 
@@ -309,47 +312,87 @@ class CinemaIndo : MainAPI() {
     )
 
     private val knownCategoryApiTokens = mapOf(
-        "/api/movies/list/latest" to "OUdYQjdQUWM0MENjT2ZWTFF0Sm1CQTM4TGtBMno3U21RenBDUnRDT20wbz06OmNjOTYwOTIxZWQxM2VhMzlkNjM2MTA1NTgwYjU0Mzg4",
-        "/api/series/list/top-series-today" to "Tk80TjM3bWtjQU5ENitIdTJMKzlVeGtza3VEMzQ3TUI1ajJBbkJoNTg4N0RYeThxN0xvQTE3cXhoTHpVc0o1azo6ZjRhZDNjOTE2MmQzYmYyNjIwZDkzMTU5Yjc5OWJhMTc",
-        "/api/series/list/latest" to "UUdjK3d6Umc3MnVJTjF1SlVQeGZ5U2JpUHdFMmZzQ29ualJrNndvMFFzUT06OmJhMTQ4NmUzNDE3YjE4OWZlNzAxYTA1N2MyYTNhOTQw",
-        "/api/series/list/latest-series" to "UUdjK3d6Umc3MnVJTjF1SlVQeGZ5U2JpUHdFMmZzQ29ualJrNndvMFFzUT06OmJhMTQ4NmUzNDE3YjE4OWZlNzAxYTA1N2MyYTNhOTQw",
-        "/api/series/status/complete" to "UVVRNURFL0hocXh2T0UwZzVlNlpSQjM3ZmRMaXY3ZWw0VXBaYkV0MnBlUT06Ojc1MTYxODJiZWI0MzdiNjI2YzBjZDViMmZmOTcxMWMz"
+        // HAR-backed category API tokens. Try more than one token because securePath output is randomized by IV.
+        "/api/movies/list/latest" to listOf(
+            "OUdYQjdQUWM0MENjT2ZWTFF0Sm1CQTM4TGtBMno3U21RenBDUnRDT20wbz06OmNjOTYwOTIxZWQxM2VhMzlkNjM2MTA1NTgwYjU0Mzg4",
+            "ZXJmclJBdU1wZStOL1NvQ0FXOTBLd0dZd0o0ZVB4TUtIdXd2b0ljMk56cz06OjRmYjllNjNjNzE2MDAxYzY1ZDE1MmJmNWM0NTQxN2U4",
+            "UU5iRkNKcHd4NkVlbGx1WVlHVWZCdEg2RmRLeWc3eTJuWjVNekZOL0VXbz06OmMxYmQzZjJlNjdkMTBhMTgwZmZjZGJlODVjM2Y2NDNj"
+        ),
+        "/api/series/list/top-series-today" to listOf(
+            "Tk80TjM3bWtjQU5ENitIdTJMKzlVeGtza3VEMzQ3TUI1ajJBbkJoNTg4N0RYeThxN0xvQTE3cXhoTHpVc0o1azo6ZjRhZDNjOTE2MmQzYmYyNjIwZDkzMTU5Yjc5OWJhMTc",
+            "UGo0R3kxSEhvUHVGNzIxclh5RUFpb0t4WXRhY1BQUjZ1SXhRaUpNaGNNQVBNM2xrUXJtdHVlYlVMQktKM21wWDo6MDBjZDRkMTExNjA1YzRjMzUzMzRkMjVmOGMwY2RjYWY",
+            "OGhJeFd0KzJTOFZqSXFOVXNDdWVURTYvTzk5UE5SaUw4MkxaakZRUk9rOWQrcTZpemVHZUxsSFZZZWxvTjhvRDo6NjMyNjlmYzMzMjRmMGFlYTI1ODQxZWQ2N2E4YWRhYjA"
+        ),
+        "/api/series/list/latest" to listOf(
+            "UUdjK3d6Umc3MnVJTjF1SlVQeGZ5U2JpUHdFMmZzQ29ualJrNndvMFFzUT06OmJhMTQ4NmUzNDE3YjE4OWZlNzAxYTA1N2MyYTNhOTQw",
+            "ZGJDeGhZQ2VPWWxGcUptdU5oRmZOc3dOOTV1ZG9XdmxWZExPTlhWV3N1ST06OjY2ZjMzNjU4ZjRhZWVkYzkxNTZkZmQ3YjI4NDY5Njkz"
+        ),
+        "/api/series/list/latest-series" to listOf(
+            "UUdjK3d6Umc3MnVJTjF1SlVQeGZ5U2JpUHdFMmZzQ29ualJrNndvMFFzUT06OmJhMTQ4NmUzNDE3YjE4OWZlNzAxYTA1N2MyYTNhOTQw",
+            "ZGJDeGhZQ2VPWWxGcUptdU5oRmZOc3dOOTV1ZG9XdmxWZExPTlhWV3N1ST06OjY2ZjMzNjU4ZjRhZWVkYzkxNTZkZmQ3YjI4NDY5Njkz"
+        ),
+        "/api/series/status/complete" to listOf(
+            "UVVRNURFL0hocXh2T0UwZzVlNlpSQjM3ZmRMaXY3ZWw0VXBaYkV0MnBlUT06Ojc1MTYxODJiZWI0MzdiNjI2YzBjZDViMmZmOTcxMWMz"
+        )
     )
 
     private suspend fun fetchCategoryApi(document: Document, pageUrl: String, page: Int): CategoryApiPage? {
         val apiPath = categoryApiPath(document, pageUrl) ?: return null
-        val token = resolveCategoryToken(apiPath) ?: return null
-        val apiUrl = "$mainUrl/api/v1/${urlEncodePath(token)}/${page.coerceAtLeast(1)}"
-        val body = runCatching {
-            app.get(
-                apiUrl,
-                headers = headers + mapOf(
-                    "Accept" to "application/json, text/plain, */*",
-                    "X-Requested-With" to "XMLHttpRequest",
-                    "Referer" to pageUrl
-                ),
-                referer = pageUrl
-            ).text
-        }.getOrNull().orEmpty()
-
-        val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
-        if (!json.optString("status").equals("success", true)) return null
-
-        val items = mutableListOf<SearchResponse>()
-        val results = json.optJSONArray("results") ?: json.optJSONArray("data") ?: return CategoryApiPage(emptyList(), hasNext = false)
-        for (index in 0 until results.length()) {
-            val item = results.optJSONObject(index) ?: continue
-            apiItemToSearchResult(item)?.let { items.add(it) }
+        val tokens = resolveCategoryTokens(apiPath)
+        for (token in tokens) {
+            val apiPage = fetchCategoryApiByToken(token, pageUrl, page)
+            if (apiPage != null && apiPage.items.isNotEmpty()) return apiPage
         }
-
-        val currentPage = json.optInt("current_page", page)
-        val maxPage = json.optInt("max_page", currentPage)
-        return CategoryApiPage(items.distinctBy { it.url }, hasNext = currentPage < maxPage)
+        return null
     }
 
-    private suspend fun resolveCategoryToken(apiPath: String): String? {
-        knownCategoryApiTokens[apiPath]?.let { return it }
-        return generateCategoryToken(apiPath)
+    private suspend fun fetchCategoryApiByToken(token: String, pageUrl: String, page: Int): CategoryApiPage? {
+        val pageNumber = page.coerceAtLeast(1)
+        val apiUrls = listOf(
+            "$mainUrl/api/v1/$token/$pageNumber",
+            "$mainUrl/api/v1/${urlEncodePath(token)}/$pageNumber"
+        ).distinct()
+
+        for (apiUrl in apiUrls) {
+            val body = runCatching {
+                app.get(
+                    apiUrl,
+                    headers = categoryApiHeaders(pageUrl),
+                    referer = pageUrl
+                ).text
+            }.getOrNull().orEmpty()
+
+            val jsonText = body.substringAfter("{", missingDelimiterValue = "")
+                .takeIf { it.isNotBlank() }
+                ?.let { "{$it" }
+                ?: body
+
+            val json = runCatching { JSONObject(jsonText) }.getOrNull() ?: continue
+            if (!json.optString("status").equals("success", true)) continue
+
+            val results = json.optJSONArray("results")
+                ?: json.optJSONArray("data")
+                ?: continue
+
+            val items = mutableListOf<SearchResponse>()
+            for (index in 0 until results.length()) {
+                val item = results.optJSONObject(index) ?: continue
+                apiItemToSearchResult(item)?.let { items.add(it) }
+            }
+            if (items.isEmpty()) continue
+
+            val currentPage = json.optInt("current_page", pageNumber)
+            val maxPage = json.optInt("max_page", currentPage)
+            return CategoryApiPage(items.distinctBy { it.url }, hasNext = currentPage < maxPage)
+        }
+        return null
+    }
+
+    private suspend fun resolveCategoryTokens(apiPath: String): List<String> {
+        val tokens = linkedSetOf<String>()
+        knownCategoryApiTokens[apiPath]?.forEach { tokens.add(it) }
+        generateCategoryToken(apiPath)?.let { tokens.add(it) }
+        return tokens.toList()
     }
 
     private suspend fun generateCategoryToken(apiPath: String): String? {
@@ -416,6 +459,27 @@ class CinemaIndo : MainAPI() {
                 Context.exit()
             }
         }.getOrNull()
+    }
+
+    private fun categoryPageHeaders(referer: String): Map<String, String> {
+        return headers + mapOf(
+            "User-Agent" to categoryUserAgent,
+            "Referer" to referer,
+            "Sec-Fetch-Site" to "same-origin",
+            "Sec-Fetch-Mode" to "navigate",
+            "Sec-Fetch-Dest" to "document"
+        )
+    }
+
+    private fun categoryApiHeaders(referer: String): Map<String, String> {
+        return headers + mapOf(
+            "User-Agent" to categoryUserAgent,
+            "Accept" to "*/*",
+            "Referer" to referer,
+            "Sec-Fetch-Site" to "same-origin",
+            "Sec-Fetch-Mode" to "cors",
+            "Sec-Fetch-Dest" to "empty"
+        )
     }
 
     private fun urlEncodePath(value: String): String {
