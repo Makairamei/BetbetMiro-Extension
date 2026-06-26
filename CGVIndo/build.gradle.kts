@@ -1,10 +1,10 @@
-version = 10
+version = 11
 
 cloudstream {
     authors = listOf("sad25kag", "BetbetMiro")
     language = "id"
-    description = "CGVIndo provider untuk source http://167.71.211.231/ dengan kategori evidence-based, parser Muvipro article cards, detail movie/series, AJAX muvipro_player_content, dan Muvipro iframe resolver berbasis loadExtractor dengan broad player candidate, JSON/Unicode decode, dan safe direct-media guard."
-    status = 1
+    description = "CGVIndo provider untuk source http://167.71.211.231/ dengan kategori evidence-based dan parser Muvipro. Sementara ditandai nonaktif karena loadLinks/playback masih belum menghasilkan tautan video yang terbukti, walau mainUrl, MainPage, search, dan load/detail dipertahankan."
+    status = 0
 
     tvTypes = listOf(
         "Movie",
