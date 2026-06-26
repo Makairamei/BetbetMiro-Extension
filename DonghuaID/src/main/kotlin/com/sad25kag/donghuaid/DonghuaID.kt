@@ -92,11 +92,7 @@ class DonghuaID : MainAPI() {
         val poster = document.selectFirst("meta[property=og:image], meta[name=twitter:image]")?.attr("content")?.absoluteUrl(url)
             ?: document.selectFirst(".thumb img, .ime img, .bigcontent img, .poster img, img.wp-post-image")?.imageUrl(url)
 
-        val plot = document.selectFirst(".entry-content, .synopsis, .desc, .mindesc, .bixbox.synp, article .content")
-            ?.text()
-            ?.cleanText()
-            ?.takeIf { it.length > 20 }
-            ?: document.selectFirst("meta[name=description]")?.attr("content")?.cleanText()
+        val plot = extractPlot(document, title)
 
         val tags = document.select(".info-content a[href*='genre'], .spe a[href*='genre'], a[rel=tag]")
             .map { it.text().cleanText() }
@@ -340,6 +336,64 @@ class DonghuaID : MainAPI() {
             value.contains("ongoing") || value.contains("airing") || value.contains("tayang") -> ShowStatus.Ongoing
             else -> null
         }
+    }
+
+    private fun extractPlot(document: Document, title: String): String? {
+        val selectors = listOf(
+            ".infox .desc",
+            ".desc.mindes",
+            ".desc",
+            ".bixbox.synp .entry-content",
+            ".synopsis",
+            ".mindesc",
+        )
+
+        return selectors.asSequence()
+            .mapNotNull { selector -> document.selectFirst(selector)?.text()?.cleanSynopsis(title) }
+            .firstOrNull { it.isStorySynopsis() }
+            ?: document.selectFirst("meta[name=description]")
+                ?.attr("content")
+                ?.cleanSynopsis(title)
+                ?.takeIf { it.isStorySynopsis() }
+    }
+
+    private fun String.cleanSynopsis(title: String): String {
+        var value = cleanText()
+            .replace(Regex("""(?i)^\s*Sinopsis\s*:?\s*"""), "")
+            .trim()
+
+        val normalizedTitle = cleanTitle(title).orEmpty()
+        if (normalizedTitle.isNotBlank()) {
+            value = value
+                .replace(Regex("""(?i)^\Q$normalizedTitle\E\s*[:：-]?\s*"""), "")
+                .trim()
+        }
+
+        return value
+    }
+
+    private fun String.isStorySynopsis(): Boolean {
+        val value = cleanText()
+        if (value.length <= 20) return false
+
+        val lower = value.lowercase(Locale.ROOT)
+        val seoPrefixes = listOf(
+            "download ",
+            "watch ",
+            "nonton ",
+            "stream ",
+            "don't forget",
+        )
+        if (seoPrefixes.any { lower.startsWith(it) }) return false
+
+        val seoMarkers = listOf(
+            "don't forget to click",
+            "always updated at donghuaid",
+            "download ",
+            "watch ",
+        ).count { lower.contains(it) }
+
+        return seoMarkers < 2
     }
 
     private fun Element.imageUrl(base: String = mainUrl): String? {
