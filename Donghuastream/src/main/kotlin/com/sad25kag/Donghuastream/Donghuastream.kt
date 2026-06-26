@@ -16,7 +16,7 @@ open class Donghuastream : MainAPI() {
     }
 
     override var mainUrl = "https://donghuastream.org"
-    override var name = "Donghuastream."
+    override var name = "Donghuastream"
     override val hasMainPage = true
     override val hasQuickSearch = true
     override var lang = "id"
@@ -30,7 +30,6 @@ open class Donghuastream : MainAPI() {
     override val mainPage = mainPageOf(
         "$mainUrl/anime/?status=&type=&order=update&page={page}" to "Update Terbaru",
         "$mainUrl/anime/?status=completed&type=&order=update&page={page}" to "Completed",
-        "$mainUrl/anime/?status=ongoing&type=&order=update&page={page}" to "Ongoing",
         "$mainUrl/anime/?status=&type=special&order=update&page={page}" to "Special",
         "$mainUrl/genres/adventure/page/{page}/" to "Adventure",
         "$mainUrl/genres/another-world/page/{page}/" to "Another World",
