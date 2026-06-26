@@ -3,6 +3,7 @@ package com.horis.cncverse
 import android.content.Context
 import com.horis.cncverse.entities.EpisodesData
 import com.horis.cncverse.entities.PostData
+import com.horis.cncverse.entities.SearchData
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
@@ -91,19 +92,19 @@ open class DisneyStudioProvider(
         }
     }
 
-//     override suspend fun search(query: String): List<SearchResponse> {
-//        cookie_value = if (cookie_value.isEmpty()) bypass(mainUrl) else cookie_value
-//        val url = "$mainUrl/mobile/hs/search.php?s=$query&t=${APIHolder.unixTime}"
-//        val data = app.get(url, referer = "$mainUrl/home", cookies = buildCookies())
-//            .parsed<SearchData>()
-//
-//        return data.searchResult.map {
-//            newAnimeSearchResponse(it.t, Id(it.id).toJson()) {
-//                posterUrl = "https://imgcdn.kim/hs/v/${it.id}.jpg"
-//                posterHeaders = mapOf("Referer" to "$mainUrl/home")
-//            }
-//        }
-//    }
+    override suspend fun search(query: String): List<SearchResponse> {
+        cookie_value = if (cookie_value.isEmpty()) bypass(mainUrl) else cookie_value
+        val url = "$mainUrl/mobile/hs/search.php?s=$query&t=${APIHolder.unixTime}"
+        val data = app.get(url, referer = "$mainUrl/home", cookies = buildCookies())
+            .parsed<SearchData>()
+
+        return data.searchResult.map {
+            newAnimeSearchResponse(it.t, Id(it.id).toJson()) {
+                posterUrl = "https://imgcdn.kim/hs/v/${it.id}.jpg"
+                posterHeaders = mapOf("Referer" to "$mainUrl/home")
+            }
+        }
+    }
 
     override suspend fun load(url: String): LoadResponse? {
         cookie_value = if (cookie_value.isEmpty()) bypass(mainUrl) else cookie_value
