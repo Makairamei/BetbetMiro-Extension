@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.extractors.Filesim
 import com.lagradost.cloudstream3.extractors.StreamSB
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
+import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
@@ -103,7 +104,7 @@ open class Ultrahd : ExtractorApi() {
                     val langurl=it.file
                     val lang=it.label
                     subtitleCallback.invoke(
-                        SubtitleFile(
+                        newSubtitleFile(
                             lang,  // Use label for the name
                             langurl     // Use extracted URL
                         )
@@ -134,9 +135,24 @@ class Rumble : ExtractorApi() {
         val sourceRegex = """"file"\s*:\s*"(https:[^"]+\.(?:mp4|m3u8)[^"]*)"""".toRegex()
         val sources = sourceRegex.findAll(playerScript)
 
-        for (source in sources) {
+        for ((index, source) in sources.withIndex()) {
+            val serverIndex = index + 1
             val fileUrl = source.groupValues[1].replace("\\/", "/")
-            M3u8Helper.generateM3u8(name, fileUrl, mainUrl).forEach(callback)
+            if (fileUrl.contains(".mp4", true)) {
+                callback.invoke(
+                    newExtractorLink(
+                        name,
+                        "$name Video Server $serverIndex",
+                        url = fileUrl,
+                        INFER_TYPE
+                    ) {
+                        this.referer = ""
+                        this.quality = getQualityFromName("")
+                    }
+                )
+            } else {
+                M3u8Helper.generateM3u8(name, fileUrl, mainUrl).forEach(callback)
+            }
         }
 
         // Extract subtitle tracks
@@ -148,7 +164,7 @@ class Rumble : ExtractorApi() {
             val label = track.groupValues[2]
 
             subtitleCallback.invoke(
-                SubtitleFile(label, fileUrl)
+                newSubtitleFile(label, fileUrl)
             )
         }
     }
@@ -172,68 +188,122 @@ open class PlayStreamplay : ExtractorApi() {
         val unpackedJs = JsUnpacker(packedCode).unpack() ?: return
         val token = Regex("""kaken="(.*?)"""").find(unpackedJs)?.groupValues?.getOrNull(1) ?: return
         val apiUrl = "$mainUrl/api/?$token"
-        val response = app.get(apiUrl, timeout = 10000).parsedSafe<Response>() ?: return
+        val apiResponse = app.get(apiUrl, timeout = 10000)
+        val response = apiResponse.parsedSafe<Response>()
+        val apiText = apiResponse.text
 
-        val m3u8Url = response.sources.find { it.file.isNotBlank() }?.file
-        if (!m3u8Url.isNullOrEmpty()) {
-            val headers = mapOf(
-                "pragma" to "no-cache",
-                "priority" to "u=0, i",
-                "sec-ch-ua" to "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Google Chrome\";v=\"138\"",
-                "sec-ch-ua-mobile" to "?0",
-                "sec-ch-ua-platform" to "\"Windows\"",
-                "sec-fetch-dest" to "document",
-                "sec-fetch-mode" to "navigate",
-                "sec-fetch-site" to "none",
-                "sec-fetch-user" to "?1",
-                "upgrade-insecure-requests" to "1",
-                "user-agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
-            )
-            M3u8Helper.generateM3u8(name, m3u8Url, mainUrl, headers = headers).forEach(callback)
+        val headers = mapOf(
+            "pragma" to "no-cache",
+            "priority" to "u=0, i",
+            "sec-ch-ua" to "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Google Chrome\";v=\"138\"",
+            "sec-ch-ua-mobile" to "?0",
+            "sec-ch-ua-platform" to "\"Windows\"",
+            "sec-fetch-dest" to "document",
+            "sec-fetch-mode" to "navigate",
+            "sec-fetch-site" to "none",
+            "sec-fetch-user" to "?1",
+            "upgrade-insecure-requests" to "1",
+            "user-agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+        )
+
+        val parsedSources = response?.sources
+            .orEmpty()
+            .mapNotNull { it.file.takeIf { file -> file.isNotBlank() } }
+
+        val fallbackSources = if (parsedSources.isEmpty()) {
+            Regex("""\"file\"\s*:\s*\"([^\"]+)\"""", RegexOption.IGNORE_CASE)
+                .findAll(apiText)
+                .mapNotNull { match -> match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() } }
+                .toList()
+        } else {
+            emptyList()
         }
 
-        response.tracks.forEach { subtitle ->
-            subtitleCallback(
-                SubtitleFile(
-                    lang = subtitle.label,
-                    url = subtitle.file
+        (parsedSources + fallbackSources)
+            .map { httpsify(it.replace("\\/", "/")) }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .forEach { mediaUrl ->
+                if (mediaUrl.contains(".mp4", true)) {
+                    callback.invoke(
+                        newExtractorLink(
+                            name,
+                            name,
+                            url = mediaUrl,
+                            INFER_TYPE
+                        ) {
+                            this.referer = ""
+                            this.quality = getQualityFromName("")
+                        }
+                    )
+                } else {
+                    M3u8Helper.generateM3u8(name, mediaUrl, mainUrl, headers = headers).forEach(callback)
+                }
+            }
+
+        val parsedTracks = response?.tracks
+            .orEmpty()
+            .mapNotNull { track ->
+                track.file.takeIf { it.isNotBlank() }?.let { file -> track.label to file }
+            }
+
+        val fallbackTracks = if (parsedTracks.isEmpty()) {
+            Regex("""\"file\"\s*:\s*\"([^\"]+\.vtt[^\"]*)\"\s*,\s*\"label\"\s*:\s*\"([^\"]+)\"""", RegexOption.IGNORE_CASE)
+                .findAll(apiText)
+                .mapNotNull { match ->
+                    val file = match.groupValues.getOrNull(1)?.replace("\\/", "/").orEmpty()
+                    val label = match.groupValues.getOrNull(2).orEmpty()
+                    file.takeIf { it.isNotBlank() }?.let { label to it }
+                }
+                .toList()
+        } else {
+            emptyList()
+        }
+
+        (parsedTracks + fallbackTracks)
+            .distinctBy { it.second }
+            .forEach { (label, file) ->
+                subtitleCallback.invoke(
+                    newSubtitleFile(
+                        label.ifBlank { "Subtitle" },
+                        httpsify(file)
+                    )
                 )
-            )
-        }
+            }
     }
 
     data class Response(
-        val query: Query,
-        val status: String,
-        val message: String,
-        @JsonProperty("embed_url")
-        val embedUrl: String,
-        @JsonProperty("download_url")
-        val downloadUrl: String,
-        val title: String,
-        val poster: String,
-        val filmstrip: String,
-        val sources: List<Source>,
-        val tracks: List<Track>,
+        val query: Query? = null,
+        val status: String? = null,
+        val message: String? = null,
+        @param:JsonProperty("embed_url")
+        val embedUrl: String? = null,
+        @param:JsonProperty("download_url")
+        val downloadUrl: String? = null,
+        val title: String? = null,
+        val poster: String? = null,
+        val filmstrip: String? = null,
+        val sources: List<Source> = emptyList(),
+        val tracks: List<Track> = emptyList(),
     )
 
     data class Query(
-        val source: String,
-        val id: String,
-        val download: String,
+        val source: String? = null,
+        val id: String? = null,
+        val download: String? = null,
     )
 
     data class Source(
-        val file: String,
-        val type: String,
-        val label: String,
-        val default: Boolean,
+        val file: String = "",
+        val type: String? = null,
+        val label: String? = null,
+        val default: Boolean? = null,
     )
 
     data class Track(
-        val file: String,
-        val label: String,
-        val default: Boolean?,
+        val file: String = "",
+        val label: String = "Subtitle",
+        val default: Boolean? = null,
     )
 
 }
