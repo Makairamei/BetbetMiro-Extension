@@ -121,10 +121,7 @@ class Donghub : MainAPI() {
             ?.takeIf { it.isNotBlank() }
             ?: throw ErrorLoadingException("Judul Donghub tidak ditemukan")
 
-        val description = document.selectFirst("div.entry-content, .entry-content-single, .synopsis, .desc")
-            ?.text()
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
+        val description = extractSynopsis(document, title)
 
         val infoText = document.selectFirst(".spe, .info-content, .infotable")
             ?.text()
@@ -227,6 +224,53 @@ class Donghub : MainAPI() {
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             posterUrl = poster
         }
+    }
+
+    private fun extractSynopsis(document: Element, title: String): String? {
+        val synopsisHeading = document.select("h2, h3, h4")
+            .firstOrNull { it.text().trim().startsWith("Synopsis", true) }
+
+        if (synopsisHeading != null) {
+            val parts = mutableListOf<String>()
+            var item = synopsisHeading.nextElementSibling()
+
+            while (item != null) {
+                val headingTag = item.tagName().matches(Regex("h[2-4]", RegexOption.IGNORE_CASE))
+                val text = item.text().trim()
+
+                if (headingTag ||
+                    text.startsWith("History", true) ||
+                    text.startsWith("Watch ", true) ||
+                    text.startsWith("Comment", true)
+                ) break
+
+                text.cleanSynopsisText(title)?.let(parts::add)
+                item = item.nextElementSibling()
+            }
+
+            parts.joinToString("\n\n")
+                .cleanSynopsisText(title)
+                ?.let { return it }
+        }
+
+        return document.select(".synopsis, .sinopsis, .entry-content-single .synopsis, .desc")
+            .asSequence()
+            .mapNotNull { it.text().cleanSynopsisText(title) }
+            .firstOrNull()
+    }
+
+    private fun String.cleanSynopsisText(title: String): String? {
+        val value = replace(Regex("""\s+"""), " ")
+            .trim()
+            .removePrefix("Synopsis $title")
+            .trim()
+
+        if (value.isBlank()) return null
+        if (value.startsWith("Watch streaming", true)) return null
+        if (value.startsWith("Watch full episodes", true)) return null
+        if (value.contains("download free", true) && value.contains("Donghub", true)) return null
+
+        return value
     }
 
     override suspend fun loadLinks(
