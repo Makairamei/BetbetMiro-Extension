@@ -74,36 +74,32 @@ class DonghuaZone : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, headers = defaultHeaders, referer = mainUrl).document
+        val content = document.detailContent()
+
         val rawTitle = document.selectFirst("h1.entry-title, h1.post-title, h1, .post-title, .entry-title")
             ?.text()
             ?.cleanText()
             ?.takeIf { it.isNotBlank() }
             ?: throw ErrorLoadingException("DonghuaZone title not found")
 
-        val poster = document.findPoster(url)
+        val labels = document.detailLabels(content)
+        val seriesLabel = labels.firstOrNull { it.isSeriesTitleLabel() }
+        val isMovie = rawTitle.contains("movie", true) || (seriesLabel == null && labels.any { it.name.equals("Movie", true) })
+        val seriesTitle = seriesLabel?.name ?: rawTitle.cleanEpisodeTitle()
+
+        val poster = content.findPoster(url)
             ?: document.selectFirst("meta[property=og:image], meta[name=twitter:image]")
                 ?.attr("content")
                 ?.absoluteUrl(url)
+            ?: document.findPoster(url)
 
-        val bodyText = document.selectFirst(".post-body, .entry-content, article, .post")
-            ?.text()
-            ?.cleanText()
-            .orEmpty()
-
-        val description = bodyText
-            .substringBefore("If the current server", missingDelimiterValue = bodyText)
-            .cleanText()
+        val description = content.text()
+            .cleanDescription(rawTitle, seriesTitle)
             .takeIf { it.length > 30 }
 
-        val labels = document.select("a[href*='/search/label/']")
-            .map { DonghuaZoneLabel(it.text().cleanText(), it.attr("href").absoluteUrl(mainUrl)) }
-            .filter { it.name.isNotBlank() }
-            .distinctBy { it.name.lowercase(Locale.ROOT) }
-
-        val seriesLabel = labels.firstOrNull { it.isSeriesTitleLabel() }
-        val isMovie = labels.any { it.name.equals("Movie", true) } || rawTitle.contains("movie", true)
-        val seriesTitle = seriesLabel?.name ?: rawTitle.cleanEpisodeTitle()
-        val tags = labels.map { it.name }.filterNot { it.equals(seriesTitle, true) }
+        val tags = labels.map { it.name }
+            .filter { it.isDetailTag(seriesTitle) }
+            .distinctBy { it.lowercase(Locale.ROOT) }
 
         val episodes = if (!isMovie && seriesLabel != null) {
             collectEpisodesFromSeries(seriesLabel.url, url).ifEmpty {
@@ -119,7 +115,7 @@ class DonghuaZone : MainAPI() {
             .distinctBy { it.url }
             .take(12)
 
-        return if (!isMovie && episodes.size > 1) {
+        return if (!isMovie && seriesLabel != null) {
             newTvSeriesLoadResponse(
                 seriesTitle,
                 url,
@@ -134,9 +130,9 @@ class DonghuaZone : MainAPI() {
         } else {
             val playableUrl = findFirstWatchLink(document, url) ?: url
             newMovieLoadResponse(
-                if (isMovie) rawTitle else seriesTitle,
+                rawTitle,
                 url,
-                if (isMovie) TvType.AnimeMovie else TvType.Anime,
+                TvType.AnimeMovie,
                 playableUrl
             ) {
                 this.posterUrl = poster
@@ -225,24 +221,39 @@ class DonghuaZone : MainAPI() {
 
     private suspend fun collectEpisodesFromSeries(seriesUrl: String, referer: String): List<com.lagradost.cloudstream3.Episode> {
         return runCatching {
-            val document = app.get(seriesUrl, headers = defaultHeaders, referer = referer).document
-            document.select("a[href]")
-                .mapNotNull { anchor ->
-                    val href = anchor.attr("href").absoluteUrl(seriesUrl)
-                    if (!href.isPostUrl()) return@mapNotNull null
+            val episodes = linkedMapOf<String, com.lagradost.cloudstream3.Episode>()
+            var pageUrl: String? = seriesUrl
+            var pageCount = 0
 
-                    val context = anchor.meaningfulParent()
-                    val title = anchor.extractTitle(context)
-                    if (title.isBlank()) return@mapNotNull null
+            while (!pageUrl.isNullOrBlank() && pageCount < 20) {
+                val currentUrl = pageUrl ?: break
+                val document = app.get(currentUrl, headers = defaultHeaders, referer = referer).document
 
-                    val poster = context.findPoster(seriesUrl)
-                    newEpisode(href) {
-                        this.name = title
-                        this.episode = title.extractEpisodeNumber()
-                        this.posterUrl = poster
+                document.select("article a[href], .post a[href], .hentry a[href], .blog-posts a[href], a[href]")
+                    .mapNotNull { anchor ->
+                        val href = anchor.attr("href").absoluteUrl(currentUrl)
+                        if (!href.isPostUrl()) return@mapNotNull null
+
+                        val context = anchor.meaningfulParent()
+                        val title = anchor.extractTitle(context)
+                        if (title.isBlank()) return@mapNotNull null
+
+                        val poster = context.findPoster(currentUrl)
+                        newEpisode(href) {
+                            this.name = title
+                            this.episode = title.extractEpisodeNumber()
+                            this.posterUrl = poster
+                        }
                     }
-                }
-                .distinctBy { it.data }
+                    .forEach { episode ->
+                        episodes.putIfAbsent(episode.data, episode)
+                    }
+
+                pageUrl = document.findNextPageUrl(currentUrl)?.takeIf { it !in episodes.keys }
+                pageCount++
+            }
+
+            episodes.values.toList()
         }.getOrDefault(emptyList())
     }
 
@@ -250,6 +261,99 @@ class DonghuaZone : MainAPI() {
         return select("a[href]")
             .mapNotNull { it.toSearchResponseFromAnchor(baseUrl) }
             .distinctBy { it.url }
+    }
+
+    private fun Document.detailContent(): Element {
+        return selectFirst(".post-body, .entry-content")
+            ?: selectFirst("article, .post, .hentry")
+            ?: this
+    }
+
+    private fun Document.detailLabels(content: Element): List<DonghuaZoneLabel> {
+        val scoped = select(
+            ".post-labels a[href*='/search/label/'], " +
+                ".entry-labels a[href*='/search/label/'], " +
+                ".postmeta a[href*='/search/label/'], " +
+                ".post-info a[href*='/search/label/'], " +
+                "article a[href*='/search/label/'], " +
+                ".hentry a[href*='/search/label/']"
+        )
+
+        val contentLabels = content.select("a[href*='/search/label/']")
+        val source = when {
+            scoped.isNotEmpty() -> scoped
+            contentLabels.isNotEmpty() -> contentLabels
+            else -> select("a[href*='/search/label/']")
+        }
+
+        return source
+            .map { DonghuaZoneLabel(it.text().cleanText(), it.attr("href").absoluteUrl(mainUrl)) }
+            .filter { it.name.isNotBlank() }
+            .distinctBy { it.name.lowercase(Locale.ROOT) }
+    }
+
+    private fun Document.findNextPageUrl(baseUrl: String): String? {
+        selectFirst("a.blog-pager-older-link[href], #Blog1_blog-pager-older-link[href]")
+            ?.attr("href")
+            ?.absoluteUrl(baseUrl)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+
+        return select("a[href]")
+            .firstOrNull { anchor ->
+                val text = anchor.text().cleanText().lowercase(Locale.ROOT)
+                val href = anchor.attr("href")
+                (text.contains("older") || text.contains("next") || text.contains("selanjutnya")) &&
+                    (href.contains("updated-max") || href.contains("max-results") || href.contains("/search/label/"))
+            }
+            ?.attr("href")
+            ?.absoluteUrl(baseUrl)
+    }
+
+    private fun String.cleanDescription(rawTitle: String, seriesTitle: String): String {
+        var value = cleanText()
+            .replace(Regex("""(?i)\bFacebook\s+Twitter\s+Whatsapp\s+Pinterest\b"""), " ")
+            .cleanText()
+
+        Regex("""(?i)\bSynopsis\b""").find(value)?.let { match ->
+            value = value.substring(match.range.last + 1).cleanText()
+        }
+
+        listOf(
+            "If the current server",
+            "Released on",
+            "Posted by",
+            "Next Download",
+            "Download ",
+            "Nonton ",
+            "Streaming ",
+            "Watch "
+        ).mapNotNull { marker ->
+            value.indexOf(marker, ignoreCase = true).takeIf { it > 20 }
+        }.minOrNull()?.let { index ->
+            value = value.substring(0, index).cleanText()
+        }
+
+        value = value
+            .removePrefix(rawTitle)
+            .removePrefix(seriesTitle)
+            .replace(Regex("""(?i)^Synopsis\.?\s*"""), "")
+            .cleanText()
+
+        return value
+    }
+
+    private fun String.isDetailTag(seriesTitle: String): Boolean {
+        val lower = lowercase(Locale.ROOT)
+        val blocked = setOf(
+            "episode", "series", "movie", "sub", "english sub", "indo sub", "indonesian sub",
+            "donghua", "donghuazone", "anime"
+        )
+
+        if (equals(seriesTitle, true)) return false
+        if (lower in blocked) return false
+        if (lower.contains("sub")) return false
+        return true
     }
 
     private fun Element.toSearchResponseFromAnchor(baseUrl: String): SearchResponse? {
