@@ -150,19 +150,13 @@ open class Donghuastream : MainAPI() {
             .mapNotNull { it.toRecommendResult() }
             .distinctBy { it.url }
 
-        val description = document.selectFirst("div.entry-content, .entry-content-single, .synopsis, .desc")
-            ?.text()
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
+        val description = document.extractSynopsis()
 
         val infoText = document.selectFirst(".spe, .info-content, .infotable")
             ?.text()
             .orEmpty()
 
-        val tags = document.select("a[href*='/genres/']")
-            .map { it.text().trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
+        val tags = document.extractDetailGenres()
 
         val tvTag = if (infoText.contains("Movie", true) || tags.any { it.equals("Movie", true) }) {
             TvType.AnimeMovie
@@ -223,6 +217,107 @@ open class Donghuastream : MainAPI() {
                 this.tags = tags
                 this.recommendations = recommendations
             }
+        }
+    }
+
+    private fun Element.extractSynopsis(): String? {
+        val synopsisHeading = select("h2, h3, h4, strong, b")
+            .firstOrNull { node ->
+                node.text()
+                    .replace(Regex("""\s+"""), " ")
+                    .trim()
+                    .startsWith("Synopsis", ignoreCase = true)
+            }
+
+        if (synopsisHeading != null) {
+            val synopsisParts = mutableListOf<String>()
+            var sibling = synopsisHeading.nextElementSibling()
+
+            while (sibling != null) {
+                val rawText = sibling.text()
+                    .replace(Regex("""\s+"""), " ")
+                    .trim()
+
+                if (rawText.isNotBlank()) {
+                    if (rawText.isDetailSeoBoundary()) break
+
+                    val cleaned = rawText.cleanSynopsisNoise()
+                    if (cleaned.isNotBlank() && !cleaned.isDetailSeoBoundary()) {
+                        synopsisParts.add(cleaned)
+                    }
+                }
+
+                sibling = sibling.nextElementSibling()
+            }
+
+            synopsisParts.joinToString("\n\n")
+                .cleanSynopsisNoise()
+                .takeIf { it.isNotBlank() }
+                ?.let { return it }
+        }
+
+        return selectFirst(".synopsis, .desc, div.entry-content, .entry-content-single")
+            ?.text()
+            ?.substringAfter("Synopsis", "")
+            ?.cleanSynopsisNoise()
+            ?.takeIf { it.isNotBlank() && !it.isDetailSeoBoundary() }
+    }
+
+    private fun Element.extractDetailGenres(): List<String> {
+        val detailGenreSelectors = listOf(
+            ".info-content a[href*='/genres/']",
+            ".spe a[href*='/genres/']",
+            ".infotable a[href*='/genres/']",
+            ".genxed a[href*='/genres/']",
+            ".mgen a[href*='/genres/']",
+            ".bigcontent a[href*='/genres/']"
+        )
+
+        return detailGenreSelectors
+            .flatMap { selector -> select(selector) }
+            .map { it.text().normalizeGenreName() }
+            .filter { it.isNotBlank() }
+            .filterNot { it.isUtilityGenreTag() }
+            .distinct()
+    }
+
+    private fun String.cleanSynopsisNoise(): String {
+        return replace(Regex("""(?i)\bNEW chinese anime[\s\S]*"""), "")
+            .replace(Regex("""(?i)\bWATCH ALL EPISODES NOW[\s\S]*"""), "")
+            .replace(Regex("""(?i)\bDiscover the exciting world[\s\S]*"""), "")
+            .replace(Regex("""(?i)\bAlternative Name[:-][\s\S]*"""), "")
+            .replace(Regex("""(?i)\bName\s*\([^)]*\)[\s\S]*"""), "")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+
+    private fun String.isDetailSeoBoundary(): Boolean {
+        val value = trim()
+        return value.startsWith("NEW chinese anime", ignoreCase = true) ||
+            value.startsWith("Name (", ignoreCase = true) ||
+            value.startsWith("Alternative Name", ignoreCase = true) ||
+            value.startsWith("WATCH ALL EPISODES", ignoreCase = true) ||
+            value.startsWith("Discover the exciting world", ignoreCase = true) ||
+            value.startsWith("Watch ", ignoreCase = true)
+    }
+
+    private fun String.normalizeGenreName(): String {
+        return when (trim().lowercase()) {
+            "another world" -> "Another World"
+            "martial arts" -> "Martial Arts"
+            "swords fight" -> "Sword Fight"
+            "sword fight" -> "Sword Fight"
+            "sci-fi" -> "Sci-Fi"
+            "slice of life" -> "Slice of Life"
+            "my favourite" -> "MY FAVOURITE"
+            else -> trim().replace(Regex("""\s+"""), " ")
+        }
+    }
+
+    private fun String.isUtilityGenreTag(): Boolean {
+        return when (trim().lowercase()) {
+            "my favourite", "popular" -> true
+            else -> false
         }
     }
 
