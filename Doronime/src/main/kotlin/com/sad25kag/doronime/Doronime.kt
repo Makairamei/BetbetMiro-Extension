@@ -177,6 +177,19 @@ class Doronime : MainAPI() {
             }
         }
 
+        document.select("a[href*='/download'], a[href*='doronime.id/download']")
+            .forEach { element ->
+                val label = element.text().cleanText()
+                if (!label.isDoronimeDownloadHost()) return@forEach
+
+                val downloadUrl = element.attr("href").toAbsoluteUrl(data).substringBefore("#")
+                if (!downloadUrl.startsWith("$mainUrl/download", true) || !seen.add(downloadUrl)) return@forEach
+
+                runCatching {
+                    DoronimeDownload().getUrl(downloadUrl, data, subtitleCallback, trackedCallback)
+                }
+            }
+
         document.select(
             "select option[value], .mobius option[value], .mirror option[value], " +
                 ".server option[value], .player option[value], [data-embed], [data-src], [data-url], [data-video], [data-player], [data-iframe], [data-value]"
@@ -198,7 +211,7 @@ class Doronime : MainAPI() {
             }
         }
 
-        document.select("iframe[src], embed[src], video[src], source[src], a[href*='/download'], a[href*='doronime.id/download'], a[href*='embed'], a[href*='player'], a[href*='.m3u8'], a[href*='.mp4']")
+        document.select("iframe[src], embed[src], video[src], source[src], a[href*='embed'], a[href*='player'], a[href*='.m3u8'], a[href*='.mp4']")
             .forEach { element ->
                 val rawUrl = element.attr("src").ifBlank { element.attr("href") }
                 if (rawUrl.isNotBlank()) resolveCandidate(rawUrl, data, element.text().cleanText().ifBlank { name })
@@ -518,6 +531,11 @@ class Doronime : MainAPI() {
 
     private fun String.isDoronimePlayableUrl(): Boolean {
         return isDoronimeItemUrl() && (contains("/episode-", true) || endsWith("/movie", true) || contains("/movie?", true))
+    }
+
+    private fun String.isDoronimeDownloadHost(): Boolean {
+        val value = cleanText().lowercase()
+        return value == "gd" || value == "gdrive" || value.contains("google drive") || value == "af" || value == "acefile"
     }
 
     private fun String.isPlayableCandidateUrl(): Boolean {
