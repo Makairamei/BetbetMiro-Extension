@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.APIHolder.capitalize
 import com.lagradost.cloudstream3.APIHolder.unixTimeMS
-import com.lagradost.cloudstream3.extractors.helper.AesHelper
 import com.lagradost.cloudstream3.network.WebViewResolver
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
@@ -27,6 +26,9 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import java.security.MessageDigest
 import android.net.Uri
+import android.util.Base64
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
 
 object DrakorProviderExtractor : DrakorProvider() {
 
@@ -80,7 +82,7 @@ object DrakorProviderExtractor : DrakorProvider() {
 
                 val metrix = parseDrakorJson<AesData>(json.embed_url).m
                 val password = createIdlixKey(json.key, metrix)
-                val decrypted = AesHelper.cryptoAESHandler(json.embed_url, password.toByteArray(), false)
+                val decrypted = decryptIdlixAes(json.embed_url, password)
                     ?.fixUrlBloat() ?: return@amap
 
                 when {
@@ -120,6 +122,107 @@ object DrakorProviderExtractor : DrakorProvider() {
             }
         }
         return n
+    }
+
+
+    private data class IdlixAesPayload(
+        @JsonProperty("ct") val ct: String? = null,
+        @JsonProperty("iv") val iv: String? = null,
+        @JsonProperty("s") val salt: String? = null,
+        @JsonProperty("m") val metrix: String? = null,
+    )
+
+    private fun decryptIdlixAes(data: String, password: String): String? {
+        val payload = tryParseDrakorJson<IdlixAesPayload>(data)
+        val encryptedText = payload?.ct ?: data
+        val encryptedBytes = decodeIdlixBase64(encryptedText) ?: return null
+        val passwordBytes = password.toByteArray(Charsets.UTF_8)
+
+        decryptOpenSslAes(encryptedBytes, passwordBytes)?.let { return it }
+
+        val saltBytes = payload?.salt?.hexToByteArrayOrNull()
+        if (saltBytes != null) {
+            decryptAesWithDerivedKey(encryptedBytes, passwordBytes, saltBytes)?.let { return it }
+
+            val ivBytes = payload.iv?.hexToByteArrayOrNull()
+            if (ivBytes != null) {
+                val keyBytes = evpBytesToKey(passwordBytes, saltBytes, 32, 16).first
+                decryptAesCbc(encryptedBytes, keyBytes, ivBytes)?.let { return it }
+            }
+        }
+
+        return null
+    }
+
+    private fun decryptOpenSslAes(encryptedBytes: ByteArray, passwordBytes: ByteArray): String? {
+        val openSslHeader = "Salted__".toByteArray(Charsets.UTF_8)
+        if (encryptedBytes.size <= openSslHeader.size + 8) return null
+        if (!encryptedBytes.copyOfRange(0, openSslHeader.size).contentEquals(openSslHeader)) return null
+
+        val salt = encryptedBytes.copyOfRange(openSslHeader.size, openSslHeader.size + 8)
+        val cipherBytes = encryptedBytes.copyOfRange(openSslHeader.size + 8, encryptedBytes.size)
+        return decryptAesWithDerivedKey(cipherBytes, passwordBytes, salt)
+    }
+
+    private fun decryptAesWithDerivedKey(cipherBytes: ByteArray, passwordBytes: ByteArray, salt: ByteArray): String? {
+        val (keyBytes, ivBytes) = evpBytesToKey(passwordBytes, salt, 32, 16)
+        return decryptAesCbc(cipherBytes, keyBytes, ivBytes)
+    }
+
+    private fun decryptAesCbc(cipherBytes: ByteArray, keyBytes: ByteArray, ivBytes: ByteArray): String? {
+        return runCatching {
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(keyBytes, "AES"), IvParameterSpec(ivBytes))
+            cipher.doFinal(cipherBytes)
+                .toString(Charsets.UTF_8)
+                .trim()
+                .trim('"')
+                .replace("\\/", "/")
+                .takeIf { it.isNotBlank() }
+        }.getOrNull()
+    }
+
+    private fun evpBytesToKey(
+        passwordBytes: ByteArray,
+        salt: ByteArray,
+        keySize: Int,
+        ivSize: Int,
+    ): Pair<ByteArray, ByteArray> {
+        val targetSize = keySize + ivSize
+        var derivedBytes = ByteArray(0)
+        var block = ByteArray(0)
+        val md5 = MessageDigest.getInstance("MD5")
+
+        while (derivedBytes.size < targetSize) {
+            md5.reset()
+            md5.update(block)
+            md5.update(passwordBytes)
+            md5.update(salt)
+            block = md5.digest()
+            derivedBytes += block
+        }
+
+        return Pair(
+            derivedBytes.copyOfRange(0, keySize),
+            derivedBytes.copyOfRange(keySize, targetSize)
+        )
+    }
+
+    private fun decodeIdlixBase64(value: String): ByteArray? {
+        val clean = value.trim().replace("\\n", "").replace("\\r", "")
+        val padded = clean + "=".repeat((4 - clean.length % 4) % 4)
+        return runCatching { Base64.decode(padded, Base64.DEFAULT) }
+            .getOrElse { runCatching { Base64.decode(padded, Base64.URL_SAFE or Base64.NO_WRAP) }.getOrNull() }
+    }
+
+    private fun String.hexToByteArrayOrNull(): ByteArray? {
+        val clean = trim().removePrefix("0x")
+        if (clean.isBlank() || clean.length % 2 != 0) return null
+        return runCatching {
+            ByteArray(clean.length / 2) { index ->
+                clean.substring(index * 2, index * 2 + 2).toInt(16).toByte()
+            }
+        }.getOrNull()
     }
 
     @Suppress("UNCHECKED_CAST")
