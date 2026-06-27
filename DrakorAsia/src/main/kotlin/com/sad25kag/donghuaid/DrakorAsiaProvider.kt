@@ -95,7 +95,8 @@ class DrakorAsiaProvider : MainAPI() {
         val recommendations = parseHtmlCards(document, includeEpisodes = false).filterNot { it.url == cleanUrl }.take(16)
 
         return if (isMovie) {
-            newMovieLoadResponse(title, cleanUrl, TvType.Movie, cleanUrl) {
+            val moviePlayData = findMoviePlayData(document, cleanUrl, title)
+            newMovieLoadResponse(title, cleanUrl, TvType.Movie, moviePlayData) {
                 posterUrl = poster
                 this.plot = plot
                 this.tags = tags
@@ -188,6 +189,19 @@ class DrakorAsiaProvider : MainAPI() {
             parseFeedEntries(app.get(feedUrl(seriesLabel, 1, maxResults = 150), referer = mainUrl, headers = browserHeaders).text)
         }.getOrNull().orEmpty()
 
+        return entriesToEpisodes(entries, seriesTitle)
+    }
+
+    private suspend fun fetchSearchEpisodes(query: String, seriesTitle: String): List<Episode> {
+        val encoded = URLEncoder.encode(query.trim(), "UTF-8")
+        val entries = runCatching {
+            parseFeedEntries(app.get("$mainUrl/feeds/posts/default?alt=json&q=$encoded&max-results=150", referer = mainUrl, headers = browserHeaders).text)
+        }.getOrNull().orEmpty()
+
+        return entriesToEpisodes(entries, seriesTitle)
+    }
+
+    private fun entriesToEpisodes(entries: List<FeedEntry>, seriesTitle: String): List<Episode> {
         val baseTitle = normalizedSeriesTitle(seriesTitle)
         return entries
             .filter { entry ->
@@ -205,6 +219,15 @@ class DrakorAsiaProvider : MainAPI() {
             }
             .distinctBy { it.data }
             .sortedWith(compareBy<Episode> { it.episode ?: Int.MAX_VALUE }.thenBy { it.name })
+    }
+
+    private suspend fun findMoviePlayData(document: Document, currentUrl: String, title: String): String {
+        return (parseDetailEpisodes(document, currentUrl, title) + fetchEpisodes(title, title) + fetchSearchEpisodes(title, title))
+            .distinctBy { it.data.substringBefore('?').trimEnd('/') }
+            .sortedWith(compareBy<Episode> { it.episode ?: Int.MAX_VALUE }.thenBy { it.name })
+            .firstOrNull()
+            ?.data
+            ?: currentUrl
     }
 
     private fun parseDetailEpisodes(document: Document, currentUrl: String, seriesTitle: String): List<Episode> {
