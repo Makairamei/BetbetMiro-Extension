@@ -26,7 +26,6 @@ class DrakorAsiaProvider : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "" to "Episode Terbaru",
         "Ongoing" to "Ongoing",
         "Completed" to "Completed",
         "Movie" to "Movie",
