@@ -198,7 +198,7 @@ class Doronime : MainAPI() {
             }
         }
 
-        document.select("iframe[src], embed[src], video[src], source[src], a[href*='embed'], a[href*='player'], a[href*='.m3u8'], a[href*='.mp4']")
+        document.select("iframe[src], embed[src], video[src], source[src], a[href*='/download'], a[href*='doronime.id/download'], a[href*='embed'], a[href*='player'], a[href*='.m3u8'], a[href*='.mp4']")
             .forEach { element ->
                 val rawUrl = element.attr("src").ifBlank { element.attr("href") }
                 if (rawUrl.isNotBlank()) resolveCandidate(rawUrl, data, element.text().cleanText().ifBlank { name })
