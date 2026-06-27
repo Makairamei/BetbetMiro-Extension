@@ -42,9 +42,7 @@ class DracinSI : MainAPI() {
     override val mainPage = mainPageOf(
         "$mainUrl" to "Episode Terbaru",
         "$mainUrl/trending" to "Trending",
-        "$mainUrl/ongoing" to "Sedang Berjalan",
-        "$mainUrl/completed" to "Tamat",
-        "$mainUrl/coming-soon" to "Segera Hadir"
+        "$mainUrl/ongoing" to "Sedang Berjalan"
     )
 
     private val headers = mapOf(
@@ -274,7 +272,7 @@ class DracinSI : MainAPI() {
     }
 
     private fun Element.backgroundUrlFromStyle(): String {
-        return Regex("""url\(['\"]?([^'\")]+)['\"]?\)""")
+        return Regex("""url\(['"]?([^'")]+)['"]?\)""")
             .find(attr("style"))
             ?.groupValues
             ?.getOrNull(1)
