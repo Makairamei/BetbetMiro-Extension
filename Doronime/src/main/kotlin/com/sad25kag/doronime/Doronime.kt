@@ -27,17 +27,17 @@ class Doronime : MainAPI() {
         "$mainUrl/?page={page}" to "Anime Terbaru",
         "$mainUrl/movie?page={page}" to "Movie",
         "$mainUrl/batch?page={page}" to "Batch",
-        "$mainUrl/genre/aksi?page={page}" to "Action",
         "$mainUrl/genre/adventure?page={page}" to "Adventure",
         "$mainUrl/genre/comedy?page={page}" to "Comedy",
-        "$mainUrl/genre/fantasy?page={page}" to "Fantasy",
         "$mainUrl/genre/romance?page={page}" to "Romance"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = request.data.replace("{page}", page.toString())
         val document = app.get(url, headers = defaultHeaders, referer = mainUrl).document
-        val cards = parseListingCards(document, url).distinctBy { it.url }
+        val cards = parseListingCards(document, url)
+            .filter { it.posterUrl?.isNotBlank() == true }
+            .distinctBy { it.url }
         val hasNext = document.select("a[href*='?page=${page + 1}'], a[href$='page=${page + 1}'], a:matchesOwn((?i)next)").isNotEmpty()
 
         return newHomePageResponse(
