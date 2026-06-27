@@ -131,7 +131,7 @@ class DrakoridProvider : MainAPI() {
         val tags = detailDocument.extractDetailTags()
         val castNames = detailDocument.extractCastNames()
         val actors = castNames.map { ActorData(Actor(it)) }
-        val year = Regex("\((\d{4})\)").find(seriesTitle.ifBlank { title })?.groupValues?.getOrNull(1)?.toIntOrNull()
+        val year = Regex("""\((\d{4})\)""").find(seriesTitle.ifBlank { title })?.groupValues?.getOrNull(1)?.toIntOrNull()
         val plot = detailDocument.extractDetailPlot()
 
         val episodes = detailDocument.select("a[href]")
@@ -578,8 +578,7 @@ class DrakoridProvider : MainAPI() {
                 if (parts.joinToString(" ").length > 900) break
                 cursor = cursor.nextElementSibling()
             }
-            parts.joinToString("
-")
+            parts.joinToString("\n")
                 .trim()
                 .takeIf { it.isUsefulPlotText() }
                 ?.let { return it }
@@ -593,7 +592,7 @@ class DrakoridProvider : MainAPI() {
     private fun Document.extractCastNames(): List<String> {
         val detailText = select(".spe, .seriestucon, .info, .entry-content, article")
             .joinToString(" ") { it.text() }
-            .replace(Regex("\s+"), " ")
+            .replace(Regex("""\s+"""), " ")
 
         val castText = Regex(
             """(?i)\bCasts?\s*:\s*(.+?)(?:\s+Posted by:|\s+Released on:|\s+Updated on:|\s+Genres?:|\s+Synopsis\b|$)"""
@@ -602,7 +601,7 @@ class DrakoridProvider : MainAPI() {
         return castText
             ?.split(",")
             ?.map { it.cleanTitle().trim() }
-            ?.map { it.replace(Regex("\s+"), " ") }
+            ?.map { it.replace(Regex("""\s+"""), " ") }
             ?.filter { it.isNotBlank() && !it.contains(":") && it.length <= 60 }
             ?.distinct()
             .orEmpty()
