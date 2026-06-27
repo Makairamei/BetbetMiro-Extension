@@ -1,6 +1,8 @@
 package com.sad25kag.drakorid
 
 import android.util.Base64
+import com.lagradost.cloudstream3.Actor
+import com.lagradost.cloudstream3.ActorData
 import com.lagradost.cloudstream3.ErrorLoadingException
 import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.HomePageResponse
@@ -97,45 +99,42 @@ class DrakoridProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(
+        val sourceDocument = app.get(
             url,
             headers = baseHeaders,
             referer = mainUrl
         ).document
 
-        val title = document.selectFirst("h1, .entry-title, .post-title, meta[property=og:title]")
-            ?.let { it.attr("content").ifBlank { it.text() } }
-            ?.cleanTitle()
-            ?.takeIf { it.isNotBlank() }
+        val sourceTitle = sourceDocument.extractDetailTitle()
             ?: throw ErrorLoadingException("Judul Drakor.id tidak ditemukan")
 
-        val seriesUrl = document.select("a[href*='/series/']")
-            .firstOrNull { it.attr("abs:href").contains("/series/", true) }
-            ?.attr("abs:href")
-            ?.ifBlank { null }
+        val sourceSeriesUrl = sourceDocument.findSeriesUrl()
+        val detailDocument = if (url.contains("episode", true) && sourceSeriesUrl != null) {
+            runCatching {
+                app.get(sourceSeriesUrl, headers = baseHeaders, referer = url).document
+            }.getOrDefault(sourceDocument)
+        } else {
+            sourceDocument
+        }
 
+        val title = detailDocument.extractDetailTitle() ?: sourceTitle
+        val seriesUrl = detailDocument.findSeriesUrl() ?: sourceSeriesUrl
         val seriesSlug = seriesUrl?.substringAfter("/series/")?.substringBefore("/")?.takeIf { it.isNotBlank() }
-        val seriesTitle = document.select("a[href*='/series/']")
+        val seriesTitle = detailDocument.select("a[href*='/series/']")
             .firstOrNull { it.attr("abs:href") == seriesUrl }
             ?.text()
             ?.cleanTitle()
             ?.takeIf { it.isNotBlank() }
             ?: title.substringBefore(" Episode ").trim()
 
-        val poster = document.extractPosterUrl()
+        val poster = detailDocument.extractPosterUrl() ?: sourceDocument.extractPosterUrl()
+        val tags = detailDocument.extractDetailTags()
+        val castNames = detailDocument.extractCastNames()
+        val actors = castNames.map { ActorData(Actor(it)) }
+        val year = Regex("\((\d{4})\)").find(seriesTitle.ifBlank { title })?.groupValues?.getOrNull(1)?.toIntOrNull()
+        val plot = detailDocument.extractDetailPlot()
 
-        val tags = document.select("a[href*='/genres/'], .genxed a, .mgen a, .genre a")
-            .map { it.text().trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
-
-        val year = Regex("\\((\\d{4})\\)").find(seriesTitle.ifBlank { title })?.groupValues?.getOrNull(1)?.toIntOrNull()
-        val plot = document.selectFirst(".entry-content p, .desc p, .synopsis p, [itemprop=description]")
-            ?.text()
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-
-        val episodes = document.select("a[href]")
+        val episodes = detailDocument.select("a[href]")
             .mapNotNull { element ->
                 val href = element.attr("abs:href").ifBlank { fixUrl(element.attr("href")) }
                 if (!href.startsWith(mainUrl) || !href.contains("episode", ignoreCase = true)) return@mapNotNull null
@@ -153,16 +152,17 @@ class DrakoridProvider : MainAPI() {
             }
 
         val isMovie = url.contains("/movie/", true) ||
-            document.text().contains("Type: Movie", true) ||
+            detailDocument.text().contains("Type: Movie", true) ||
             (episodes.isEmpty() && !title.contains("Episode", true))
 
         if (isMovie || episodes.isEmpty()) {
-            val movieData = document.findWatchLiteUrl(url) ?: buildWatchLiteUrl(url) ?: url
+            val movieData = detailDocument.findWatchLiteUrl(url) ?: sourceDocument.findWatchLiteUrl(url) ?: buildWatchLiteUrl(url) ?: url
             return newMovieLoadResponse(seriesTitle.ifBlank { title }, url, if (isMovie) TvType.Movie else TvType.AsianDrama, movieData) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = plot
                 this.tags = tags
+                if (actors.isNotEmpty()) this.actors = actors
             }
         }
 
@@ -171,6 +171,7 @@ class DrakoridProvider : MainAPI() {
             this.year = year
             this.plot = plot
             this.tags = tags
+            if (actors.isNotEmpty()) this.actors = actors
         }
     }
 
@@ -522,6 +523,102 @@ class DrakoridProvider : MainAPI() {
             .takeIf { it.isNotBlank() && !it.contains("episode", true) && it != "series" && it != "movie" }
             ?: return null
         return "$watchBaseUrl/watch-lite/$slug/1"
+    }
+
+    private fun Document.extractDetailTitle(): String? {
+        return selectFirst("h1, .entry-title, .post-title, meta[property=og:title]")
+            ?.let { it.attr("content").ifBlank { it.text() } }
+            ?.cleanTitle()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun Document.findSeriesUrl(): String? {
+        return select("a[href*='/series/']")
+            .mapNotNull { it.attr("abs:href").ifBlank { it.attr("href") }.takeIf { href -> href.isNotBlank() } }
+            .map { fixUrl(it) }
+            .firstOrNull { it.startsWith(mainUrl) && it.contains("/series/", true) }
+    }
+
+    private fun Document.extractDetailTags(): List<String> {
+        val selectors = listOf(
+            ".genxed a[href*='/genres/']",
+            ".mgen a[href*='/genres/']",
+            ".genre a[href*='/genres/']",
+            ".seriestucon a[href*='/genres/']",
+            ".spe a[href*='/genres/']",
+            "article .genxed a",
+            "article .mgen a"
+        )
+
+        selectors.forEach { selector ->
+            val tags = select(selector)
+                .map { it.text().trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+            if (tags.isNotEmpty()) return tags
+        }
+
+        return emptyList()
+    }
+
+    private fun Document.extractDetailPlot(): String? {
+        select("h2, h3, h4").firstOrNull { it.text().contains("Synopsis", true) }?.let { heading ->
+            val parts = mutableListOf<String>()
+            var cursor = heading.nextElementSibling()
+            while (cursor != null) {
+                val tag = cursor.tagName().lowercase()
+                val text = cursor.text().trim()
+                if (tag.matches(Regex("h[1-6]")) || text.equals("History", true) || text.startsWith("Watch ", true)) break
+
+                val texts = cursor.select("p")
+                    .map { it.text().trim() }
+                    .ifEmpty { listOf(text) }
+
+                texts.filter { it.isUsefulPlotText() }.forEach { parts.add(it) }
+                if (parts.joinToString(" ").length > 900) break
+                cursor = cursor.nextElementSibling()
+            }
+            parts.joinToString("
+")
+                .trim()
+                .takeIf { it.isUsefulPlotText() }
+                ?.let { return it }
+        }
+
+        return select(".synopsis p, [itemprop=description], .desc p")
+            .map { it.text().trim() }
+            .firstOrNull { it.isUsefulPlotText() }
+    }
+
+    private fun Document.extractCastNames(): List<String> {
+        val detailText = select(".spe, .seriestucon, .info, .entry-content, article")
+            .joinToString(" ") { it.text() }
+            .replace(Regex("\s+"), " ")
+
+        val castText = Regex(
+            """(?i)\bCasts?\s*:\s*(.+?)(?:\s+Posted by:|\s+Released on:|\s+Updated on:|\s+Genres?:|\s+Synopsis\b|$)"""
+        ).find(detailText)?.groupValues?.getOrNull(1)
+
+        return castText
+            ?.split(",")
+            ?.map { it.cleanTitle().trim() }
+            ?.map { it.replace(Regex("\s+"), " ") }
+            ?.filter { it.isNotBlank() && !it.contains(":") && it.length <= 60 }
+            ?.distinct()
+            .orEmpty()
+    }
+
+    private fun String.isUsefulPlotText(): Boolean {
+        val clean = trim()
+        if (clean.length < 20) return false
+        val lower = clean.lowercase()
+        return !lower.startsWith("watch streaming ") &&
+            !lower.startsWith("watch full episodes ") &&
+            !lower.startsWith("download ") &&
+            !lower.contains("don't forget to watch") &&
+            !lower.contains("don't forget to click") &&
+            !lower.contains("save internet quota") &&
+            !lower.contains("hardsub softsub")
     }
 
     private fun Document.extractPosterUrl(): String? {

@@ -1,4 +1,4 @@
-version = 10
+version = 11
 
 android {
     buildFeatures {
@@ -26,7 +26,7 @@ android {
 cloudstream {
     description = "Drakor.id - drama Asia subtitle Indonesia."
     language = "id"
-    authors = listOf("sad25kag")
+    authors = listOf("BetbetMiro")
 
     status = 1
     tvTypes = listOf(
