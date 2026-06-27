@@ -13,6 +13,7 @@ class DoronimePlugin : Plugin() {
 
         registerExtractorAPI(Dailymotion())
         registerExtractorAPI(Geodailymotion())
+        registerExtractorAPI(DoronimeDownload())
         registerExtractorAPI(DoronimeOkRu())
     }
 }
