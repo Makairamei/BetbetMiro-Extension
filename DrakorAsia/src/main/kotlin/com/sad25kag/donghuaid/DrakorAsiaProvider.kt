@@ -30,8 +30,6 @@ class DrakorAsiaProvider : MainAPI() {
         "Ongoing" to "Ongoing",
         "Completed" to "Completed",
         "Movie" to "Movie",
-        "Doctor on the Edge" to "Doctor on the Edge",
-        "Teach You a Lesson" to "Teach You a Lesson",
         "Action" to "Action",
         "Comedy" to "Comedy",
         "Drama" to "Drama",
