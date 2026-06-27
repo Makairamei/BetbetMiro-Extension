@@ -17,13 +17,18 @@ Anime • Donghua • Drama • Movie • Multi-Source Providers
   <a href="README_EN.md">English</a>
 </p>
 
+<p>
+  <strong>Repository Shortcode:</strong>
+  <code>BME-REPO</code>
+</p>
+
 </div>
 
 ---
 
 ## Tentang Repository
 
-**BetbetMiro Extension** adalah repository ekstensi CloudStream yang berisi kumpulan provider dari berbagai sumber. Repository ini berfokus pada pemeliharaan provider, perbaikan parser, pembaruan domain, validasi kategori, serta stabilitas playback.
+**BetbetMiro Extension** (`BME-REPO`) adalah repository ekstensi CloudStream yang berisi kumpulan provider dari berbagai sumber. Repository ini berfokus pada pemeliharaan provider, perbaikan parser, pembaruan domain, validasi kategori, serta stabilitas playback.
 
 Prioritas pengembangan repository ini:
 
