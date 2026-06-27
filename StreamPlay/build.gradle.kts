@@ -1,6 +1,7 @@
 @file:Suppress("UnstableApiUsage")
 
 import org.jetbrains.kotlin.konan.properties.Properties
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 version = 2
 
@@ -36,12 +37,19 @@ android {
     }
 }
 
+tasks.withType<KotlinCompile>().configureEach {
+    kotlinOptions.freeCompilerArgs = kotlinOptions.freeCompilerArgs + listOf(
+        "-opt-in=com.lagradost.cloudstream3.Prerelease",
+        "-Xopt-in=com.lagradost.cloudstream3.Prerelease"
+    )
+}
+
 dependencies {
     implementation("com.google.android.material:material:1.14.0")
 }
 
 cloudstream {
-    language = "id"
+    language = "en"
     // All of these properties are optional, you can safely remove them
 
      description = "#1 best extention based on MultiAPI"
