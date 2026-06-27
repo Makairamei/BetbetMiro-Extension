@@ -91,36 +91,49 @@ class DrakorAsiaProvider : MainAPI() {
         val year = extractYear(fullText) ?: extractYear(title)
         val rating = parseRating(document, fullText)
         val status = parseStatus(fullText, labels)
-        val hasPlayable = hasPlayerEvidence(document)
+        val isMovie = document.select("a[href*='/search/label/Movie']").isNotEmpty() || fullText.contains("Type Movie", true)
         val recommendations = parseHtmlCards(document, includeEpisodes = false).filterNot { it.url == cleanUrl }.take(16)
-        val seriesLabel = labels.firstOrNull { it.equals(title, true) } ?: title
-        val detailEpisodes = parseDetailEpisodes(document, cleanUrl, title)
-        val feedEpisodes = fetchEpisodes(seriesLabel, title)
-        val episodes = (detailEpisodes + feedEpisodes)
-            .distinctBy { it.data.substringBefore('?').trimEnd('/') }
-            .sortedWith(compareBy<Episode> { it.episode ?: Int.MAX_VALUE }.thenBy { it.name })
-            .ifEmpty {
-                if (hasPlayable || isEpisodeTitle(title)) {
-                    listOf(
-                        newEpisode(cleanUrl) {
-                            name = "Episode 1"
-                            episode = 1
-                            posterUrl = poster
-                        }
-                    )
-                } else {
-                    emptyList()
-                }
-            }
 
-        return newTvSeriesLoadResponse(title, cleanUrl, TvType.AsianDrama, episodes) {
-            posterUrl = poster
-            this.plot = plot
-            this.tags = tags
-            this.year = year
-            if (status != null) showStatus = status
-            if (rating != null) addScore(rating.toString(), 10)
-            this.recommendations = recommendations
+        return if (isMovie) {
+            newMovieLoadResponse(title, cleanUrl, TvType.Movie, cleanUrl) {
+                posterUrl = poster
+                this.plot = plot
+                this.tags = tags
+                this.year = year
+                if (rating != null) addScore(rating.toString(), 10)
+                this.recommendations = recommendations
+            }
+        } else {
+            val hasPlayable = hasPlayerEvidence(document)
+            val seriesLabel = labels.firstOrNull { it.equals(title, true) } ?: title
+            val detailEpisodes = parseDetailEpisodes(document, cleanUrl, title)
+            val feedEpisodes = fetchEpisodes(seriesLabel, title)
+            val episodes = (detailEpisodes + feedEpisodes)
+                .distinctBy { it.data.substringBefore('?').trimEnd('/') }
+                .sortedWith(compareBy<Episode> { it.episode ?: Int.MAX_VALUE }.thenBy { it.name })
+                .ifEmpty {
+                    if (hasPlayable || isEpisodeTitle(title)) {
+                        listOf(
+                            newEpisode(cleanUrl) {
+                                name = "Episode 1"
+                                episode = 1
+                                posterUrl = poster
+                            }
+                        )
+                    } else {
+                        emptyList()
+                    }
+                }
+
+            newTvSeriesLoadResponse(title, cleanUrl, TvType.AsianDrama, episodes) {
+                posterUrl = poster
+                this.plot = plot
+                this.tags = tags
+                this.year = year
+                if (status != null) showStatus = status
+                if (rating != null) addScore(rating.toString(), 10)
+                this.recommendations = recommendations
+            }
         }
     }
 
