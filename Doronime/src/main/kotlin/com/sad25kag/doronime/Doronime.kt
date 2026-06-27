@@ -78,13 +78,10 @@ class Doronime : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, headers = defaultHeaders, referer = mainUrl).document
         val title = document.bestTitle(url)
+            ?.cleanDetailTitle()
             ?: throw ErrorLoadingException("Judul Doronime tidak ditemukan")
         val poster = document.bestPoster(url)
-        val tags = document.select("a[href*='/genre/']")
-            .map { it.text().cleanText() }
-            .filter { it.isNotBlank() }
-            .distinct()
-
+        val tags = document.detailGenres()
         val recommendations = document.select("article, .post, .item, .bs, .series, .listupd .bs, main a[href*='/anime/']")
             .mapNotNull { it.toSearchResult(url) }
             .distinctBy { it.url }
@@ -92,43 +89,31 @@ class Doronime : MainAPI() {
             .take(20)
 
         val playablePage = url.isDoronimePlayableUrl()
-        val episodes = if (playablePage) emptyList() else parseEpisodes(document, url)
-        val plot = document.selectFirst(".sinopsis, .synopsis, .entry-content, .content, .desc, .description, article")
-            ?.text()
-            ?.cleanText()
-            ?.takeIf { it.length > 40 }
+        val parsedEpisodes = if (playablePage) emptyList() else parseEpisodes(document, url)
+        val fallbackPlayable = findFirstPlayableUrl(document, url) ?: url.takeIf { playablePage }
+        val episodes = parsedEpisodes.ifEmpty {
+            fallbackPlayable?.let { playableUrl ->
+                listOf(
+                    newEpisode(playableUrl) {
+                        this.name = title
+                        this.episode = playableUrl.episodeNumber() ?: 1
+                        this.posterUrl = poster
+                    }
+                )
+            } ?: emptyList()
+        }
+        val plot = document.detailSynopsis()
 
-        return if (!playablePage && episodes.isNotEmpty()) {
-            newAnimeLoadResponse(
-                title.removeEpisodeSuffix(),
-                url,
-                TvType.Anime
-            ) {
-                this.posterUrl = poster
-                this.plot = plot
-                this.tags = tags
-                this.recommendations = recommendations
-                addEpisodes(DubStatus.Subbed, episodes)
-            }
-        } else {
-            val data = findFirstPlayableUrl(document, url) ?: url
-            val tvType = when {
-                data.contains("/movie", true) || title.contains("movie", true) -> TvType.AnimeMovie
-                title.contains("ova", true) || title.contains("special", true) -> TvType.OVA
-                else -> TvType.AnimeMovie
-            }
-
-            newMovieLoadResponse(
-                title,
-                url,
-                tvType,
-                data
-            ) {
-                this.posterUrl = poster
-                this.plot = plot
-                this.tags = tags
-                this.recommendations = recommendations
-            }
+        return newAnimeLoadResponse(
+            title.removeEpisodeSuffix(),
+            url,
+            TvType.Anime
+        ) {
+            this.posterUrl = poster
+            this.plot = plot
+            this.tags = tags
+            this.recommendations = recommendations
+            addEpisodes(DubStatus.Subbed, episodes)
         }
     }
 
@@ -402,6 +387,56 @@ class Doronime : MainAPI() {
         return pageUrl.substringAfterLast('/').replace('-', ' ').cleanText().takeIf { it.isNotBlank() }
     }
 
+    private fun Document.detailGenres(): List<String> {
+        return select("li, p, tr, div")
+            .filter { Regex("""(?i)\bGenre\s*:""").containsMatchIn(it.text()) }
+            .sortedBy { it.text().length }
+            .firstNotNullOfOrNull { row ->
+                val links = row.select("a[href*='/genre/']")
+                    .map { it.text().cleanText() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                if (links.isNotEmpty()) {
+                    links
+                } else {
+                    row.text()
+                        .substringAfter(":", "")
+                        .split(',')
+                        .map { it.cleanText() }
+                        .filter { it.isNotBlank() }
+                        .takeIf { it.isNotEmpty() }
+                }
+            }
+            .orEmpty()
+    }
+
+    private fun Document.detailSynopsis(): String? {
+        select(".sinopsis, .synopsis, #sinopsis").forEach { element ->
+            element.text()
+                .cleanSynopsisText()
+                .takeIf { it.length > 40 }
+                ?.let { return it }
+        }
+
+        val marker = select("h1, h2, h3, h4, h5, h6, .card-header, .panel-heading, .box-header, .heading, .title, div, span")
+            .firstOrNull { it.ownText().cleanText().equals("Sinopsis", ignoreCase = true) }
+
+        val candidates = listOfNotNull(
+            marker?.nextElementSibling(),
+            marker?.parent()?.selectFirst(".card-body, .panel-body, .box-body, .entry-content, .content"),
+            marker?.parent()?.nextElementSibling()
+        ).distinct()
+
+        for (candidate in candidates) {
+            candidate.text()
+                .cleanSynopsisText()
+                .takeIf { it.length > 40 }
+                ?.let { return it }
+        }
+
+        return null
+    }
+
     private fun extractImage(element: Element, pageUrl: String): String? {
         listOf("data-src", "data-lazy-src", "data-original", "data-image", "data-img", "src", "poster").forEach { attr ->
             val value = element.attr(attr).trim()
@@ -453,6 +488,21 @@ class Doronime : MainAPI() {
 
     private fun String.cleanText(): String {
         return replace(Regex("\\s+"), " ").trim()
+    }
+
+    private fun String.cleanDetailTitle(): String {
+        return cleanText()
+            .replace(Regex("""(?i)^anime\s+"""), "")
+            .replace(Regex("""(?i)\s+-\s*Doronime$"""), "")
+            .replace(Regex("""(?i)\s+\|\s*Doronime$"""), "")
+            .cleanText()
+    }
+
+    private fun String.cleanSynopsisText(): String {
+        return cleanText()
+            .replace(Regex("""(?i)^sinopsis\s*[:\-]?\s*"""), "")
+            .replace(Regex("""(?i)\s*pasang\s+iklan.*$"""), "")
+            .cleanText()
     }
 
     private fun String.urlEncoded(): String = runCatching {
