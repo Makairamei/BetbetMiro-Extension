@@ -2,7 +2,7 @@
 
 import org.jetbrains.kotlin.konan.properties.Properties
 
-version = 651
+version = 2
 
 android {
     buildFeatures {
@@ -41,11 +41,11 @@ dependencies {
 }
 
 cloudstream {
-    language = "en"
+    language = "id"
     // All of these properties are optional, you can safely remove them
 
      description = "#1 best extention based on MultiAPI"
-     authors = listOf("Phisher98", "Hexated")
+     authors = listOf("sad25kag")
 
     /**
      * Status int as the following:
