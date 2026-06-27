@@ -86,37 +86,41 @@ class DrakorAsiaProvider : MainAPI() {
         val labels = parseLabels(document)
         val poster = document.selectFirst("meta[property=og:image]")?.attr("content")?.let { absoluteUrl(it) }
             ?: document.selectFirst(".bigcontent img, article img, .post img, .separator img")?.imageUrl()
-        val plot = parsePlot(document)
-        val tags = labels.filterNot { isSystemLabel(it) }.take(20)
+        val plot = parsePlot(document, title)
+        val tags = labels.take(20)
         val year = extractYear(fullText) ?: extractYear(title)
         val rating = parseRating(document, fullText)
         val status = parseStatus(fullText, labels)
-        val isEpisodePage = isEpisodeTitle(title) || hasPlayerEvidence(document)
-        val isMovie = labels.any { it.equals("Movie", true) } || fullText.contains("Type Movie", true)
+        val hasPlayable = hasPlayerEvidence(document)
         val recommendations = parseHtmlCards(document, includeEpisodes = false).filterNot { it.url == cleanUrl }.take(16)
+        val seriesLabel = labels.firstOrNull { it.equals(title, true) } ?: title
+        val detailEpisodes = parseDetailEpisodes(document, cleanUrl, title)
+        val feedEpisodes = fetchEpisodes(seriesLabel, title)
+        val episodes = (detailEpisodes + feedEpisodes)
+            .distinctBy { it.data.substringBefore('?').trimEnd('/') }
+            .sortedWith(compareBy<Episode> { it.episode ?: Int.MAX_VALUE }.thenBy { it.name })
+            .ifEmpty {
+                if (hasPlayable || isEpisodeTitle(title)) {
+                    listOf(
+                        newEpisode(cleanUrl) {
+                            name = "Episode 1"
+                            episode = 1
+                            posterUrl = poster
+                        }
+                    )
+                } else {
+                    emptyList()
+                }
+            }
 
-        return if (!isEpisodePage && !isMovie) {
-            val seriesLabel = labels.firstOrNull { it.equals(title, true) } ?: title
-            val episodes = fetchEpisodes(seriesLabel, title)
-            newTvSeriesLoadResponse(title, cleanUrl, TvType.AsianDrama, episodes) {
-                posterUrl = poster
-                this.plot = plot
-                this.tags = tags
-                this.year = year
-                if (status != null) showStatus = status
-                if (rating != null) addScore(rating.toString(), 10)
-                this.recommendations = recommendations
-            }
-        } else {
-            val responseType = if (isMovie) TvType.Movie else TvType.AsianDrama
-            newMovieLoadResponse(title, cleanUrl, responseType, cleanUrl) {
-                posterUrl = poster
-                this.plot = plot
-                this.tags = tags
-                this.year = year
-                if (rating != null) addScore(rating.toString(), 10)
-                this.recommendations = recommendations
-            }
+        return newTvSeriesLoadResponse(title, cleanUrl, TvType.AsianDrama, episodes) {
+            posterUrl = poster
+            this.plot = plot
+            this.tags = tags
+            this.year = year
+            if (status != null) showStatus = status
+            if (rating != null) addScore(rating.toString(), 10)
+            this.recommendations = recommendations
         }
     }
 
@@ -151,7 +155,6 @@ class DrakorAsiaProvider : MainAPI() {
             val poster = entry.thumbnail ?: doc.selectFirst("img")?.imageUrl()
             val year = extractYear(text) ?: extractYear(title)
             val isMovie = entry.labels.any { it.equals("Movie", true) } || text.contains("Type Movie", true)
-            val ep = episodeNumber(title) ?: episodeNumber(text)
 
             if (isMovie && !isEpisodeTitle(title)) {
                 newMovieSearchResponse(title, url, TvType.Movie) {
@@ -188,6 +191,50 @@ class DrakorAsiaProvider : MainAPI() {
                 }
             }
             .distinctBy { it.data }
+            .sortedWith(compareBy<Episode> { it.episode ?: Int.MAX_VALUE }.thenBy { it.name })
+    }
+
+    private fun parseDetailEpisodes(document: Document, currentUrl: String, seriesTitle: String): List<Episode> {
+        val baseTitle = normalizedSeriesTitle(seriesTitle)
+        val scopedAnchors = listOf(
+            ".episode-list a[href]",
+            ".episodelist a[href]",
+            ".eplister a[href]",
+            ".eps a[href]",
+            ".bixbox a[href]",
+            ".post-body a[href]",
+            ".entry-content a[href]",
+            "article a[href]",
+            "main a[href]"
+        ).flatMap { selector -> document.select(selector) }
+
+        val anchors = scopedAnchors.ifEmpty { document.select("a[href*='.html']").toList() }
+        return anchors.mapNotNull { anchor ->
+            val href = absoluteUrl(anchor.attr("href")) ?: return@mapNotNull null
+            val normalizedHref = href.substringBefore('?').trimEnd('/')
+            if (normalizedHref == currentUrl.substringBefore('?').trimEnd('/')) return@mapNotNull null
+            if (!isContentUrl(href)) return@mapNotNull null
+
+            val text = cleanTitle(
+                anchor.text().ifBlank { anchor.attr("title") }
+                    .ifBlank { href.substringAfterLast('/').substringBeforeLast('.').replace('-', ' ') }
+            )
+            val slugTitle = cleanTitle(href.substringAfterLast('/').substringBeforeLast('.').replace('-', ' '))
+            val ep = episodeNumber(text) ?: episodeNumber(slugTitle) ?: episodeNumber(href)
+            val looksLikeEpisode = ep != null || text.contains("Episode", true) || slugTitle.contains("Episode", true)
+            if (!looksLikeEpisode) return@mapNotNull null
+
+            val combinedTitle = normalizedSeriesTitle("$text $slugTitle")
+            val shortEpisodeText = Regex("(?i)^episode\\s*0*[0-9]+").containsMatchIn(text)
+            if (baseTitle.isNotBlank() && !combinedTitle.contains(baseTitle, ignoreCase = true) && !shortEpisodeText) {
+                return@mapNotNull null
+            }
+
+            newEpisode(href) {
+                name = ep?.let { "Episode $it" } ?: text.ifBlank { slugTitle }
+                episode = ep
+            }
+        }.distinctBy { it.data.substringBefore('?').trimEnd('/') }
             .sortedWith(compareBy<Episode> { it.episode ?: Int.MAX_VALUE }.thenBy { it.name })
     }
 
@@ -260,7 +307,6 @@ class DrakorAsiaProvider : MainAPI() {
         val poster = (anchor.selectFirst("img") ?: element.selectFirst("img"))?.imageUrl()
         val year = extractYear(text) ?: extractYear(title)
         val isMovie = text.contains("Movie", true) && !isEpisodeTitle(title)
-        val ep = episodeNumber(title) ?: episodeNumber(text)
 
         return if (isMovie) {
             newMovieSearchResponse(title, href, TvType.Movie) {
@@ -285,18 +331,39 @@ class DrakorAsiaProvider : MainAPI() {
     }
 
     private fun parseLabels(document: Document): List<String> {
+        val scopedSelectors = listOf(
+            ".post-body",
+            ".entry-content",
+            ".descNime",
+            ".post-sinop",
+            ".bigcontent",
+            "article",
+            "main"
+        )
+
+        scopedSelectors.forEach { selector ->
+            val scoped = document.select(selector)
+            val labels = scoped.select("a[href*='/search/label/']")
+                .map { cleanText(it.text()).trim(',') }
+                .filter { it.length in 2..50 && !isNoiseTitle(it) && !isBlockedDetailLabel(it) }
+                .distinct()
+            if (labels.isNotEmpty()) return labels
+        }
+
         return document.select("a[href*='/search/label/']")
             .map { cleanText(it.text()).trim(',') }
-            .filter { it.length in 2..50 && !isNoiseTitle(it) }
+            .filter { it.length in 2..50 && !isNoiseTitle(it) && !isBlockedDetailLabel(it) }
             .distinct()
     }
 
-    private fun parsePlot(document: Document): String? {
-        val meta = document.selectFirst("meta[property=og:description], meta[name=description]")?.attr("content")
-        val body = document.select(".post-sinop p, .descNime p, .entry-content p, .post-body p, article p")
+    private fun parsePlot(document: Document, title: String): String? {
+        val body = document.select(".post-sinop p, .descNime p, .entry-content p, .post-body p, article p, main p")
             .map { cleanText(it.text()) }
-            .firstOrNull { it.length > 40 && !it.contains("Video Server", true) }
-        return cleanText(meta ?: body.orEmpty()).ifBlank { null }
+            .firstOrNull { isValidPlot(it, title) }
+        val meta = document.selectFirst("meta[property=og:description], meta[name=description]")?.attr("content")
+            ?.let { cleanText(it) }
+            ?.takeIf { isValidPlot(it, title) }
+        return body ?: meta
     }
 
     private fun parseRating(document: Document, text: String): Double? {
@@ -416,8 +483,20 @@ class DrakorAsiaProvider : MainAPI() {
         )
     }
 
-    private fun isSystemLabel(value: String): Boolean {
-        return value.equals("Series", true) || value.equals("TV", true) || value.equals("Movie", true)
+    private fun isBlockedDetailLabel(value: String): Boolean {
+        val lowered = value.trim().lowercase().trim(',', ' ')
+        return lowered in setOf(
+            "series", "tv", "movie", "completed", "ongoing", "complete", "0-9", "0–9", "drakorasia", "drama asia"
+        )
+    }
+
+    private fun isValidPlot(value: String, title: String): Boolean {
+        val cleaned = cleanText(value)
+        return cleaned.length > 40 &&
+            !cleaned.equals(title, ignoreCase = true) &&
+            !cleaned.contains("Video Server", true) &&
+            !cleaned.contains("Bookmark", true) &&
+            !cleaned.matches(Regex("(?i)^episode\\s*0*[0-9]+.*"))
     }
 
     private data class FeedEntry(
