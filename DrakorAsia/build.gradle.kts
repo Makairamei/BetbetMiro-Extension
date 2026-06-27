@@ -1,9 +1,9 @@
-version = 8
+version = 9
 
 cloudstream {
     language = "id"
     authors = listOf("sad25kag")
-    description = "DrakorAsia provider for Korean and Asian drama from drakorasia.site. HAR-aligned Blogger feed parser with selectServ/AbyssPlayer and tiarway playback resolver. Movie synopsis cleanup v8."
+    description = "DrakorAsia provider for Korean and Asian drama from drakorasia.site. HAR-aligned Blogger feed parser with selectServ/AbyssPlayer and tiarway playback resolver. Movie playback routing v9."
 
     status = 1
 
