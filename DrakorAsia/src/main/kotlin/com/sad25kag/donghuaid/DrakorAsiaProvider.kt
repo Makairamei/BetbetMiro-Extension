@@ -371,10 +371,10 @@ class DrakorAsiaProvider : MainAPI() {
 
     private fun parsePlot(document: Document, title: String): String? {
         val body = document.select(".post-sinop p, .descNime p, .entry-content p, .post-body p, article p, main p")
-            .map { cleanText(it.text()) }
+            .map { sanitizePlot(it.text()) }
             .firstOrNull { isValidPlot(it, title) }
         val meta = document.selectFirst("meta[property=og:description], meta[name=description]")?.attr("content")
-            ?.let { cleanText(it) }
+            ?.let { sanitizePlot(it) }
             ?.takeIf { isValidPlot(it, title) }
         return body ?: meta
     }
@@ -504,12 +504,22 @@ class DrakorAsiaProvider : MainAPI() {
     }
 
     private fun isValidPlot(value: String, title: String): Boolean {
-        val cleaned = cleanText(value)
+        val cleaned = sanitizePlot(value)
+        val episodeMentions = Regex("(?i)\\bEpisode\\s*0*[0-9]+\\b").findAll(cleaned).count()
+        val subIndoMentions = Regex("(?i)\\bSub\\s*indo\\b").findAll(cleaned).count()
         return cleaned.length > 40 &&
+            episodeMentions < 3 &&
+            subIndoMentions < 3 &&
             !cleaned.equals(title, ignoreCase = true) &&
-            !cleaned.contains("Video Server", true) &&
             !cleaned.contains("Bookmark", true) &&
             !cleaned.matches(Regex("(?i)^episode\\s*0*[0-9]+.*"))
+    }
+
+    private fun sanitizePlot(value: String): String {
+        return cleanText(value)
+            .replace(Regex("(?i)\\s*Video\\s+Server.*$"), "")
+            .replace(Regex("(?i)\\s*Expand\\s+Turn\\s+Off\\s+Light.*$"), "")
+            .trim()
     }
 
     private data class FeedEntry(
