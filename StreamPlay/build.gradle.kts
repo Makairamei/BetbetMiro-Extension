@@ -38,10 +38,9 @@ android {
 }
 
 tasks.withType<KotlinCompile>().configureEach {
-    kotlinOptions.freeCompilerArgs = kotlinOptions.freeCompilerArgs + listOf(
-        "-opt-in=com.lagradost.cloudstream3.Prerelease",
-        "-Xopt-in=com.lagradost.cloudstream3.Prerelease"
-    )
+    compilerOptions {
+        optIn.add("com.lagradost.cloudstream3.Prerelease")
+    }
 }
 
 dependencies {
@@ -49,7 +48,7 @@ dependencies {
 }
 
 cloudstream {
-    language = "en"
+    language = "id"
     // All of these properties are optional, you can safely remove them
 
      description = "#1 best extention based on MultiAPI"
