@@ -12,6 +12,8 @@ import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONArray
+import org.json.JSONObject
+import org.json.JSONTokener
 import java.net.URI
 import java.net.URLDecoder
 
@@ -51,8 +53,9 @@ class DoronimeDownload : ExtractorApi() {
                 }
 
                 if (!emitted) {
+                    val driveDownloadUrl = targetUrl.toGoogleDriveDownloadUrl()
                     callback(
-                        newExtractorLink("Google Drive", "Google Drive", targetUrl, ExtractorLinkType.VIDEO) {
+                        newExtractorLink("Google Drive", "Google Drive", driveDownloadUrl, ExtractorLinkType.VIDEO) {
                             this.referer = downloadUrl
                             this.quality = quality
                             this.headers = headers + mapOf("Referer" to downloadUrl)
@@ -61,9 +64,13 @@ class DoronimeDownload : ExtractorApi() {
                 }
             }
             targetUrl.contains("acefile.co", true) -> {
-                if (!tryAcefile(targetUrl, quality, callback, subtitleCallback)) {
+                var emitted = tryAcefile(targetUrl, quality, callback, subtitleCallback)
+                if (!emitted) {
                     runCatching {
-                        loadExtractor(targetUrl, downloadUrl, subtitleCallback, callback)
+                        loadExtractor(targetUrl, downloadUrl, subtitleCallback) { link ->
+                            callback(link)
+                            emitted = true
+                        }
                     }
                 }
             }
@@ -126,18 +133,22 @@ class DoronimeDownload : ExtractorApi() {
             )
         }.getOrNull() ?: return null
 
-        val redirect = response.headers["location"]
-            ?: response.headers["Location"]
-            ?: Regex("""url=['\"]?([^'\"<>\s]+)""", RegexOption.IGNORE_CASE)
-                .find(response.text.cleanEscaped())
-                ?.groupValues
-                ?.getOrNull(1)
-            ?: Regex("""href=['\"]([^'\"]+)['\"]""", RegexOption.IGNORE_CASE)
-                .find(response.text.cleanEscaped())
-                ?.groupValues
-                ?.getOrNull(1)
+        val html = response.text.cleanEscaped()
+        val candidates = linkedSetOf<String>()
 
-        return redirect?.extractExternalTarget()
+        listOfNotNull(response.headers["location"], response.headers["Location"]).forEach { candidates.add(it) }
+        Regex("""url=['\"]?([^'\"<>\s]+)""", RegexOption.IGNORE_CASE)
+            .findAll(html)
+            .map { it.groupValues[1] }
+            .forEach { candidates.add(it) }
+        Regex("""href=['\"]([^'\"]+)['\"]""", RegexOption.IGNORE_CASE)
+            .findAll(html)
+            .map { it.groupValues[1] }
+            .forEach { candidates.add(it) }
+
+        return candidates
+            .mapNotNull { it.extractExternalTarget() }
+            .firstOrNull { it.isGoogleDriveUrl() || it.contains("acefile.co", true) }
     }
 
     private suspend fun findDownloadQuality(downloadUrl: String, referer: String): Int {
@@ -334,15 +345,23 @@ class DoronimeDownload : ExtractorApi() {
         encodedSources.forEach { encoded ->
             val decoded = decodeAcefileBase64(encoded) ?: return@forEach
             runCatching {
-                val array = JSONArray(decoded)
-                for (i in 0 until array.length()) {
-                    val file = array.optJSONObject(i)?.optString("file").orEmpty()
-                    normalizeUrl(file, base)?.cleanEscaped()?.let { results.add(it) }
+                when (val json = JSONTokener(decoded).nextValue()) {
+                    is JSONArray -> {
+                        for (i in 0 until json.length()) {
+                            json.optJSONObject(i)?.acefileSourceUrl()?.let { normalizeUrl(it, base)?.cleanEscaped()?.let(results::add) }
+                        }
+                    }
+                    is JSONObject -> json.acefileSourceUrl()?.let { normalizeUrl(it, base)?.cleanEscaped()?.let(results::add) }
                 }
             }
         }
 
         return results.toList()
+    }
+
+    private fun JSONObject.acefileSourceUrl(): String? {
+        return listOf("file", "src", "url", "source")
+            .firstNotNullOfOrNull { key -> optString(key).takeIf { it.isNotBlank() } }
     }
 
     private fun collectPlayableUrls(
@@ -358,13 +377,13 @@ class DoronimeDownload : ExtractorApi() {
                 ?.let(results::add)
         }
 
-        Regex("""https?://[^"'\\\s<>]+?\.(?:m3u8|mp4|webm|mkv)(?:\?[^"'\\\s<>]*)?""", RegexOption.IGNORE_CASE)
+        Regex("""https?://[^"'\\\s<>]+?\.(?:m3u8|mp4|webm|mkv|txt)(?:\?[^"'\\\s<>]*)?""", RegexOption.IGNORE_CASE)
             .findAll(html)
             .map { it.value.cleanEscaped() }
             .filterNot { it.isArchiveDownloadUrl() }
             .forEach { results.add(it) }
 
-        Regex("""https?%3A%2F%2F[^"'\\\s<>]+?(?:%2Em3u8|%2Emp4|%2Ewebm|%2Emkv)[^"'\\\s<>]*""", RegexOption.IGNORE_CASE)
+        Regex("""https?%3A%2F%2F[^"'\\\s<>]+?(?:%2Em3u8|%2Emp4|%2Ewebm|%2Emkv|%2Etxt)[^"'\\\s<>]*""", RegexOption.IGNORE_CASE)
             .findAll(html)
             .map { runCatching { URLDecoder.decode(it.value, "UTF-8") }.getOrDefault(it.value) }
             .map { it.cleanEscaped() }
@@ -419,6 +438,16 @@ class DoronimeDownload : ExtractorApi() {
         return target ?: clean.takeIf { it.isGoogleDriveUrl() || it.contains("acefile.co", true) }
     }
 
+    private fun String.toGoogleDriveDownloadUrl(): String {
+        val clean = cleanEscaped()
+        val id = Regex("""(?:/d/|[?&]id=)([A-Za-z0-9_-]+)""", RegexOption.IGNORE_CASE)
+            .find(clean)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: return clean
+        return "https://drive.google.com/uc?export=download&confirm=t&id=$id"
+    }
+
     private fun String.cleanEscaped(): String {
         return trim()
             .replace("\\/", "/")
@@ -441,7 +470,7 @@ class DoronimeDownload : ExtractorApi() {
 
     private fun String.isPlayableMediaUrl(): Boolean {
         val lower = substringBefore("?").lowercase()
-        return lower.endsWith(".m3u8") || lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mkv")
+        return lower.endsWith(".m3u8") || lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mkv") || lower.endsWith(".txt")
     }
 
     private fun String.isArchiveDownloadUrl(): Boolean {
