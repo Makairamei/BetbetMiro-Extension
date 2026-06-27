@@ -1,3 +1,3 @@
 package com.phisher98
 
-typealias BuildConfig = com.excloud.BuildConfig
+typealias BuildConfig = com.sad25kag.BuildConfig
