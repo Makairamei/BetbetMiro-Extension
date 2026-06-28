@@ -23,6 +23,8 @@ internal fun String.cleanTitleDs(): String {
         .replace(Regex("""(?i)\s*[-|]\s*(DramaSerial|Drama Serial|DramaSerialDotTV).*$"""), "")
         .replace(Regex("""(?i)^\s*Nonton\s+(Film|Movie|Serial|Drama)?\s*"""), "")
         .replace(Regex("""(?i)\s+(Subtitle\s+Indonesia|Sub\s+Indo|Streaming|Download|Hardsub\s+Indo).*$"""), "")
+        // Strip episode indicators like "EPS 08", "EP 3", "Episode 12" that appear in card titles
+        .replace(Regex("""(?i)\s+(?:EPS|EP|Episode)[\s.]*\d+.*$"""), "")
         .replace(Regex("""\s+"""), " ")
         .trim()
 }
@@ -92,6 +94,12 @@ internal fun String.isNoiseUrlDs(): Boolean {
         lower.contains("pasang-iklan") ||
         lower.contains("dmca") ||
         lower.contains("disclaimer") ||
+        // Indonesian taxonomy/archive pages that are not content
+        lower.contains("/tahun/") ||
+        lower.contains("/negara/") ||
+        lower.contains("/kualitas/") ||
+        lower.contains("/sutradara/") ||
+        lower.contains("/cast/") ||
         lower.endsWith(".css") ||
         lower.endsWith(".js") ||
         lower.endsWith(".ico") ||

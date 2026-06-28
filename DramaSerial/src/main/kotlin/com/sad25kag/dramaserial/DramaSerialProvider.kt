@@ -21,6 +21,10 @@ class DramaSerialProvider : MainAPI() {
         "$mainUrl/Genre/drama-serial-korea/" to "Drama Serial Korea",
         "$mainUrl/Genre/drama-serial-mandarin/" to "Drama Serial Mandarin",
         "$mainUrl/Genre/drama-serial-jepang/" to "Drama Serial Jepang",
+        "$mainUrl/Genre/drama-serial-barat/" to "Drama Serial Barat",
+        "$mainUrl/Genre/drama-serial-thailand/" to "Drama Serial Thailand",
+        "$mainUrl/Genre/drama-serial-india/" to "Drama Serial India",
+        "$mainUrl/Genre/drama-serial-filipina/" to "Drama Serial Filipina",
         "$mainUrl/Genre/box-office/" to "Film Box Office",
         "$mainUrl/" to "Latest Movie"
     )
@@ -63,19 +67,36 @@ class DramaSerialProvider : MainAPI() {
         val type = DramaSerialParser.inferType(title, url, TvType.AsianDrama)
         val episodes = DramaSerialParser.parseEpisodes(this, document, url)
 
-        return if (episodes.isNotEmpty()) {
-            newTvSeriesLoadResponse(title, url, type, episodes) {
-                posterUrl = poster
-                this.plot = plot
-                this.tags = tags
-                this.year = year
+        return when {
+            episodes.isNotEmpty() -> {
+                newTvSeriesLoadResponse(title, url, type, episodes) {
+                    posterUrl = poster
+                    this.plot = plot
+                    this.tags = tags
+                    this.year = year
+                }
             }
-        } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
-                posterUrl = poster
-                this.plot = plot
-                this.tags = tags
-                this.year = year
+            // /film-seri/ root pages that have only episode 1 (the current page itself, no
+            // numbered sub-links found) — still return a TvSeries with a single episode.
+            url.contains("/film-seri/", ignoreCase = true) && type != TvType.Movie -> {
+                val ep1 = newEpisode(url) {
+                    name = "Episode 1"
+                    episode = 1
+                }
+                newTvSeriesLoadResponse(title, url, type, listOf(ep1)) {
+                    posterUrl = poster
+                    this.plot = plot
+                    this.tags = tags
+                    this.year = year
+                }
+            }
+            else -> {
+                newMovieLoadResponse(title, url, TvType.Movie, url) {
+                    posterUrl = poster
+                    this.plot = plot
+                    this.tags = tags
+                    this.year = year
+                }
             }
         }
     }

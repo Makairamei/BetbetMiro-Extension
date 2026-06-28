@@ -33,7 +33,13 @@ object DramaSerialParser {
         val href = anchor.attr("href").absUrlDs(baseUrl) ?: return null
         if (!href.sameRootDomainDs(DramaSerialProvider.DEFAULT_MAIN_URL) && !href.sameHostDs(baseUrl)) return null
         if (href.isNoiseUrlDs()) return null
-        if (href.contains("/Genre/", true) || href.contains("/genre/", true) || href.contains("/year/", true) || href.contains("/quality/", true) || href.contains("/country/", true) || href.contains("/author/", true)) return null
+        // Block taxonomy/archive pages — both English and Indonesian variants
+        if (href.contains("/Genre/", true) || href.contains("/genre/", true) ||
+            href.contains("/year/", true) || href.contains("/tahun/", true) ||
+            href.contains("/quality/", true) || href.contains("/kualitas/", true) ||
+            href.contains("/country/", true) || href.contains("/negara/", true) ||
+            href.contains("/author/", true) || href.contains("/sutradara/", true) ||
+            href.contains("/cast/", true)) return null
 
         val title = listOf(
             titleElement?.text(),
@@ -138,6 +144,7 @@ object DramaSerialParser {
     }
 
     fun parseEpisodes(api: MainAPI, document: Document, pageUrl: String): List<Episode> {
+        // Primary selectors: common drama/series plugin CSS classes
         val selectors = listOf(
             ".gmr-listseries a[href]",
             ".gmr-eps-list a[href]",
@@ -149,7 +156,8 @@ object DramaSerialParser {
             "a[href*='/episode-']",
             "a[href*='?episode=']"
         ).joinToString(",")
-        return document.select(selectors).mapNotNull { element ->
+
+        val foundEps = document.select(selectors).mapNotNull { element ->
             val href = element.attr("href").absUrlDs(pageUrl) ?: return@mapNotNull null
             if (href == pageUrl || href.isNoiseUrlDs()) return@mapNotNull null
             val text = element.text().cleanDs()
@@ -162,10 +170,56 @@ object DramaSerialParser {
                 this.season = season
             }
         }.distinctBy { it.data }
+
+        if (foundEps.isNotEmpty()) return foundEps
+
+        // ── DramaSerial numeric episode pagination fallback ──────────────────────────────
+        // DramaSerial structures series as:
+        //   Series root : /film-seri/nonton-X/          ← episode 1 (no link, is the current page)
+        //   Episode 2   : /film-seri/nonton-X/2/
+        //   Episode N   : /film-seri/nonton-X/N/
+        //
+        // Only apply this fallback when we are on a series root URL (last path segment is
+        // not a plain integer — that would mean we are already on an episode sub-page).
+        val lastSegment = pageUrl.trimEnd('/').substringAfterLast('/')
+        val isEpisodeSubPage = lastSegment.isNotBlank() && lastSegment.all { it.isDigit() }
+        if (!isEpisodeSubPage) {
+            val baseUrl = pageUrl.trimEnd('/')
+            val numericEps = document.select("a[href]")
+                .mapNotNull { element ->
+                    val href = element.attr("href").absUrlDs(pageUrl)?.trimEnd('/') ?: return@mapNotNull null
+                    if (!href.startsWith("$baseUrl/")) return@mapNotNull null
+                    val suffix = href.removePrefix("$baseUrl/")
+                    val epNum = suffix.toIntOrNull() ?: return@mapNotNull null  // must be a plain integer
+                    Pair(epNum, "$href/")
+                }
+                .distinctBy { it.second }
+                .sortedBy { it.first }
+
+            if (numericEps.isNotEmpty()) {
+                val allEps = mutableListOf(
+                    api.newEpisode(pageUrl) {
+                        name = "Episode 1"
+                        episode = 1
+                    }
+                )
+                numericEps.forEach { (epNum, href) ->
+                    allEps.add(
+                        api.newEpisode(href) {
+                            name = "Episode $epNum"
+                            episode = epNum
+                        }
+                    )
+                }
+                return allEps.distinctBy { it.data }
+            }
+        }
+
+        return emptyList()
     }
 
     fun hasNextPage(document: Document, page: Int): Boolean {
-        return document.select("a.next.page-numbers, .pagination a.next, .nav-links a.next").isNotEmpty() ||
+        return document.select("a.next.page-numbers, .pagination a.next, .nav-links a.next, .gmr-pagination a.next").isNotEmpty() ||
             document.select("a.page-numbers").any { it.text().trim().toIntOrNull()?.let { number -> number > page } == true }
     }
 

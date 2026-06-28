@@ -17,10 +17,11 @@ object DramaSerialExtractor {
         Regex("""<iframe[^>]+(?:src|data-src)=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
         Regex("""(?:data-src|data-embed|data-video|data-url|data-link|data-file)=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
         Regex("""(?:file|src|source|video|videoUrl|video_url|hls\d*|url|embed|embed_url|embed_frame_url)\s*[:=]\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE),
-        Regex("""["']((?:https?:)?//[^"']+(?:\.m3u8|\.mp4|\.webm|\.mpd|\.txt)(?:\?[^"']*)?)["']""", RegexOption.IGNORE_CASE),
+        Regex("""["']((?:https?:)?//[^"']+(?:\.m3u8|\.mp4|\.webm|\.mpd|\.txt)(?:\?[^"']*)?)[""]'""", RegexOption.IGNORE_CASE),
         Regex("""["']((?:/[^"']*)/(?:embed|player|stream|get|watch|video|dl)[^"']*)["']""", RegexOption.IGNORE_CASE),
         Regex("""["']((?:https?:)?//[^"']*(?:gdriveplayer\.(?:io|to|me)|hlsplaylist\.php)[^"']*)["']""", RegexOption.IGNORE_CASE),
-        Regex("""["'](https?://[^"']*(?:minochinos|morencius|pixibay|abyssplayer|dood|streamtape|filemoon|vidhide|vidguard|voe|mixdrop|streamwish|wishfast|mp4upload|uqload|krakenfiles|streamlare|filelions|gdrive|drive\.google)[^"']*)["']""", RegexOption.IGNORE_CASE)
+        // Broad pattern for known external video hosts — including abysscdn.com
+        Regex("""["'](https?://[^"']*(?:minochinos|morencius|pixibay|abyssplayer|abysscdn|dood|streamtape|filemoon|vidhide|vidguard|voe|mixdrop|streamwish|wishfast|mp4upload|uqload|krakenfiles|streamlare|filelions|gdrive|drive\.google)[^"']*)["']""", RegexOption.IGNORE_CASE)
     )
 
     suspend fun load(pageUrl: String, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
@@ -96,6 +97,7 @@ object DramaSerialExtractor {
             ".gmr-embed-responsive iframe[src], iframe[src], " +
                 ".muvipro-player-tabs a[href], .gmr-download-wrap a[href], .entry-content a[href], " +
                 "a[href*='minochinos.com'], a[href*='morencius.com'], " +
+                "a[href*='abysscdn.com'], iframe[src*='abysscdn.com'], " +
                 "a[href*='gdriveplayer.io'], a[href*='gdriveplayer.to'], a[href*='gdriveplayer.me'], " +
                 "video source[src], source[src], track[src], " +
                 "a[href*='.srt'], a[href*='.vtt'], a[href*='.mp4'], a[href*='.m3u8'], a[href*='.webm']"
@@ -288,8 +290,8 @@ object DramaSerialExtractor {
         val clean = cleanDs()
         val variants = linkedSetOf<String>()
         variants.add(clean)
-        variants.add(clean.replace(Regex("^http://gdriveplayer\\.(io|to|me)", RegexOption.IGNORE_CASE), "https://gdriveplayer.$1"))
-        variants.add(clean.replace(Regex("^https://gdriveplayer\\.(io|to|me)", RegexOption.IGNORE_CASE), "http://gdriveplayer.$1"))
+        variants.add(clean.replace(Regex("""^http://gdriveplayer\.(io|to|me)""", RegexOption.IGNORE_CASE), "https://gdriveplayer.$1"))
+        variants.add(clean.replace(Regex("""^https://gdriveplayer\.(io|to|me)""", RegexOption.IGNORE_CASE), "http://gdriveplayer.$1"))
         return variants.filter { it.isNotBlank() }
     }
 
@@ -346,7 +348,8 @@ object DramaSerialExtractor {
             "gofile",
             "pixeldrain",
             "minochinos",
-            "morencius"
+            "morencius",
+            "abysscdn"
         ).any { lower.contains(it) }
     }
 }
