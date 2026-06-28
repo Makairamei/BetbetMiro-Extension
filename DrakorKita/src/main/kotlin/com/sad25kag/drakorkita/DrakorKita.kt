@@ -72,7 +72,7 @@ class DrakorKita : MainAPI() {
     override suspend fun search(query: String, page: Int): SearchResponseList {
         val encoded = URLEncoder.encode(query, "UTF-8")
         val searchUrls = listOf(
-            buildPagedUrl("?s=$encoded", page)
+            buildPagedUrl("all?q=$encoded", page)
         )
 
         val results = linkedMapOf<String, SearchResponse>()
@@ -252,6 +252,10 @@ class DrakorKita : MainAPI() {
         }
 
         val selector = "a.poster[href*=/detail/], .card a[href*=/detail/], a[href*=/detail/]"
+        if (sectionName.equals("Search", ignoreCase = true)) {
+            val searchRoot = select("div:contains(Hasil untuk)").firstOrNull()?.parent() ?: this
+            return searchRoot.select(selector).toList()
+        }
         return (sectionRow ?: this).select(selector).toList()
     }
 
