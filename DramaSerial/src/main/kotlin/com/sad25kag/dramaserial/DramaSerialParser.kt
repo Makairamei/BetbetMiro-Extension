@@ -198,21 +198,12 @@ object DramaSerialParser {
                 .sortedBy { it.first }
 
             if (numericEps.isNotEmpty()) {
-                val allEps = mutableListOf(
-                    api.newEpisode(pageUrl) {
-                        name = "Episode 1"
-                        episode = 1
+                return numericEps.map { (epNum, href) ->
+                    api.newEpisode(href) {
+                        name = "Episode $epNum"
+                        episode = epNum
                     }
-                )
-                numericEps.forEach { (epNum, href) ->
-                    allEps.add(
-                        api.newEpisode(href) {
-                            name = "Episode $epNum"
-                            episode = epNum
-                        }
-                    )
-                }
-                return allEps.distinctBy { it.data }
+                }.distinctBy { it.data }
             }
         }
 
