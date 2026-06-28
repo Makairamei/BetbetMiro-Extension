@@ -50,7 +50,7 @@ class DramaSerialProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         if (query.isBlank()) return emptyList()
         val encoded = query.urlEncodeDs()
-        val url = "$mainUrl/?s=$encoded"
+        val url = "$mainUrl/?s=$encoded&post_type%5B%5D=post&post_type%5B%5D=tv"
         val document = DramaSerialNetwork.getDocument(url, mainUrl)
         return DramaSerialParser.parseHomeItems(this, document, url, TvType.AsianDrama)
             .filter { it.name.contains(query, ignoreCase = true) || query.length <= 4 }
