@@ -72,8 +72,7 @@ class DrakorKita : MainAPI() {
     override suspend fun search(query: String, page: Int): SearchResponseList {
         val encoded = URLEncoder.encode(query, "UTF-8")
         val searchUrls = listOf(
-            buildPagedUrl("?s=$encoded", page),
-            buildPagedUrl("all?keyword=$encoded", page)
+            buildPagedUrl("?s=$encoded", page)
         )
 
         val results = linkedMapOf<String, SearchResponse>()
