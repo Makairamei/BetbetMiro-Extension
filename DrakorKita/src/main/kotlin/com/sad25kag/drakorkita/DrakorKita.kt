@@ -50,10 +50,11 @@ class DrakorKita : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "/" to "Eps Terbaru",
-        "all?media_type=tv" to "Series",
-        "all?media_type=movie" to "Movie"
-    )
+    "/" to "Eps Terbaru",
+    "/" to "Complete / Ended",
+    "/" to "Movie Terbaru",
+    "/" to "Serie Terbaru",
+)
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = getDocument(buildPagedUrl(request.data, page))
@@ -235,9 +236,13 @@ class DrakorKita : MainAPI() {
 
     private fun Document.selectCardsForSection(sectionName: String): List<Element> {
         val keyword = when {
-            sectionName.contains("eps", ignoreCase = true) -> "Eps Terbaru"
-            else -> null
-        }
+        sectionName.contains("eps", ignoreCase = true) -> "Eps Terbaru"
+        sectionName.contains("complete", ignoreCase = true) -> "Complete"
+        sectionName.contains("movie", ignoreCase = true) -> "Movie Terbaru"
+        sectionName.contains("serie", ignoreCase = true) ||
+        sectionName.contains("series", ignoreCase = true) -> "Serie Terbaru"
+        else -> null
+    }
 
         val sectionRow = keyword?.let { key ->
             select("h4.heading1").firstOrNull { heading ->
