@@ -76,8 +76,6 @@ class DramaSerialProvider : MainAPI() {
                     this.year = year
                 }
             }
-            // /film-seri/ root pages that have only episode 1 (the current page itself, no
-            // numbered sub-links found) — still return a TvSeries with a single episode.
             url.contains("/film-seri/", ignoreCase = true) && type != TvType.Movie -> {
                 val ep1 = newEpisode(url) {
                     name = "Episode 1"
