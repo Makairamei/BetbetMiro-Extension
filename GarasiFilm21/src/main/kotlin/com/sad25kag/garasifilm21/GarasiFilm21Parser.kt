@@ -16,7 +16,9 @@ object GarasiFilm21Parser {
         ".post-lst article",
         ".content-area article",
         ".site-main article",
-        "article.post"
+        "article.post",
+        "article",
+        ".movie-item, .film-item, .item, .thumb, .poster"
     ).joinToString(",")
 
     fun parseHomeItems(api: MainAPI, document: Document, baseUrl: String, defaultType: TvType = TvType.Movie): List<SearchResponse> {
@@ -27,8 +29,8 @@ object GarasiFilm21Parser {
     }
 
     private fun Element.toSearchResponse(api: MainAPI, baseUrl: String, defaultType: TvType = TvType.Movie): SearchResponse? {
-        val titleElement = selectFirst("h2.entry-title a[href], .entry-title a[href], h3.entry-title a[href], h2 a[href], h3 a[href]")
-        val imageAnchor = selectFirst(".content-thumbnail a[href], a[itemprop=url], .thumbnail a[href]")
+        val titleElement = selectFirst("h2.entry-title a[href], .entry-title a[href], h3.entry-title a[href], h2 a[href], h3 a[href], h1 a[href], a h2, a h3, .title a")
+        val imageAnchor = selectFirst(".content-thumbnail a[href], a[itemprop=url], .thumbnail a[href], a:has(img), .poster a")
         val anchor = titleElement ?: imageAnchor ?: selectFirst("a[href]") ?: return null
         val href = anchor.attr("href").absUrlGf21(baseUrl) ?: return null
         if (!href.sameRootDomainGf21(GarasiFilm21Provider.DEFAULT_MAIN_URL) && !href.sameHostGf21(baseUrl)) return null
@@ -57,7 +59,7 @@ object GarasiFilm21Parser {
 
     fun posterUrl(element: Element, baseUrl: String): String? {
         val candidates = mutableListOf<String>()
-        element.select(".content-thumbnail img, img.wp-post-image, img, source").forEach { img ->
+        element.select(".content-thumbnail img, img.wp-post-image, img, source, a img, .poster img").forEach { img ->
             listOf(
                 img.attr("data-src"),
                 img.attr("data-lazy-src"),
@@ -103,7 +105,7 @@ object GarasiFilm21Parser {
             document.selectFirst("meta[name=twitter:image]")?.attr("content"),
             document.selectFirst("article.single-thumb img.wp-post-image")?.attr("src"),
             document.selectFirst(".content-thumbnail img.wp-post-image")?.attr("src"),
-            document.selectFirst(".content-thumbnail img")?.let {
+            document.selectFirst(".content-thumbnail img, .poster img")?.let {
                 listOf(it.attr("data-src"), it.attr("data-lazy-src"), it.attr("src"))
                     .firstOrNull { value -> value.isNotBlank() && !value.startsWith("data:") }
             }
@@ -121,33 +123,29 @@ object GarasiFilm21Parser {
     }
 
     fun parseTags(document: Document): List<String> {
-        val genreBlock = document.select(".gmr-moviedata, .moviedata, .movie-data")
-            .firstOrNull { it.selectFirst("strong")?.text()?.contains("Genre", ignoreCase = true) == true }
-        return (genreBlock?.select("a") ?: document.select("a[href*='/Genre/'], a[href*='/genre/']"))
+        val genreBlock = document.select(".gmr-moviedata, .moviedata, .movie-data, .meta, .info, .details")
+            .firstOrNull { it.selectFirst("strong, span, label, div")?.text()?.contains("Genre", ignoreCase = true) == true }
+        return (genreBlock?.select("a") ?: document.select("a[href*='/Genre/'], a[href*='/genre/'], a[href*='/category/']"))
             .map { it.text().cleanGf21() }
             .filter { it.isNotBlank() && it.length <= 40 }
             .distinct()
     }
 
     fun parseYear(document: Document, title: String): Int? {
-        val yearBlock = document.select(".gmr-moviedata, .moviedata, .movie-data")
-            .firstOrNull { it.selectFirst("strong")?.text()?.contains("Year", ignoreCase = true) == true }
-            ?.text()
         return Regex("""\b(19\d{2}|20\d{2})\b""").find(title)?.groupValues?.getOrNull(1)?.toIntOrNull()
-            ?: yearBlock?.let { Regex("""\b(19\d{2}|20\d{2})\b""").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull() }
     }
 
     fun parseEpisodes(api: MainAPI, document: Document, pageUrl: String): List<Episode> {
         val candidates = document.select(
-            ".gmr-listseries a[href], .gmr-eps-list a[href], ul.gmr-episodes li a[href], .episodios a[href], .eplister a[href], .list-episode a[href], a[href*='/episode-'], a[href*='?episode=']"
+            ".gmr-listseries a[href], .gmr-eps-list a[href], ul.gmr-episodes li a[href], .episodios a[href], .eplister a[href], .list-episode a[href], .episode-list a[href], a[href*='/episode-'], a[href*='?episode=']"
         )
         return candidates.mapNotNull { element ->
             val href = element.attr("href").absUrlGf21(pageUrl) ?: return@mapNotNull null
             if (href == pageUrl || href.isNoiseUrlGf21()) return@mapNotNull null
             val text = element.text().cleanGf21()
-            val number = Regex("""(?i)(?:episode|eps|ep|e)[-_\s]*(\d+)""").find("$text $href")?.groupValues?.getOrNull(1)?.toIntOrNull()
+            val number = Regex("""(?i)(?:episode|eps|ep|e)[-_\/\s]*(\d+)""").find("$text $href")?.groupValues?.getOrNull(1)?.toIntOrNull()
                 ?: Regex("""^\D*(\d+)\D*$""").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()
-            val season = Regex("""(?i)(?:season|s)[-_\s]*(\d+)""").find("$text $href")?.groupValues?.getOrNull(1)?.toIntOrNull()
+            val season = Regex("""(?i)(?:season|s)[-_\/\s]*(\d+)""").find("$text $href")?.groupValues?.getOrNull(1)?.toIntOrNull()
             api.newEpisode(href) {
                 name = text.takeIf { it.isNotBlank() && it.length > 1 } ?: number?.let { "Episode $it" } ?: "Episode"
                 episode = number
@@ -157,7 +155,7 @@ object GarasiFilm21Parser {
     }
 
     fun hasNextPage(document: Document, page: Int): Boolean {
-        return document.select("a.next.page-numbers, .pagination a.next, .nav-links a.next").isNotEmpty() ||
+        return document.select("a.next.page-numbers, .pagination a.next, .nav-links a.next, a[rel=next], button[onclick*='page']").isNotEmpty() ||
             document.select("a.page-numbers").any { it.text().trim().toIntOrNull()?.let { number -> number > page } == true }
     }
 
