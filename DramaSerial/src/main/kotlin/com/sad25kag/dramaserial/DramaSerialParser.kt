@@ -129,8 +129,9 @@ object DramaSerialParser {
     fun parseTags(document: Document): List<String> {
         val genreBlock = document.select(".gmr-moviedata, .moviedata, .movie-data")
             .firstOrNull { it.selectFirst("strong")?.text()?.contains("Genre", ignoreCase = true) == true }
-        return (genreBlock?.select("a") ?: document.select("a[href*='/Genre/'], a[href*='/genre/']"))
+        return (genreBlock?.select("a") ?: emptyList<Element>())
             .map { it.text().cleanDs() }
+            .filterNot { it.startsWith("Film Seri", true) || it.equals("Anime", true) }
             .filter { it.isNotBlank() && it.length <= 40 }
             .distinct()
     }
