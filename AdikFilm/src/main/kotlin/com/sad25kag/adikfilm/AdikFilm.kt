@@ -20,6 +20,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
+import com.lagradost.cloudstream3.utils.httpsify
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.Jsoup
@@ -32,11 +33,7 @@ import java.util.Locale
 
 class AdikFilm : MainAPI() {
     companion object {
-        private const val DEFAULT_MAIN_URL = "http://tv.adikfilm.bond"
-        private val ALLOWED_HOSTS = setOf(
-            "tv.adikfilm.bond",
-            "adikfilm.click"
-        )
+        private const val DEFAULT_MAIN_URL = "http://178.128.107.129"
     }
 
     override var mainUrl = DEFAULT_MAIN_URL
@@ -56,27 +53,17 @@ class AdikFilm : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "/best-rating/" to "Best Rating",
-        "/daftar-film/" to "Daftar Film",
-        "/film-a-z/" to "Film A-Z",
-        "/tv-series/" to "TV Series",
-        "/tv-ongoing/" to "TV Ongoing",
-        "/category/action/" to "Action",
-        "/category/adventure/" to "Adventure",
-        "/category/animation/" to "Animation",
-        "/category/comedy/" to "Comedy",
-        "/category/crime/" to "Crime",
-        "/category/drama/" to "Drama",
-        "/category/family/" to "Family",
-        "/category/fantasy/" to "Fantasy",
-        "/category/history/" to "History",
-        "/category/horror/" to "Horror",
-        "/category/music/" to "Music",
-        "/category/mystery/" to "Mystery",
-        "/category/romance/" to "Romance",
-        "/category/science-fiction/" to "Science Fiction",
-        "/category/thriller/" to "Thriller",
-        "/category/war/" to "War"
+        "/genre/action/" to "Action",
+        "/genre/adventure/" to "Adventure",
+        "/genre/horror/" to "Horror",
+        "/genre/comedy/" to "Comedy",
+        "/genre/crime/" to "Crime",
+        "/genre/drama/" to "Drama",
+        "/genre/fantasy/" to "Fantasy",
+        "/genre/mystery/" to "Mystery",
+        "/genre/romance/" to "Romance",
+        "/genre/science-fiction/" to "Science Fiction",
+        "/genre/thriller/" to "Thriller"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -93,7 +80,6 @@ class AdikFilm : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val keyword = query.trim()
         if (keyword.isBlank()) return emptyList()
-
         val encoded = URLEncoder.encode(keyword, "UTF-8")
         val searchUrls = listOf(
             "$mainUrl/?s=$encoded&post_type%5B%5D=post&post_type%5B%5D=tv",
@@ -106,25 +92,14 @@ class AdikFilm : MainAPI() {
             val document = runCatching {
                 app.get(url, headers = baseHeaders, referer = mainUrl).document
             }.getOrNull() ?: continue
-
-            val parsed = parseListing(document)
-            if (parsed.isNotEmpty()) {
-                for (item in parsed) results[contentKey(item.url)] = item
-                break
-            }
-        }
-
-        if (results.isEmpty()) return emptyList()
-
-        val filtered = results.values.filter {
-            it.name.contains(keyword, ignoreCase = true) ||
-                keyword.length <= 3 ||
-                keyword.lowercase(Locale.ROOT).split(Regex("\\s+")).all { part ->
-                    part.isNotBlank() && it.name.contains(part, ignoreCase = true)
+            for (item in parseListing(document)) {
+                if (item.name.contains(keyword, ignoreCase = true) || keyword.length <= 3) {
+                    results[contentKey(item.url)] = item
                 }
+            }
+            if (results.isNotEmpty()) break
         }
-
-        return (if (filtered.isNotEmpty()) filtered else results.values).take(60)
+        return results.values.take(60)
     }
 
     override suspend fun load(url: String): LoadResponse? {
@@ -159,6 +134,9 @@ class AdikFilm : MainAPI() {
             document.selectFirst("meta[property=og:description], meta[name=description], div[itemprop=description] > p, .entry-content p, .post-content p, .description, .desc, .sinopsis, .storyline, [itemprop=description]")
                 ?.let { if (it.tagName().equals("meta", true)) it.attr("content") else it.text() }
         )
+        val trailer = document.selectFirst("ul.gmr-player-nav li a.gmr-trailer-popup, a[href*='youtube.com'], a[href*='youtu.be']")
+            ?.attr("href")
+            ?.takeIf { it.isNotBlank() }
 
         return newMovieLoadResponse(title, pageUrl, TvType.Movie, pageUrl) {
             posterUrl = poster
@@ -272,45 +250,14 @@ class AdikFilm : MainAPI() {
 
     private fun parseListing(document: Document): List<SearchResponse> {
         val results = linkedMapOf<String, SearchResponse>()
-
-        val cardNodes = document.select(
-            """
-            article.item-infinite,
-            article.item,
-            article,
-            .gmr-item-modulepost,
-            .gmr-box-content,
-            .content-thumbnail,
-            .ml-item,
-            .result-item,
-            .movie,
-            .film,
-            .post
-            """.trimIndent()
-        )
-
-        for (element in cardNodes) {
+        for (element in document.select(cardSelector)) {
             element.toSearchResult()?.let { results[contentKey(it.url)] = it }
         }
-
         if (results.size < 6) {
-            val fallbackNodes = document.select(
-                """
-                article a[href],
-                .post a[href],
-                .item a[href],
-                .movie a[href],
-                .film a[href],
-                .ml-item a[href],
-                .result-item a[href],
-                .entry-title a[href]
-                """.trimIndent()
-            )
-            for (anchor in fallbackNodes) {
+            for (anchor in document.select("article a[href], .post a[href], .item a[href], .movie a[href], .film a[href], .ml-item a[href], .result-item a[href], .entry-title a[href]")) {
                 anchor.toSearchResult()?.let { results[contentKey(it.url)] = it }
             }
         }
-
         return results.values.take(80)
     }
 
@@ -318,39 +265,20 @@ class AdikFilm : MainAPI() {
         val anchor = if (`is`("a[href]")) {
             this
         } else {
-            selectFirst(
-                """
-                a[title^='Permalink to:'][href],
-                h2.entry-title a[href],
-                h3.entry-title a[href],
-                .entry-title a[href],
-                a[itemprop=url][href],
-                a[rel=bookmark][href],
-                a[href][title],
-                a[href]
-                """.trimIndent()
-            )
+            selectFirst("a[title^='Permalink to:'][href], h2.entry-title a[href], h3.entry-title a[href], .entry-title a[href], a[itemprop=url][href], a[rel=bookmark][href], a[href][title], a[href]")
         } ?: return null
 
         val href = anchor.attr("href").toAbsoluteUrl(mainUrl) ?: return null
         if (!isContentUrl(href)) return null
 
         val container = anchor.bestContainer()
-        val image = container.selectFirst(
-            """
-            img[itemprop=image],
-            img[data-src],
-            img[data-original],
-            img[data-lazy-src],
-            img[src]:not([src^='data:'])
-            """.trimIndent()
-        ) ?: anchor.selectFirst("img[itemprop=image], img[data-src], img[src]:not([src^='data:'])")
-
+        val image = container.selectFirst("img[itemprop=image], img[data-src], img[data-original], img[data-lazy-src], img[src]:not([src^='data:'])")
+            ?: anchor.selectFirst("img[itemprop=image], img[data-src], img[src]:not([src^='data:'])")
         val title = listOf(
-            container.selectFirst("h2.entry-title a[href], h3.entry-title a[href], .entry-title a[href]")?.text(),
-            container.selectFirst("h1, h2.entry-title, h2, h3, .entry-title, .title")?.text(),
             anchor.attr("title").removePrefix("Permalink to:").trim(),
             anchor.attr("aria-label"),
+            container.selectFirst("h2.entry-title a[href], h3.entry-title a[href], .entry-title a[href]")?.text(),
+            container.selectFirst("h1, h2.entry-title, h2, h3, .entry-title, .title")?.text(),
             image?.attr("alt"),
             anchor.text(),
             titleFromUrl(href)
@@ -359,9 +287,7 @@ class AdikFilm : MainAPI() {
         val poster = image?.imageUrl(mainUrl) ?: container.styleImage(mainUrl)
         val text = cleanText(container.text())
         val year = title.firstYear() ?: text.firstYear()
-        val score = container.selectFirst(".gmr-rating-item, .rating, .score, .imdb, .vote")
-            ?.text()
-            ?.replace(',', '.')
+        val score = container.selectFirst(".gmr-rating-item, .rating, .score, .imdb, .vote")?.text()?.replace(',', '.')
             ?.let { Regex("""\d+(?:\.\d+)?""").find(it)?.value?.toDoubleOrNull() }
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
@@ -407,32 +333,29 @@ class AdikFilm : MainAPI() {
 
     private fun findPoster(document: Document, baseUrl: String): String? {
         return document.selectFirst("meta[property=og:image]")?.attr("content")?.takeIf { it.isNotBlank() }?.toAbsoluteUrl(baseUrl)
-            ?: document.selectFirst("figure.pull-left img[data-src], figure.pull-left img[src]:not([src^='data:']), .poster img[data-src], .thumb img[data-src], .content-thumbnail img[data-src], img[itemprop=image][data-src], article img")?.imageUrl(baseUrl)
+            ?: document.selectFirst("figure.pull-left img[data-src], figure.pull-left img[src]:not([src^='data:']), .poster img[data-src], .thumb img[data-src], .content-thumbnail img[data-src], img[itemprop=image][data-src], article img[data-src]")?.imageUrl(baseUrl)
             ?: document.selectFirst("figure.pull-left img, .poster img, .thumb img, .content-thumbnail img, img[itemprop=image], article img")?.imageUrl(baseUrl)
     }
 
     private fun Element.bestContainer(): Element {
         var current = this
-        repeat(4) {
+        repeat(5) {
             val parent = current.parent() ?: return current
             val className = parent.className()
-
-            val isCard = parent.`is`("article") ||
-                className.contains("item", true) ||
-                className.contains("gmr-box-content", true) ||
-                className.contains("content-thumbnail", true) ||
-                className.contains("result-item", true) ||
-                className.contains("ml-item", true)
-
+            val isCard = parent.`is`("article") || className.contains("item", true) || className.contains("gmr-box-content", true) || className.contains("content-thumbnail", true)
+            val isArchiveOrSearchWrapper = className.contains("site-main", true) || className.contains("main", true) || className.contains("archive", true) || className.contains("search", true)
+            if (isArchiveOrSearchWrapper && !isCard) return current
             if (isCard) {
                 current = parent
                 return current
             }
-
             val hasImage = parent.select("img").isNotEmpty()
-            val linkCount = parent.select("a[href]").size
-
-            if (hasImage && linkCount in 1..3) current = parent else return current
+            val hasOnlyOneLink = parent.select("a[href]").size <= 2
+            if (hasImage && hasOnlyOneLink) {
+                current = parent
+            } else {
+                return current
+            }
         }
         return current
     }
@@ -461,42 +384,22 @@ class AdikFilm : MainAPI() {
     }
 
     private fun String?.toAbsoluteUrl(baseUrl: String): String? {
-        val raw = this?.trim()
-            ?.trim('"', '\'', ' ', '\n', '\r', '\t')
-            ?.cleanHtml()
-            ?.takeIf { it.isNotBlank() } ?: return null
-
-        val decoded = decodeBase64(raw)
-            ?.trim()
-            ?.cleanHtml()
-            ?.takeIf { it.isNotBlank() }
-
+        val raw = this?.trim()?.trim('"', '\'', ' ', '\n', '\r', '\t')?.cleanHtml()?.takeIf { it.isNotBlank() } ?: return null
+        val decoded = decodeBase64(raw)?.takeIf { it.startsWith("http", true) || it.startsWith("//") || it.startsWith("/") }
         val candidate = decoded ?: raw
-        val baseUri = runCatching { URI(baseUrl) }.getOrNull() ?: return null
 
-        val resolved = when {
-            candidate.startsWith("http://", true) || candidate.startsWith("https://", true) -> candidate
+        val fixed = when {
             candidate.startsWith("//") -> "https:$candidate"
-            candidate.startsWith("/") -> {
-                val scheme = baseUri.scheme ?: "https"
-                val host = baseUri.host ?: return null
-                val port = if (baseUri.port > 0) ":${baseUri.port}" else ""
-                "$scheme://$host$port$candidate"
-            }
-            candidate.startsWith("?") -> {
-                val prefix = baseUri.toString().substringBefore("?").substringBefore("#")
-                prefix + candidate
-            }
-            else -> runCatching { baseUri.resolve(candidate).toString() }.getOrNull()
+            candidate.startsWith("http://", true) || candidate.startsWith("https://", true) -> candidate
+            candidate.startsWith("/") -> getBaseUrl(baseUrl).trimEnd('/') + candidate
+            candidate.startsWith("?") -> baseUrl.substringBefore("?") + candidate
+            else -> runCatching { URI(baseUrl).resolve(candidate).toString() }.getOrNull()
         } ?: return null
-
-        return resolved.normalizeUrl()
+        return if (fixed.startsWith("http://178.128.107.129", true)) fixed else httpsify(fixed)
     }
 
-    private fun String.normalizeUrl(): String {
-        return replace(Regex("(?<!:)//+"), "/")
-            .replace("http:/", "http://")
-            .replace("https:/", "https://")
+    private fun getBaseUrl(url: String): String {
+        return runCatching { URI(url).let { "${it.scheme}://${it.host}" } }.getOrNull() ?: mainUrl
     }
 
     private fun collectCandidates(source: String, baseUrl: String): List<String> {
@@ -591,9 +494,8 @@ class AdikFilm : MainAPI() {
     private fun isContentUrl(url: String): Boolean {
         val uri = runCatching { URI(url) }.getOrNull() ?: return false
         val host = uri.host.orEmpty().lowercase(Locale.ROOT)
+        if (host != "178.128.107.129") return false
         val path = uri.path.orEmpty().trim('/').lowercase(Locale.ROOT)
-
-        if (host !in ALLOWED_HOSTS) return false
         if (path.isBlank()) return false
         if (path.matches(Regex("""(?:page/\d+|genre/.+|country/.+|year/.+|category/.+|tag/.+|author/.+|search/.+|tv|quality/.+|network/.+|director/.+|cast/.+)"""))) return false
         if (path.contains("wp-content") || path.contains("wp-admin") || path.contains("pasang-iklan")) return false
