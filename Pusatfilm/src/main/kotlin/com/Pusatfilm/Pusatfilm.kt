@@ -18,7 +18,7 @@ import java.net.URLEncoder
 import java.util.Locale
 
 class Pusatfilm : MainAPI() {
-    override var mainUrl = "https://v3.pusatfilm21info.com"
+    override var mainUrl = "https://v3.pusatfilm21info.net"
     override var name = "Pusatfilm"
     override val hasMainPage = true
     override val hasDownloadSupport = true
