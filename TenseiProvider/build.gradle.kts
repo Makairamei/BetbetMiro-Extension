@@ -4,7 +4,7 @@ cloudstream {
     language = "id"
     authors = listOf("sad25kag")
 
-    status = 1
+    status = 0
     tvTypes = listOf(
         "AnimeMovie",
         "OVA",

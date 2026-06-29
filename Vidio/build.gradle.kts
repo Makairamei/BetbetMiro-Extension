@@ -13,7 +13,7 @@ cloudstream {
      * 2: Slow
      * 3: Beta only
      */
-    status = 3
+    status = 0
 
     tvTypes = listOf("Movie", "TvSeries", "Live")
     iconUrl = "https://www.google.com/s2/favicons?domain=vidio.com&sz=%size%"

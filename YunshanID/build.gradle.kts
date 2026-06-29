@@ -7,7 +7,7 @@ cloudstream {
 
     authors = listOf("sad25kag") // Ganti dengan username GitHub-mu
 
-    status = 1
+    status = 0
 
     tvTypes = listOf("AnimeMovie", "Anime")
 
