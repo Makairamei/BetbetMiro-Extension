@@ -56,6 +56,11 @@ class AdikFilm : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
+        "/best-rating/" to "Best Rating",
+        "/daftar-film/" to "Daftar Film",
+        "/film-a-z/" to "Film A-Z",
+        "/tv-series/" to "TV Series",
+        "/tv-ongoing/" to "TV Ongoing",
         "/category/action/" to "Action",
         "/category/adventure/" to "Adventure",
         "/category/animation/" to "Animation",
@@ -64,11 +69,14 @@ class AdikFilm : MainAPI() {
         "/category/drama/" to "Drama",
         "/category/family/" to "Family",
         "/category/fantasy/" to "Fantasy",
+        "/category/history/" to "History",
         "/category/horror/" to "Horror",
+        "/category/music/" to "Music",
         "/category/mystery/" to "Mystery",
         "/category/romance/" to "Romance",
         "/category/science-fiction/" to "Science Fiction",
-        "/category/thriller/" to "Thriller"
+        "/category/thriller/" to "Thriller",
+        "/category/war/" to "War"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
