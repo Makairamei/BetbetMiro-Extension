@@ -215,7 +215,7 @@ object KitaNontonExtractor {
     private fun isLikelyEmbedOrMedia(url: String): Boolean {
         val low = url.lowercase()
         if (looksLikeMedia(low)) return true
-        if (low.contains("kitanonton2.buzz")) return false
+        if (low.contains("kitanonton2.baby")) return false
         return low.startsWith("http") && (
             low.contains("embed") || low.contains("player") || low.contains("stream") || low.contains("video") || low.contains("file") || low.contains("watch")
         )

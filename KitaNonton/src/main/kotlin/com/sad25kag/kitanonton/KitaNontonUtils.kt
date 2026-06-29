@@ -5,7 +5,7 @@ import java.net.URI
 import java.net.URLEncoder
 
 object KitaNontonUtils {
-    const val MAIN_URL = "https://kitanonton2.buzz"
+    const val MAIN_URL = "https://kitanonton2.baby"
     const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36"
 
     val mainPage = arrayOf(
@@ -100,7 +100,7 @@ object KitaNontonUtils {
     fun isValidContentUrl(url: String): Boolean {
         val uri = runCatching { URI(url) }.getOrNull() ?: return false
         val host = uri.host.orEmpty().removePrefix("www.")
-        if (host != "kitanonton2.buzz") return false
+        if (host != "kitanonton2.baby") return false
         val path = uri.path.orEmpty().trim('/')
         if (path.isBlank()) return false
         val parts = path.split('/').filter { it.isNotBlank() }
