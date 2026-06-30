@@ -2,7 +2,7 @@ android {
     namespace = "com.sad25kag.alqanime"
 }
 
-version = 26
+version = 27
 
 cloudstream {
     language = "id"

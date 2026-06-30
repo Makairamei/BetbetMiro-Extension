@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
+import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
+import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
 import com.lagradost.cloudstream3.utils.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -245,11 +247,20 @@ class Alqanime : MainAPI() {
             }
         }
 
+        // --- SUNTIKAN TRACKER GLOBAL CLOUDSTREAM ---
+        val tracker = com.lagradost.cloudstream3.APIHolder.getTracker(
+            listOf(title),
+            com.lagradost.cloudstream3.TrackerType.getTypes(TvType.Anime),
+            null,
+            true
+        )
+
         return newAnimeLoadResponse(title, url, type) {
             this.japName = japName
             engName = title
-            posterUrl = poster
-            backgroundPosterUrl = coverBg
+            // Jika tracker menemukan gambar beresolusi HD, kita timpa aset bawaan web-nya
+            posterUrl = tracker?.image ?: poster
+            backgroundPosterUrl = tracker?.cover ?: coverBg
             this.year = year
             this.duration = duration
             addEpisodes(DubStatus.Subbed, episodes.reversed())
@@ -259,6 +270,10 @@ class Alqanime : MainAPI() {
             this.tags = listOfNotNull(*genres.toTypedArray(), studio, season)
             addActors(actors)
             this.score = Score.from10(scoreText?.toFloatOrNull())
+
+            // Sinkronisasi ID agar CloudStream memuat data Karakter & Seiyuu secara native
+            addMalId(tracker?.malId)
+            addAniListId(tracker?.aniId?.toString()?.toIntOrNull())
         }
     }
 
@@ -390,7 +405,7 @@ class Alqanime : MainAPI() {
             .map { it.value.cleanEscaped() }
             .forEach { candidates.add(it) }
 
-        Regex("""(?i)(?:href|url)\s*[:=]\s*["']([^"']*download[^"']*mediafire[^"']*)["']""")
+        Regex("""(?i)(?:href|url)\s*[:=]\s*["']([^"'] *download[^"']*mediafire[^"']*)["']""")
             .findAll(html)
             .mapNotNull { it.groupValues.getOrNull(1)?.cleanEscaped() }
             .forEach { fixUrlNull(it)?.let(candidates::add) }
