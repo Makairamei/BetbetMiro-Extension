@@ -329,8 +329,8 @@ class AstronimeProvider : MainAPI() {
 
         var parent = heading?.parent()
         repeat(5) {
-            if (parent != null && parent!!.select("a[href]").size >= 2) {
-                val items = parent!!.select(selector)
+            if (parent != null && parent.select("a[href]").size >= 2) {
+                val items = parent.select(selector)
                 if (items.isNotEmpty()) return items
             }
             parent = parent?.parent()
@@ -361,7 +361,7 @@ class AstronimeProvider : MainAPI() {
         var parent = heading?.parent()
         repeat(5) {
             if (parent != null) {
-                val items = parent!!.select("article.anime, .animepost, .animposx, a[href*='/anime/'], a[href]")
+                val items = parent.select("article.anime, .animepost, .animposx, a[href*='/anime/'], a[href]")
                 if (items.isNotEmpty()) return items
             }
             parent = parent?.parent()
