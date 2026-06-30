@@ -11,6 +11,7 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.newSubtitleFile
 import java.net.URLDecoder
 
 open class GdrivePlayerTo : ExtractorApi() {
@@ -354,7 +355,7 @@ open class GdrivePlayerTo : ExtractorApi() {
             val scanText = if (unpacked.isBlank()) pageText else "$pageText\n$unpacked"
 
             for (subtitleUrl in collectSubtitleUrls(scanText, currentUrl)) {
-                subtitleCallback(SubtitleFile("Indonesian", subtitleUrl))
+                subtitleCallback(newSubtitleFile("Indonesian", subtitleUrl))
             }
 
             for (playlistUrl in collectHlsUrls(scanText, currentUrl)) {
