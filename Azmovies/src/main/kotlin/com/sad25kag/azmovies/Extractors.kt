@@ -266,7 +266,7 @@ private data class BysePlaybackData(
 data class DetailsRoot(
     val id: Long,
     val code: String,
-    @JsonProperty("embed_frame_url")
+    @field:JsonProperty("embed_frame_url")
     val embedFrameUrl: String,
 )
 
@@ -277,7 +277,7 @@ data class PlaybackRoot(
 data class Playback(
     val iv: String,
     val payload: String,
-    @JsonProperty("key_parts")
+    @field:JsonProperty("key_parts")
     val keyParts: List<String>,
     val version: String? = null,
 )
