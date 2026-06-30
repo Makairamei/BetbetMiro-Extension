@@ -171,11 +171,11 @@ open class AnixCafeDailymotion : ExtractorApi() {
                 if (urls != null) {
                     for (urlIndex in 0 until urls.length()) {
                         val subUrl = urls.optString(urlIndex).trim()
-                        if (subUrl.isNotBlank()) subtitleCallback(SubtitleFile(url = subUrl, lang = label))
+                        if (subUrl.isNotBlank()) subtitleCallback(newSubtitleFile(label, subUrl))
                     }
                 } else {
                     val subUrl = item.optString("url").trim()
-                    if (subUrl.isNotBlank()) subtitleCallback(SubtitleFile(url = subUrl, lang = label))
+                    if (subUrl.isNotBlank()) subtitleCallback(newSubtitleFile(label, subUrl))
                 }
             }
         }
