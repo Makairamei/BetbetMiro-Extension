@@ -30,6 +30,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.nodes.Element
 import java.net.URI
 import java.net.URLDecoder
+import com.lagradost.cloudstream3.newSubtitleFile
 
 class Azmovies : MainAPI() {
     override var mainUrl = "https://azmovies.to"
@@ -410,7 +411,7 @@ class Azmovies : MainAPI() {
         val subtitleUrl = url.substringAfter("c1_file=", "").substringBefore("&").urlDecode()
         if (subtitleUrl.isBlank() || !subtitleUrl.contains(".vtt", true)) return null
         val label = url.substringAfter("c1_label=", "English").substringBefore("&").urlDecode()
-        return SubtitleFile(label.ifBlank { "English" }, subtitleUrl)
+        return newSubtitleFile(label.ifBlank { "English" }, subtitleUrl)
     }
 
     private fun extractServerButtons(html: String, document: org.jsoup.nodes.Document): List<ServerButton> {
