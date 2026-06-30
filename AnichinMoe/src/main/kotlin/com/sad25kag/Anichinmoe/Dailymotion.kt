@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
@@ -142,7 +143,7 @@ open class Dailymotion : ExtractorApi() {
         return urls.toList()
     }
 
-    private fun emitSubtitles(json: JSONObject, subtitleCallback: (SubtitleFile) -> Unit) {
+    private suspend fun emitSubtitles(json: JSONObject, subtitleCallback: (SubtitleFile) -> Unit) {
         val subtitles = json.optJSONObject("subtitles")
         subtitles?.keys()?.forEach { lang ->
             val value = subtitles.opt(lang)
@@ -160,13 +161,13 @@ open class Dailymotion : ExtractorApi() {
                     for (urlIndex in 0 until urls.length()) {
                         val subUrl = urls.optString(urlIndex).trim()
                         if (subUrl.isNotBlank()) {
-                            subtitleCallback(newSubtitleFile(subUrl, label))
+                            subtitleCallback(newSubtitleFile(label, subUrl))
                         }
                     }
                 } else {
                     val subUrl = item.optString("url").trim()
                     if (subUrl.isNotBlank()) {
-                        subtitleCallback(newSubtitleFile(subUrl, label))
+                        subtitleCallback(newSubtitleFile(label, subUrl))
                     }
                 }
             }
