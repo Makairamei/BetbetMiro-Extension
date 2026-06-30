@@ -247,7 +247,6 @@ class Alqanime : MainAPI() {
             }
         }
 
-        // --- SUNTIKAN TRACKER GLOBAL CLOUDSTREAM ---
         val tracker = com.lagradost.cloudstream3.APIHolder.getTracker(
             listOf(title),
             com.lagradost.cloudstream3.TrackerType.getTypes(TvType.Anime),
@@ -258,7 +257,6 @@ class Alqanime : MainAPI() {
         return newAnimeLoadResponse(title, url, type) {
             this.japName = japName
             engName = title
-            // Jika tracker menemukan gambar beresolusi HD, kita timpa aset bawaan web-nya
             posterUrl = tracker?.image ?: poster
             backgroundPosterUrl = tracker?.cover ?: coverBg
             this.year = year
@@ -271,9 +269,8 @@ class Alqanime : MainAPI() {
             addActors(actors)
             this.score = Score.from10(scoreText?.toFloatOrNull())
 
-            // Sinkronisasi ID agar CloudStream memuat data Karakter & Seiyuu secara native
             addMalId(tracker?.malId)
-            addAniListId(tracker?.aniId?.toString()?.toIntOrNull())
+            addAniListId(tracker?.aniId)
         }
     }
 
