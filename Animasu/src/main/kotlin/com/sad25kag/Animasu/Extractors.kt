@@ -1,4 +1,4 @@
- package com.sad25kag.Animasu
+package com.sad25kag.Animasu
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.SubtitleFile
@@ -24,9 +24,7 @@ class Archivd : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val res = app.get(url).document
-
-        val json = res.selectFirst("div#app")
-            ?.attr("data-page")
+        val json = res.selectFirst("div#app")?.attr("data-page")
 
         if (json.isNullOrBlank()) return
 
@@ -49,7 +47,7 @@ class Archivd : ExtractorApi() {
                 video,
                 INFER_TYPE
             ) {
-                referer = "$mainUrl/"
+                this.referer = "$mainUrl/"
             }
         )
     }
@@ -139,8 +137,8 @@ class Newuservideo : ExtractorApi() {
                     playUrl,
                     INFER_TYPE
                 ) {
-                    referer = "$mainUrl/"
-                    quality = when (formatId) {
+                    this.referer = "$mainUrl/"
+                    this.quality = when (formatId) {
                         18 -> Qualities.P360.value
                         22 -> Qualities.P720.value
                         else -> Qualities.Unknown.value
