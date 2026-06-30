@@ -4,7 +4,6 @@ import android.util.Log
 import com.lagradost.api.Log as CsLog
 import com.lagradost.cloudstream3.ErrorLoadingException
 import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
@@ -26,6 +25,7 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.runBlocking
 
 class AnixCafeGeoDailymotion : AnixCafeDailymotion() {
     override val name = "GeoDailymotion"
@@ -172,11 +172,11 @@ open class AnixCafeDailymotion : ExtractorApi() {
                 if (urls != null) {
                     for (urlIndex in 0 until urls.length()) {
                         val subUrl = urls.optString(urlIndex).trim()
-                        if (subUrl.isNotBlank()) subtitleCallback(newSubtitleFile(label, subUrl))
+                        if (subUrl.isNotBlank()) runBlocking { subtitleCallback(newSubtitleFile(label, subUrl)) }
                     }
                 } else {
                     val subUrl = item.optString("url").trim()
-                    if (subUrl.isNotBlank()) subtitleCallback(newSubtitleFile(label, subUrl))
+                    if (subUrl.isNotBlank()) runBlocking { subtitleCallback(newSubtitleFile(label, subUrl)) }
                 }
             }
         }
