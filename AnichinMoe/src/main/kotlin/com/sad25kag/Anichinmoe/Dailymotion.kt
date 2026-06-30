@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
+import com.lagradost.cloudstream3.utils.newSubtitleFile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
@@ -103,7 +104,7 @@ open class Dailymotion : ExtractorApi() {
             emitSubtitles(json, subtitleCallback)
             extractQualityUrls(json)
         } else {
-            Regex(""""url"\s*:\s*"([^"]+)"""")
+            Regex(""""url"s*:s*"([^"]+)"""")
                 .findAll(response)
                 .map { it.groupValues[1].replace("\\/", "/") }
                 .filter { it.contains(".m3u8", true) }
@@ -158,11 +159,15 @@ open class Dailymotion : ExtractorApi() {
                 if (urls != null) {
                     for (urlIndex in 0 until urls.length()) {
                         val subUrl = urls.optString(urlIndex).trim()
-                        if (subUrl.isNotBlank()) subtitleCallback(SubtitleFile(url = subUrl, lang = label))
+                        if (subUrl.isNotBlank()) {
+                            subtitleCallback(newSubtitleFile(url = subUrl, lang = label))
+                        }
                     }
                 } else {
                     val subUrl = item.optString("url").trim()
-                    if (subUrl.isNotBlank()) subtitleCallback(SubtitleFile(url = subUrl, lang = label))
+                    if (subUrl.isNotBlank()) {
+                        subtitleCallback(newSubtitleFile(url = subUrl, lang = label))
+                    }
                 }
             }
         }
@@ -179,7 +184,7 @@ open class Dailymotion : ExtractorApi() {
         val decoded = runCatching { URLDecoder.decode(url, "UTF-8") }.getOrDefault(url)
         return listOf(
             Regex("""(?i)[?&]video=([A-Za-z0-9]+)"""),
-            Regex("""(?i)/video/([A-Za-z0-9]+)\.json"""),
+            Regex("""(?i)/video/([A-Za-z0-9]+).json"""),
             Regex("""(?i)/video/([A-Za-z0-9]+)"""),
         ).firstNotNullOfOrNull { regex -> regex.find(decoded)?.groupValues?.getOrNull(1) }
             ?.takeIf { it.matches(videoIdRegex) }
@@ -210,6 +215,6 @@ open class Dailymotion : ExtractorApi() {
                 "User-Agent" to USER_AGENT,
                 "Referer" to referer,
             )
-        ).forEach(callback)
+        ).forEach { callback.invoke(it) }
     }
 }
