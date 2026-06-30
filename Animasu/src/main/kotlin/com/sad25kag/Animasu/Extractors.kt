@@ -1,4 +1,4 @@
-package com.sad25kag.Animasu
+ package com.sad25kag.Animasu
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.SubtitleFile
@@ -23,12 +23,10 @@ class Archivd : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-
         val res = app.get(url).document
 
-        val json =
-            res.selectFirst("div#app")
-                ?.attr("data-page")
+        val json = res.selectFirst("div#app")
+            ?.attr("data-page")
 
         if (json.isNullOrBlank()) return
 
@@ -46,38 +44,38 @@ class Archivd : ExtractorApi() {
 
         callback.invoke(
             newExtractorLink(
-                this.name,
-                this.name,
+                name,
+                name,
                 video,
                 INFER_TYPE
             ) {
-                this.referer = "$mainUrl/"
+                referer = "$mainUrl/"
             }
         )
     }
 
     data class Link(
-        @JsonProperty("media")
+        @param:JsonProperty("media")
         val media: String? = null,
     )
 
     data class Data(
-        @JsonProperty("link")
+        @param:JsonProperty("link")
         val link: Link? = null,
     )
 
     data class Datas(
-        @JsonProperty("data")
+        @param:JsonProperty("data")
         val data: Data? = null,
     )
 
     data class Props(
-        @JsonProperty("datas")
+        @param:JsonProperty("datas")
         val datas: Datas? = null,
     )
 
     data class Sources(
-        @JsonProperty("props")
+        @param:JsonProperty("props")
         val props: Props? = null,
     )
 }
@@ -94,46 +92,34 @@ class Newuservideo : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        val headersMap = referer?.let { mapOf("Referer" to it) } ?: emptyMap()
 
-        val headersMap =
-            referer?.let {
-                mapOf("Referer" to it)
-            } ?: emptyMap()
-
-        val iframeSrc =
-            app.get(url, headers = headersMap)
-                .document
-                .selectFirst("iframe#videoFrame")
-                ?.attr("src")
+        val iframeSrc = app.get(url, headers = headersMap)
+            .document
+            .selectFirst("iframe#videoFrame")
+            ?.attr("src")
 
         if (iframeSrc.isNullOrBlank()) return
 
-        val iframeUrl =
-            if (iframeSrc.startsWith("http")) {
-                iframeSrc
-            } else {
-                "$mainUrl$iframeSrc"
-            }
+        val iframeUrl = if (iframeSrc.startsWith("http")) {
+            iframeSrc
+        } else {
+            "$mainUrl$iframeSrc"
+        }
 
-        val doc =
-            app.get(
-                iframeUrl,
-                headers = mapOf(
-                    "Referer" to "$mainUrl/"
-                )
-            ).text
+        val doc = app.get(
+            iframeUrl,
+            headers = mapOf("Referer" to "$mainUrl/")
+        ).text
 
-        val json =
-            "VIDEO_CONFIG\\s?=\\s?(\\{.*?\\})"
-                .toRegex()
+        val json = Regex("""VIDEO_CONFIGs*=s*({.*?})""")
+            .find(doc)
+            ?.groupValues
+            ?.get(1)
+            ?: Regex("""VIDEO_CONFIGs*=s*(.*)""")
                 .find(doc)
                 ?.groupValues
                 ?.get(1)
-                ?: "VIDEO_CONFIG\\s?=\\s?(.*)"
-                    .toRegex()
-                    .find(doc)
-                    ?.groupValues
-                    ?.get(1)
 
         if (json.isNullOrBlank()) return
 
@@ -148,35 +134,32 @@ class Newuservideo : ExtractorApi() {
 
             callback.invoke(
                 newExtractorLink(
-                    this.name,
-                    this.name,
+                    name,
+                    name,
                     playUrl,
                     INFER_TYPE
                 ) {
-
-                    this.referer = "$mainUrl/"
-
-                    this.quality =
-                        when (formatId) {
-                            18 -> Qualities.P360.value
-                            22 -> Qualities.P720.value
-                            else -> Qualities.Unknown.value
-                        }
+                    referer = "$mainUrl/"
+                    quality = when (formatId) {
+                        18 -> Qualities.P360.value
+                        22 -> Qualities.P720.value
+                        else -> Qualities.Unknown.value
+                    }
                 }
             )
         }
     }
 
     data class Streams(
-        @JsonProperty("play_url")
+        @param:JsonProperty("play_url")
         val playUrl: String? = null,
 
-        @JsonProperty("format_id")
+        @param:JsonProperty("format_id")
         val formatId: Int? = null,
     )
 
     data class Sources(
-        @JsonProperty("streams")
+        @param:JsonProperty("streams")
         val streams: ArrayList<Streams>? = null,
     )
 }
