@@ -351,7 +351,7 @@ class AnimeMovies : MainAPI() {
         val card = bestCard()
         val detailAnchor = card.selectFirst("a[href*=/anime/], a[href*='/anime/']")
         val watchAnchor = card.selectFirst("a[href*=/watch/], a[href*='/watch/']")
-        val anchor = detailAnchor ?: watchAnchor ?: if (tagName().equals("a", true)) this else null ?: return null
+        val anchor = detailAnchor ?: watchAnchor ?: if (tagName().equals("a", true)) this else return null
         val href = anchor.attr("href").trim().toAbsoluteUrl() ?: return null
         if (!href.isAnimeOrWatchUrl()) return null
         if (href.contains("/genre/", true) || href.contains("/jadwal", true)) return null
