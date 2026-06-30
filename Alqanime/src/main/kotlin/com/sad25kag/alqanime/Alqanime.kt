@@ -270,7 +270,7 @@ class Alqanime : MainAPI() {
             this.score = Score.from10(scoreText?.toFloatOrNull())
 
             addMalId(tracker?.malId)
-            addAniListId(tracker?.aniId)
+            addAniListId(tracker?.aniId?.toIntOrNull())
         }
     }
 
