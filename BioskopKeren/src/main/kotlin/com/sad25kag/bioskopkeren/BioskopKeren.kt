@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.sad25kag.bioskopkeren
 
 import com.lagradost.cloudstream3.HomePageList
