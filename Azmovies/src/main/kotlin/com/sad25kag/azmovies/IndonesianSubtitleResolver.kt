@@ -1,4 +1,5 @@
 package com.sad25kag.azmovies
+@file:Suppress("DEPRECATION")
 
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.USER_AGENT
