@@ -527,6 +527,7 @@ class CGVIndo : MainAPI() {
         return links.filter { it.isPlaybackCandidate() }.toList()
     }
 
+    @Suppress("DEPRECATION")
     private fun collectSubtitles(document: Document, baseUrl: String, subtitleCallback: (SubtitleFile) -> Unit) {
         document.select("track[src], a[href$=.srt], a[href$=.vtt]").forEach { element ->
             val url = fixUrl(element.attr("src").ifBlank { element.attr("href") }, baseUrl) ?: return@forEach
@@ -538,7 +539,7 @@ class CGVIndo : MainAPI() {
     private fun findPoster(document: Document, baseUrl: String): String? =
         document.selectFirst("meta[property=og:image], meta[name=twitter:image]")?.attr("content")?.let { fixUrl(it, baseUrl) }
             ?: document.selectFirst(".poster img, .thumb img, .thumbnail img, .entry-content img, article img, img")?.imageUrl(baseUrl)
-            ?: document.body()?.styleImage(baseUrl)
+            ?: document.body().styleImage(baseUrl)
 
     private fun hasNextPage(document: Document, page: Int): Boolean =
         document.select("a.next, .next a, a[rel=next], .pagination a, .nav-links a")
