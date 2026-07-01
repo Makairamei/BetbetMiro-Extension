@@ -213,6 +213,7 @@ class BioskopKeren : MainAPI() {
         iframeUrls
             .filterNot { isBadPlaybackUrl(it) }
             .forEach { iframeUrl ->
+    @Suppress("DEPRECATION")
                 found = resolveIframeWithExtractor(
                     iframeUrl,
                     watchUrl,
@@ -225,6 +226,7 @@ class BioskopKeren : MainAPI() {
         return found
     }
 
+    @Suppress("DEPRECATION")
     private suspend fun resolveIframeWithExtractor(
         iframeUrl: String,
         pageUrl: String,
